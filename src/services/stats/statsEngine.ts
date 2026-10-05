@@ -1,4 +1,5 @@
 import { CATEGORIES, categoriesInGroup, type CategoryId } from '../../config/categories'
+import { hasGoalModel } from '../analysis/goalModel'
 import type { ReliabilityLevel } from '../analysis/types'
 import type { Pick } from '../../types'
 import { monthKey, weekStart } from './periods'
@@ -44,6 +45,26 @@ export interface Stats {
   monthly: Bucket[]
   /** Taraf & Gol grubuna özel dökümler; grupta öneri yoksa null */
   sideGoals: SideGoalsStats | null
+  /** Ana gol kategorilerinde (2.5 / 3.5 / 4.5 Üst, KG Var) hazır yüzde ile model karşılaştırması */
+  goalModel: GoalModelStats | null
+}
+
+export interface ModelCalibrationRow {
+  key: CategoryId | 'all'
+  /** Sonuçlanmış önerilerin ortalama hazır (FootyStats) yüzdesi */
+  ready: number | null
+  /** Aynı önerilerin ortalama model yüzdesi */
+  model: number | null
+  /** Ortalama fark: hazır - model (yüzde puanı) */
+  gap: number | null
+  tally: Tally
+}
+
+export interface GoalModelStats {
+  byConflict: Bucket<'clear' | 'conflict'>[]
+  calibration: ModelCalibrationRow[]
+  /** Bu kategorilerde olup model yüzdesi kayıtlı olmayan (eski ya da xG'siz) öneri sayısı; dökümlere girmez */
+  withoutModel: number
 }
 
 export interface CalibrationRow {
@@ -125,6 +146,42 @@ function buildSideGoalsStats(picks: Pick[]): SideGoalsStats | null {
   }
 }
 
+const GOAL_MODEL_CATEGORIES = CATEGORIES.map((c) => c.id).filter(hasGoalModel)
+const round1 = (value: number) => Math.round(value * 10) / 10
+const mean = (values: number[]) => round1(values.reduce((a, b) => a + b, 0) / values.length)
+
+function modelCalibrationRow(key: ModelCalibrationRow['key'], picks: Pick[]): ModelCalibrationRow {
+  const decided = picks.filter(isDecided)
+  if (decided.length === 0) return { key, ready: null, model: null, gap: null, tally: tally(picks) }
+  return {
+    key,
+    ready: mean(decided.map((p) => p.percent)),
+    model: mean(decided.map((p) => p.secondPercent!)),
+    gap: mean(decided.map((p) => p.percent - p.secondPercent!)),
+    tally: tally(picks),
+  }
+}
+
+/**
+ * Yalnızca model yüzdesi dondurulmuş öneriler kullanılır; böylece hazır yüzde
+ * ile model aynı öneriler üzerinde karşılaştırılır.
+ */
+function buildGoalModelStats(picks: Pick[]): GoalModelStats | null {
+  const inScope = picks.filter((p) => GOAL_MODEL_CATEGORIES.includes(p.categoryId))
+  const withModel = inScope.filter((p) => p.secondPercent != null)
+  if (withModel.length === 0) return null
+  return {
+    byConflict: groupBy(withModel, (p) => (p.conflict ? 'conflict' : 'clear'), ['clear', 'conflict']),
+    calibration: [
+      ...GOAL_MODEL_CATEGORIES.filter((id) => withModel.some((p) => p.categoryId === id)).map((id) =>
+        modelCalibrationRow(id, withModel.filter((p) => p.categoryId === id)),
+      ),
+      modelCalibrationRow('all', withModel),
+    ],
+    withoutModel: inScope.length - withModel.length,
+  }
+}
+
 /** Dondurulmuş önerilerden tüm istatistikleri üretir. */
 export function buildStats(picks: Pick[]): Stats {
   const unique = (list: Pick[]) => new Set(list.map((p) => p.matchId)).size
@@ -144,5 +201,6 @@ export function buildStats(picks: Pick[]): Stats {
     weekly: groupBy(picks, (p) => weekStart(p.date)),
     monthly: groupBy(picks, (p) => monthKey(p.date)),
     sideGoals: buildSideGoalsStats(picks),
+    goalModel: buildGoalModelStats(picks),
   }
 }

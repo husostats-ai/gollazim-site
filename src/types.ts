@@ -69,8 +69,10 @@ export interface Pick {
   frozenAt: string
   /** Dondurma anındaki veri güvenilirliği; eski kayıtlarda bulunmayabilir */
   reliability?: ReliabilityLevel
-  /** Dondurma anında ana hesap ile xG hesabı çelişiyor muydu (yalnızca Taraf & Gol) */
+  /** Dondurma anında ana yüzde ile ikinci hesap çelişiyor muydu (Taraf & Gol, ana gol kategorileri) */
   conflict?: boolean
+  /** Dondurma anındaki ikinci hesap (xG / gol modeli) yüzdesi; hesaplanamadıysa null */
+  secondPercent?: number | null
 }
 
 /** Bir yapay zekânın bir maç için verdiği karar; maç başına her sağlayıcıdan en fazla bir tane */

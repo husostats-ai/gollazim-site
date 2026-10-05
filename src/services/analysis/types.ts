@@ -14,6 +14,8 @@ export interface PredictionNote {
 export interface CalcExtras {
   /** Farklı bir yöntemle (xG) hesaplanan ikinci yüzde */
   secondPercent?: number | null
+  /** İkinci yüzdenin kartta görünen adı; verilmezse "xG modeli" */
+  secondLabel?: string
   /** İki yüzde arasındaki fark çelişki sınırını aşıyor */
   conflict?: boolean
   /** Bu maç için yüzdenin kaynağı; verilmezse hesaplayıcının genel basis değeri */
@@ -67,8 +69,9 @@ export interface Prediction {
   stars: number
   reliability: Reliability
   basis: string
-  /** Yalnızca ikinci hesabı olan kategorilerde (Taraf & Gol) */
+  /** Yalnızca ikinci hesabı olan kategorilerde (Taraf & Gol, ana gol kategorileri) */
   secondPercent?: number | null
+  secondLabel: string
   conflict?: boolean
   notes: PredictionNote[]
 }

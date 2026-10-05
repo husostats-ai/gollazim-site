@@ -9,7 +9,14 @@ import { buildStats, LOW_SAMPLE_LIMIT, tally } from './statsEngine'
 let n = 0
 const pick = (
   outcome: PickOutcome,
-  over: { date?: string; categoryId?: CategoryId; reliability?: ReliabilityLevel; conflict?: boolean; percent?: number } = {},
+  over: {
+    date?: string
+    categoryId?: CategoryId
+    reliability?: ReliabilityLevel
+    conflict?: boolean
+    percent?: number
+    secondPercent?: number | null
+  } = {},
 ): Pick => ({
   id: `p${++n}`,
   matchId: `m${n}`,
@@ -21,6 +28,7 @@ const pick = (
   frozenAt: '2026-10-05T21:00:00Z',
   reliability: over.reliability,
   ...(over.conflict !== undefined && { conflict: over.conflict }),
+  ...(over.secondPercent !== undefined && { secondPercent: over.secondPercent }),
 })
 const many = (count: number, outcome: PickOutcome, over: Parameters<typeof pick>[1] = {}) =>
   Array.from({ length: count }, () => pick(outcome, over))
@@ -211,5 +219,64 @@ describe('Taraf & Gol istatistikleri', () => {
       ['homeWin25', null, null],
       ['all', null, null],
     ])
+  })
+})
+
+describe('gol modeli istatistikleri', () => {
+  const model = [
+    // 2.5 Üst: hazır 80 / model 60 (kazandı), hazır 90 / model 50 (kaybetti, çelişkili)
+    pick('won', { categoryId: 'over25', percent: 80, secondPercent: 60, conflict: false }),
+    pick('lost', { categoryId: 'over25', percent: 90, secondPercent: 50, conflict: true }),
+    // sonuçlanmamış öneri ortalamalara girmez
+    pick('pending', { categoryId: 'over25', percent: 99, secondPercent: 1, conflict: true }),
+    // KG Var: hazır 84 / model 48 (kaybetti, çelişkili), hazır 82 / model 70 (kazandı), hazır 80 / model 75 (kazandı)
+    pick('lost', { categoryId: 'btts', percent: 84, secondPercent: 48, conflict: true }),
+    pick('won', { categoryId: 'btts', percent: 82, secondPercent: 70, conflict: false }),
+    pick('won', { categoryId: 'btts', percent: 80, secondPercent: 75, conflict: false }),
+  ]
+  const outside = [
+    // model yüzdesi kayıtlı olmayan eski öneri ve xG'siz öneri: dökümlere girmez, sayısı bildirilir
+    pick('won', { categoryId: 'over25', percent: 95 }),
+    pick('won', { categoryId: 'over35', percent: 75, secondPercent: null }),
+    // başka kategorilerdeki ikinci yüzdeler (Taraf & Gol) bu dökümü etkilemez
+    pick('lost', { categoryId: 'homeWin15', percent: 60, secondPercent: 20, conflict: true }),
+    pick('lost', { categoryId: 'ht05', percent: 90 }),
+  ]
+  const s = buildStats([...model, ...outside]).goalModel!
+
+  it('çelişkili ve çelişkisiz önerilerin başarısını ayırır', () => {
+    expect(s.byConflict.map((b) => [b.key, b.tally.won, b.tally.lost, b.tally.rate, b.tally.total])).toEqual([
+      ['clear', 3, 0, 100, 3],
+      ['conflict', 0, 2, 0, 3],
+    ])
+  })
+
+  it('hazır yüzde ile model yüzdesinin ortalama tahmini, gerçekleşen başarı ve ortalama fark', () => {
+    expect(s.calibration.map((r) => [r.key, r.ready, r.model, r.gap, r.tally.rate, r.tally.decided])).toEqual([
+      ['over25', 85, 55, 30, 50, 2],
+      ['btts', 82, 64.3, 17.7, 66.7, 3],
+      ['all', 83.2, 60.6, 22.6, 60, 5],
+    ])
+    expect(s.calibration.every((r) => r.tally.lowSample)).toBe(true)
+  })
+
+  it('model yüzdesi olmayan öneriler dökümlere girmez ama sayılır', () => {
+    expect(s.withoutModel).toBe(2)
+    expect(s.calibration.find((r) => r.key === 'all')!.tally.total).toBe(6)
+  })
+
+  it('ortalama fark negatif olabilir (model hazır yüzdeden yüksek)', () => {
+    const only = buildStats([pick('won', { categoryId: 'over45', percent: 60, secondPercent: 72, conflict: false })]).goalModel!
+    expect(only.calibration[0]).toMatchObject({ key: 'over45', ready: 60, model: 72, gap: -12 })
+  })
+
+  it('sonuçlanmış öneri yoksa ortalamalar boş kalır; hiç model kaydı yoksa döküm üretilmez', () => {
+    const pending = buildStats([pick('pending', { categoryId: 'over25', percent: 80, secondPercent: 60 })]).goalModel!
+    expect(pending.calibration.map((r) => [r.ready, r.model, r.gap, r.tally.rate])).toEqual([
+      [null, null, null, null],
+      [null, null, null, null],
+    ])
+    expect(buildStats(outside).goalModel).toBeNull()
+    expect(buildStats([]).goalModel).toBeNull()
   })
 })

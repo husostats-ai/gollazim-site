@@ -2,6 +2,7 @@ import { AI_CHUNK_SIZE, AI_DECISIONS, AI_PROVIDERS, type AiProvider } from '../.
 import { getCategory } from '../../config/categories'
 import { formatNumber } from '../../utils/format'
 import { RELIABILITY_LABELS } from '../analysis/reliability'
+import { goalModelPercent, MODEL_CONFLICT_LIMIT } from '../analysis/goalModel'
 import { stat } from '../analysis/stat'
 import type { Prediction } from '../analysis/types'
 import type { AiMatchItem } from './collect'
@@ -27,12 +28,21 @@ const pair = (home: number | null, away: number | null): string =>
 function predictionText(p: Prediction): string {
   const details: string[] = [`güvenilirlik: ${RELIABILITY_LABELS[p.reliability.level]}`]
   if (p.reliability.sampleSize !== null) details.push(`en az ${p.reliability.sampleSize} maçlık veri`)
-  if (p.secondPercent != null) details.push(`xG modeli %${p.secondPercent}`)
+  // Cümle içinde: "Model" -> "model", "xG modeli" olduğu gibi
+  const secondLabel = p.secondLabel.charAt(0).toLocaleLowerCase('tr') + p.secondLabel.slice(1)
+  if (p.secondPercent != null) details.push(`${secondLabel} %${p.secondPercent}`)
   for (const note of p.notes) details.push(note.label)
   return `${getCategory(p.categoryId).label} %${p.percent} (${details.join('; ')})`
 }
 
-/** Bir maçın veri bloğundaki üç satırı. Numara, cevabın maça bağlanacağı tek anahtardır. */
+const GOAL_MODEL_LINES = [
+  ['over25', '2.5 Üst'],
+  ['over35', '3.5 Üst'],
+  ['over45', '4.5 Üst'],
+  ['btts', 'KG Var'],
+] as const
+
+/** Bir maçın veri bloğundaki dört satırı. Numara, cevabın maça bağlanacağı tek anahtardır. */
 export function matchBlock(item: AiMatchItem, number: number): string {
   const { match } = item
   const odds = [stat(match, 'oddsHome'), stat(match, 'oddsDraw'), stat(match, 'oddsAway')]
@@ -44,10 +54,15 @@ export function matchBlock(item: AiMatchItem, number: number): string {
     `Maç öncesi xG: ${pair(stat(match, 'homeXg'), stat(match, 'awayXg'))}`,
     `1X2 oranları: ${odds.every((o) => o === null) ? MISSING : odds.map(num).join(' / ')}`,
   ]
+  const model = GOAL_MODEL_LINES.map(([id, label]) => {
+    const result = goalModelPercent(match, id)
+    return `${label} ${result ? `%${result.percent}` : MISSING}`
+  })
   return [
     `#${number} | ${match.time ?? 'saat yok'} | ${match.league ?? 'lig yok'} | ${match.home} - ${match.away}`,
     `Öneriler: ${item.predictions.map(predictionText).join(' ; ')}`,
     `İstatistik: ${stats.join(' ; ')}`,
+    `Gol modeli: ${model.join(' ; ')}`,
   ].join('\n')
 }
 
@@ -75,6 +90,7 @@ function chunkText(args: {
     '- Veri uydurma. Bilmediğin ya da bulamadığın bilgi için "bilinmiyor" yaz.',
     '- Kesinlik iddia etme. Yüzdeler geçmiş maç istatistiklerinden ve oranlardan hesaplanmış olasılık tahminleridir, garanti değildir.',
     '- "veri yok" yazan alanlar için tahmin yürütme.',
+    `- "Gol modeli" satırı, maç öncesi xG değerlerinden (yoksa gol ortalamasından) Poisson ile hesaplanan ikinci bir tahmindir. Önerideki hazır yüzde ile model arasında ${MODEL_CONFLICT_LIMIT} puandan fazla fark varsa "Model çelişkisi" yazar; bunu kararında dikkate al.`,
     '',
     'GÖREV',
     `Her maç için listelenen önerilerin ne kadar güvenilir olduğunu değerlendir ve tek bir KARAR ver. KARAR şunlardan biri olmalı: ${decisions}.`,

@@ -4,17 +4,18 @@ import { cardsOver } from './cardsOver'
 import { directPercent } from './directPercent'
 import { over25Btts } from './over25Btts'
 import { sideGoals } from './sideGoals'
+import { withGoalModel } from './withGoalModel'
 
 // Her kategorinin yüzdesini üreten hesaplayıcı. Algoritmayı değiştirmek için
 // ilgili kategorinin karşısındaki hesaplayıcıyı değiştirmek yeterlidir.
 export const CALCULATORS: Record<CategoryId, Calculator> = {
-  over25: directPercent('over25Pct'),
+  over25: withGoalModel(directPercent('over25Pct'), 'over25'),
   ht05: directPercent('ht05Pct'),
-  btts: directPercent('bttsPct'),
+  btts: withGoalModel(directPercent('bttsPct'), 'btts'),
   over25btts: over25Btts,
   sh05: directPercent('sh05Pct'),
-  over35: directPercent('over35Pct'),
-  over45: directPercent('over45Pct'),
+  over35: withGoalModel(directPercent('over35Pct'), 'over35'),
+  over45: withGoalModel(directPercent('over45Pct'), 'over45'),
   ht15: directPercent('ht15Pct'),
   corners85: directPercent('corners85Pct'),
   corners95: directPercent('corners95Pct'),

@@ -45,6 +45,7 @@ export function buildPicksForResult({ match, dayMatches, thresholds, result, exi
       frozenAt: now,
       reliability: prediction.reliability.level,
       ...(prediction.conflict !== undefined && { conflict: prediction.conflict }),
+      ...(prediction.secondPercent !== undefined && { secondPercent: prediction.secondPercent }),
     })
   }
   return picks

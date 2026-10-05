@@ -17,7 +17,8 @@ interface Props {
 }
 
 export default function MatchCard({ prediction, rank, sortMode }: Props) {
-  const { match, percent, stars, reliability, cautiousPercent, basis, categoryId, secondPercent, notes } = prediction
+  const { match, percent, stars, reliability, cautiousPercent, basis, categoryId, secondPercent, secondLabel, notes } =
+    prediction
   const category = getCategory(categoryId)
   const summary = statSummary(match, categoryId)
   const { pickFor, results } = useApp()
@@ -45,7 +46,7 @@ export default function MatchCard({ prediction, rank, sortMode }: Props) {
           <p className="text-3xl leading-none font-black text-brand">%{percent}</p>
           {secondPercent != null && (
             <p className="mt-1 text-xs text-muted" data-testid="second-percent">
-              xG modeli <span className="font-bold text-white">%{secondPercent}</span>
+              {secondLabel} <span className="font-bold text-white">%{secondPercent}</span>
             </p>
           )}
           <Stars count={stars} className="mt-1.5 block text-sm" />

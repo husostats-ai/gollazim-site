@@ -68,8 +68,9 @@ describe('prompt üretimi', () => {
 
   it('kategorileri, yüzdeleri, güvenilirlik ve çelişki bilgisini içerir', () => {
     const block = matchBlock(items[1], 2)
-    expect(block).toContain('2.5 ÜST %90 (güvenilirlik: Bilinmiyor)')
-    expect(block).toContain('KG VAR %85')
+    // xG toplamı 2,7: model 2.5 Üst %51, KG Var %47; hazır yüzdelerle fark 25 puandan büyük
+    expect(block).toContain('2.5 ÜST %90 (güvenilirlik: Bilinmiyor; model %51; Model çelişkisi; xG zayıf)')
+    expect(block).toContain('KG VAR %85 (güvenilirlik: Bilinmiyor; model %47; Model çelişkisi; xG zayıf)')
     expect(block).toMatch(/EV KAZANIR & 1\.5 ÜST %\d+ \(güvenilirlik: Piyasa tabanlı; xG modeli %\d+; Çelişki; xG zayıf\)/)
   })
 
@@ -85,6 +86,17 @@ describe('prompt üretimi', () => {
     expect(bare).toContain('Gol ortalaması: veri yok')
     expect(bare).toContain('Maç başı puan (PPG): veri yok')
     expect(bare).toContain('1X2 oranları: veri yok')
+  })
+
+  it('her maç için gol modeli satırı ekler; hesaplanamayan değer "veri yok" olur', () => {
+    expect(matchBlock(items[1], 2)).toContain('Gol modeli: 2.5 Üst %51 ; 3.5 Üst %29 ; 4.5 Üst %14 ; KG Var %47')
+    // Bu maçta xG de gol ortalaması da yok
+    expect(matchBlock(items[0], 1)).toContain('Gol modeli: 2.5 Üst veri yok ; 3.5 Üst veri yok ; 4.5 Üst veri yok ; KG Var veri yok')
+    // Yalnızca gol ortalaması varsa üst çizgileri hesaplanır, KG Var hesaplanmaz
+    const [onlyAverage] = collect([makeMatch({ over25Pct: 80, avgGoals: 3 })])
+    expect(matchBlock(onlyAverage, 1)).toContain('Gol modeli: 2.5 Üst %58 ; 3.5 Üst %35 ; 4.5 Üst %18 ; KG Var veri yok')
+    expect(chunk.text).toContain('"Gol modeli" satırı')
+    expect(chunk.text).toContain('25 puandan fazla fark varsa "Model çelişkisi" yazar')
   })
 
   it('kuralları ve cevap biçimini içerir', () => {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import EmptyState from '../components/EmptyState'
 import PageTitle from '../components/PageTitle'
 import AiStatsCard from '../components/stats/AiStatsCard'
+import GoalModelStatsCard from '../components/stats/GoalModelStatsCard'
 import LowSampleBadge from '../components/stats/LowSampleBadge'
 import RateBars from '../components/stats/RateBars'
 import SideGoalsStatsCard from '../components/stats/SideGoalsStatsCard'
@@ -145,6 +146,15 @@ export default function StatsPage() {
               </TableToggle>
             </Card>
           </div>
+
+          {stats.goalModel && (
+            <Card
+              title="GOL MODELİ: ÇELİŞKİ VE KALİBRASYON"
+              note="2.5 Üst, 3.5 Üst, 4.5 Üst ve KG Var önerilerinden, model yüzdesi dondurulmuş olanlar."
+            >
+              <GoalModelStatsCard stats={stats.goalModel} />
+            </Card>
+          )}
 
           {stats.sideGoals && (
             <Card

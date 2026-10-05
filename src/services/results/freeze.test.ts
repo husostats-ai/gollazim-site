@@ -46,6 +46,20 @@ describe('buildPicksForResult', () => {
     expect(buildPicksForResult({ ...base, result: win, existing: [] })[0].conflict).toBeUndefined()
   })
 
+  it('ana gol kategorilerinde model yüzdesi ve çelişki bilgisi dondurulur', () => {
+    // 2.5 Üst hazır %90, model %58 (fark 32: çelişki); KG Var hazır %85, model %58 (fark 27: çelişki)
+    const m = makeMatch({ over25Pct: 90, bttsPct: 85, ht05Pct: 95, homeXg: 1.8, awayXg: 1.2 })
+    const picks = buildPicksForResult({ ...base, match: m, dayMatches: [m], result: win, existing: [] })
+    const by = (id: string) => picks.find((p) => p.categoryId === id)!
+    expect(by('over25')).toMatchObject({ percent: 90, secondPercent: 58, conflict: true })
+    expect(by('btts')).toMatchObject({ percent: 85, secondPercent: 58, conflict: true })
+    // ilk yarı kategorisinde model alanı yoktur
+    expect(by('ht05').secondPercent).toBeUndefined()
+    expect(by('ht05').conflict).toBeUndefined()
+    // model hesaplanamayan maçta alan null olarak kaydedilir
+    expect(buildPicksForResult({ ...base, result: win, existing: [] })[0]).toMatchObject({ categoryId: 'over25', secondPercent: null })
+  })
+
   it('tamamlanmamış maçta hiçbir şey dondurmaz', () => {
     for (const status of ['pending', 'postponed', 'cancelled'] as const) {
       expect(buildPicksForResult({ ...base, result: result({ status }), existing: [] })).toEqual([])

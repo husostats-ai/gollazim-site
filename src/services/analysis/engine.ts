@@ -55,6 +55,7 @@ export function analyzeCategory(
       reliability,
       basis: extras.basis ?? calculator.basis,
       secondPercent: extras.secondPercent,
+      secondLabel: extras.secondLabel ?? 'xG modeli',
       conflict: extras.conflict,
       notes: extras.notes ?? [],
     })
