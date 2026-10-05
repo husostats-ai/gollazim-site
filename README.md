@@ -6,6 +6,16 @@ Günlük FootyStats CSV dosyasından futbol maç önerileri çıkaran, tamamen t
 
 > **Önemli:** Uygulamada giriş/şifre yoktur. Yayınlanan adresi bilen herkes uygulamayı açıp tüm sayfaları (CSV yükleme, skor girişi, ayarlar dahil) kullanabilir. Ancak veriler her ziyaretçinin kendi tarayıcısında saklandığı için bir ziyaretçi başkasının maçlarını, skorlarını veya istatistiklerini göremez ve değiştiremez; boş bir uygulama açar. Analizleri başkalarıyla paylaşmak ya da erişimi kısıtlamak istenirse sunucu tarafında kimlik doğrulaması ve ortak veritabanı gerekir.
 
+## Çalışma klasörü
+
+Bu projenin tek etkin çalışma klasörü **`/home/ch/gollazim-site`**, tek etkin reposu **`husostats-ai/gollazim-site`**'tir. Claude Code her zaman bu klasörde açılır:
+
+```bash
+cd /home/ch/gollazim-site && claude
+```
+
+Eski `/home/ch/gollazim` klasörü ve private `husostats-ai/gollazim` reposu yalnızca arşivdir; orada değişiklik yapılmaz, oradan yayın yapılmaz.
+
 ## Kurulum ve komutlar
 
 Gereken: Node.js 20 veya üzeri.
