@@ -12,7 +12,8 @@ const gapText = (gap: number | null): string =>
 
 export default function GoalModelStatsCard({ stats }: { stats: GoalModelStats }) {
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+    // Tablo beş sütunlu olduğu için yan yana değil alt alta: yarım genişlikte son sütun kesiliyordu.
+    <div className="grid grid-cols-1 gap-6">
       <div>
         <h3 className="text-sm font-extrabold tracking-wide">ÇELİŞKİYE GÖRE BAŞARI</h3>
         <p className="mt-1 mb-3 text-xs text-muted">
