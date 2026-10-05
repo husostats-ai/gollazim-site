@@ -36,12 +36,14 @@ npm run preview    # derlenmiş sürümü yerelde aç: http://localhost:4173/gol
 3. **Görsel oluştur:** Her kategori listesinin üstünde ve Admin sayfasında; 1080 × 1920 Instagram Story PNG'si üretir.
 4. **Skor Girişi:** Maç bitince ilk yarı ve maç skorunu (isteğe bağlı korner ve kart) girip "Tamamlandı" olarak kaydedin. Öneriler o anki yüzde ve eşikle dondurulur, kazandı/kaybetti otomatik hesaplanır.
 5. **İstatistik:** Dondurulmuş öneriler üzerinden genel, kategori, güvenilirlik, günlük, haftalık ve aylık başarı.
-6. **Admin → VERİ YEDEĞİ:** Düzenli olarak "Veriyi dışa aktar (JSON)" ile yedek alın.
+6. **AI Analizi (isteğe bağlı):** Günün eşiği geçen maçları için ChatGPT ya da Gemini'ye yapıştırılacak hazır prompt üretir. Site hiçbir veriyi kendiliğinden göndermez ve API anahtarı kullanmaz: prompt'u kopyalayıp kendi uygulamanıza yapıştırır, cevabı (`#numara | KARAR | gerekçe | risk`) sayfaya geri yapıştırırsınız. Cevap maçlara yalnızca numarayla bağlanır; okunamayan satırlar elle düzeltilebilir. İki yapay zekânın kararı ayrı saklanır, maç kartında görünür ve İstatistik sayfasında başarıları ölçülür.
+7. **Admin → VERİ YEDEĞİ:** Düzenli olarak "Veriyi dışa aktar (JSON)" ile yedek alın.
 
 ## Veri nerede saklanır
 
 - **Veri her cihazda ve her tarayıcıda ayrıdır.** Maçlar, skorlar, öneriler ve eşikler yalnızca kullandığınız tarayıcının yerel deposunda (IndexedDB) durur; hiçbir sunucuya gönderilmez. Başka bir bilgisayarda, başka bir tarayıcıda veya gizli pencerede uygulama boş açılır.
 - **Veri JSON ile taşınır.** Admin sayfasında "Veriyi dışa aktar (JSON)" ile indirdiğiniz dosyayı diğer cihazda "Veriyi içe aktar (JSON)" ile yükleyin. İçe aktarma, o tarayıcıdaki mevcut verinin tamamını yedektekiyle değiştirir; iki cihazın verisi birleştirilmez.
+- **Yapay zekâ kararları da yedeğe girer.** JSON yedeği maçları, skorları, önerileri, eşikleri ve yapay zekâ kararlarını içerir; bu özellikten önce alınmış yedekler de içe aktarılabilir.
 - **Tarayıcı verisi silinirse veri kaybolur** ("site verilerini temizle", tarayıcıyı kaldırma vb.). Tek güvence JSON yedeğidir.
 - **CSV ve yedek dosyaları repoya girmez.** `samples/`, `*.csv` ve `gollazim-yedek-*.json` `.gitignore`'dadır. Günlük CSV'ler uygulamadan yüklenir.
 - **Bu repo herkese açıktır (public).** Repoya eklenen her dosya ve her commit herkes tarafından görülebilir ve sonradan silinse de geçmişte kalır. CSV, yedek veya gizli bilgi içeren hiçbir dosya commit edilmemelidir.
@@ -78,6 +80,7 @@ src/
     results/     skor doğrulama, kazandı/kaybetti, öneri dondurma
     stats/       istatistik motoru
     image/       story görseli
+    ai/          yapay zekâ prompt'u, cevap çözücü, karar istatistikleri
     data/        veri katmanı arayüzleri + IndexedDB (Dexie) uygulaması
   state/         uygulama durumu
   components/    arayüz parçaları

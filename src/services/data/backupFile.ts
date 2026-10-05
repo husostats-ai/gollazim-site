@@ -1,4 +1,5 @@
 import type { BackupFile } from '../../types'
+import { isBackupFile } from './backupFormat'
 import { backupRepo } from './index'
 
 export async function downloadBackup(): Promise<void> {
@@ -10,18 +11,6 @@ export async function downloadBackup(): Promise<void> {
   a.download = `gollazim-yedek-${backup.exportedAt.slice(0, 10)}.json`
   a.click()
   URL.revokeObjectURL(url)
-}
-
-const isBackupFile = (data: unknown): data is BackupFile => {
-  if (typeof data !== 'object' || data === null) return false
-  const d = data as Record<string, unknown>
-  return (
-    d.app === 'gollazim' &&
-    d.version === 1 &&
-    ['uploads', 'matches', 'results', 'picks'].every((k) => Array.isArray(d[k])) &&
-    typeof d.thresholds === 'object' &&
-    d.thresholds !== null
-  )
 }
 
 /** Dosyayı doğrular ve mevcut verinin yerine yazar; geçersizse hata fırlatır. */

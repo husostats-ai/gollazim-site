@@ -1,4 +1,5 @@
-import type { BackupFile, Match, MatchResult, Pick, Thresholds, Upload } from '../../types'
+import type { AiProvider } from '../../config/ai'
+import type { AiPromptBatch, AiVerdict, BackupFile, Match, MatchResult, Pick, Thresholds, Upload } from '../../types'
 
 // Uygulamanın geri kalanı sadece bu arayüzleri bilir. Supabase'e geçiş:
 // bu arayüzleri uygulayan yeni dosyalar yazıp index.ts'te değiştirmek.
@@ -6,7 +7,7 @@ import type { BackupFile, Match, MatchResult, Pick, Thresholds, Upload } from '.
 export interface UploadsRepo {
   list(): Promise<Upload[]>
   add(upload: Upload): Promise<void>
-  /** Yüklemeyi ve ona bağlı maç, skor ve önerileri siler */
+  /** Yüklemeyi ve ona bağlı maç, skor, öneri ve yapay zekâ kararlarını siler */
   remove(id: string): Promise<void>
 }
 
@@ -20,7 +21,7 @@ export interface MatchesRepo {
   countByUpload(uploadId: string): Promise<number>
   upsertMany(matches: Match[]): Promise<void>
   update(id: string, patch: Partial<Omit<Match, 'id'>>): Promise<void>
-  /** Maçı, skorunu ve önerilerini siler */
+  /** Maçı, skorunu, önerilerini ve yapay zekâ kararlarını siler */
   remove(id: string): Promise<void>
 }
 
@@ -37,6 +38,16 @@ export interface PicksRepo {
   listByMatch(matchId: string): Promise<Pick[]>
   /** Maçın dondurulmuş önerilerini verilen listeyle değiştirir */
   replaceForMatch(matchId: string, picks: Pick[]): Promise<void>
+}
+
+export interface AiRepo {
+  listVerdicts(): Promise<AiVerdict[]>
+  listVerdictsByDate(date: string): Promise<AiVerdict[]>
+  /** Aynı maç + sağlayıcı için kayıt varsa üzerine yazar */
+  saveVerdicts(verdicts: AiVerdict[]): Promise<void>
+  removeVerdict(id: string): Promise<void>
+  getPromptBatch(date: string, provider: AiProvider): Promise<AiPromptBatch | undefined>
+  savePromptBatch(batch: AiPromptBatch): Promise<void>
 }
 
 export interface SettingsRepo {

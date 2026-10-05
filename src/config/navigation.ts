@@ -9,6 +9,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'ANA SAYFA', to: '/' },
   ...standaloneCategories().map((c) => ({ label: c.label, to: `/kategori/${c.slug}` })),
   ...GROUPS.map((g) => ({ label: g.label, to: `/${g.slug}` })),
+  { label: 'AI ANALİZİ', to: '/ai-analizi' },
   { label: 'SKOR GİRİŞİ', to: '/skor-girisi' },
   { label: 'İSTATİSTİK', to: '/istatistik' },
   { label: 'ADMİN', to: '/admin' },

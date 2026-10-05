@@ -1,5 +1,5 @@
 import type { MatchResult, MatchStatus, Pick } from '../../types'
-import { matchesRepo, picksRepo, resultsRepo, settingsRepo } from '../data'
+import { aiRepo, matchesRepo, picksRepo, resultsRepo, settingsRepo } from '../data'
 import { buildPicksForResult } from './freeze'
 import { parseScores, type ScoreDraft } from './validation'
 
@@ -40,8 +40,10 @@ export async function deleteResult(matchId: string): Promise<void> {
   await picksRepo.replaceForMatch(matchId, [])
 }
 
-/** Maçın tarihi düzenlenirse dondurulmuş önerileri de yeni güne taşır. */
+/** Maçın tarihi düzenlenirse dondurulmuş önerileri ve yapay zekâ kararlarını da yeni güne taşır. */
 export async function movePicksToDate(matchId: string, date: string): Promise<void> {
   const picks = await picksRepo.listByMatch(matchId)
   if (picks.length > 0) await picksRepo.replaceForMatch(matchId, picks.map((p) => ({ ...p, date })))
+  const verdicts = (await aiRepo.listVerdicts()).filter((v) => v.matchId === matchId)
+  if (verdicts.length > 0) await aiRepo.saveVerdicts(verdicts.map((v) => ({ ...v, date })))
 }

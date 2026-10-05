@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import Layout from './components/Layout'
 import { GROUPS } from './config/categories'
 import AdminPage from './pages/AdminPage'
+import AiPage from './pages/AiPage'
 import CategoryPage from './pages/CategoryPage'
 import GroupPage from './pages/GroupPage'
 import HomePage from './pages/HomePage'
@@ -17,6 +18,7 @@ export default function App() {
         {GROUPS.map((g) => (
           <Route key={g.id} path={g.slug} element={<GroupPage group={g} />} />
         ))}
+        <Route path="ai-analizi" element={<AiPage />} />
         <Route path="skor-girisi" element={<ScoreEntryPage />} />
         <Route path="istatistik" element={<StatsPage />} />
         <Route path="admin" element={<AdminPage />} />

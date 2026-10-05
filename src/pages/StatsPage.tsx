@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import EmptyState from '../components/EmptyState'
 import PageTitle from '../components/PageTitle'
+import AiStatsCard from '../components/stats/AiStatsCard'
 import LowSampleBadge from '../components/stats/LowSampleBadge'
 import RateBars from '../components/stats/RateBars'
 import SideGoalsStatsCard from '../components/stats/SideGoalsStatsCard'
@@ -8,10 +9,11 @@ import StatsTable from '../components/stats/StatsTable'
 import TrendChart from '../components/stats/TrendChart'
 import { getCategory, GROUPS } from '../config/categories'
 import { RELIABILITY_LABELS } from '../services/analysis/reliability'
-import { picksRepo } from '../services/data'
+import { buildAiStats } from '../services/ai/aiStats'
+import { aiRepo, picksRepo } from '../services/data'
 import { buildStats, LOW_SAMPLE_LIMIT, type Bucket } from '../services/stats/statsEngine'
 import { useApp } from '../state/AppContext'
-import type { Pick } from '../types'
+import type { AiVerdict, Pick } from '../types'
 import { formatDateChip, formatDay, formatMonth, formatRate, formatWeek } from '../utils/format'
 
 type Period = 'daily' | 'weekly' | 'monthly'
@@ -57,13 +59,16 @@ function TableToggle({ children }: { children: ReactNode }) {
 export default function StatsPage() {
   const { dataVersion, today } = useApp()
   const [picks, setPicks] = useState<Pick[] | null>(null)
+  const [verdicts, setVerdicts] = useState<AiVerdict[]>([])
   const [period, setPeriod] = useState<Period>('daily')
 
   useEffect(() => {
     void picksRepo.listAll().then(setPicks)
+    void aiRepo.listVerdicts().then(setVerdicts)
   }, [dataVersion])
 
   const stats = useMemo(() => buildStats(picks ?? []), [picks])
+  const aiStats = useMemo(() => buildAiStats(picks ?? [], verdicts), [picks, verdicts])
   if (picks === null) return <PageTitle title="İSTATİSTİK" />
 
   const { overall } = stats
@@ -147,6 +152,15 @@ export default function StatsPage() {
               note="Yalnızca Taraf & Gol listelerindeki dondurulmuş öneriler."
             >
               <SideGoalsStatsCard stats={stats.sideGoals} />
+            </Card>
+          )}
+
+          {aiStats && (
+            <Card
+              title="YAPAY ZEKÂ KARARLARININ BAŞARISI"
+              note="Karar maç bazındadır; başarı o maçın dondurulmuş önerilerinin sonucuyla ölçülür. Skoru girilmemiş maçlar orana girmez."
+            >
+              <AiStatsCard stats={aiStats} />
             </Card>
           )}
 

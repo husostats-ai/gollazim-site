@@ -2,8 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { defaultThresholds, type CategoryId } from '../config/categories'
 import { analyzeDay, type DayAnalysis } from '../services/analysis/engine'
 import type { SortMode } from '../services/analysis/types'
-import { matchesRepo, picksRepo, resultsRepo, settingsRepo } from '../services/data'
-import type { Match, MatchResult, Pick, Thresholds } from '../types'
+import { aiRepo, matchesRepo, picksRepo, resultsRepo, settingsRepo } from '../services/data'
+import type { AiVerdict, Match, MatchResult, Pick, Thresholds } from '../types'
 import { todayInAppZone } from '../utils/date'
 
 interface AppState {
@@ -20,6 +20,8 @@ interface AppState {
   picks: Pick[]
   /** Maçın bu kategorideki dondurulmuş önerisi (skor girildiyse) */
   pickFor: (matchId: string, categoryId: CategoryId) => Pick | undefined
+  /** Seçili günün yapay zekâ kararları */
+  aiVerdicts: AiVerdict[]
   thresholds: Thresholds
   /** Eşikleri kaydeder; analiz hemen yeniden hesaplanır */
   saveThresholds: (thresholds: Thresholds) => Promise<void>
@@ -57,6 +59,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [matches, setMatches] = useState<Match[]>([])
   const [results, setResults] = useState<Record<string, MatchResult>>({})
   const [picks, setPicks] = useState<Pick[]>([])
+  const [aiVerdicts, setAiVerdicts] = useState<AiVerdict[]>([])
   const [thresholds, setThresholds] = useState<Thresholds>(defaultThresholds)
   const [sortMode, setSortModeState] = useState<SortMode>(readSortMode)
   const [version, setVersion] = useState(0)
@@ -69,9 +72,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (cancelled) return
       const date = selectedDate && nextDates.includes(selectedDate) ? selectedDate : pickDefaultDate(nextDates, today)
       const nextMatches = date ? await matchesRepo.listByDate(date) : []
-      const [nextResults, nextPicks] = await Promise.all([
+      const [nextResults, nextPicks, nextVerdicts] = await Promise.all([
         resultsRepo.listByMatchIds(nextMatches.map((m) => m.id)),
         date ? picksRepo.listByDate(date) : [],
+        date ? aiRepo.listVerdictsByDate(date) : [],
       ])
       if (cancelled) return
       setDates(nextDates)
@@ -80,6 +84,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setMatches(nextMatches)
       setResults(Object.fromEntries(nextResults.map((r) => [r.matchId, r])))
       setPicks(nextPicks)
+      setAiVerdicts(nextVerdicts)
       setLoading(false)
     })()
     return () => {
@@ -120,6 +125,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     results,
     picks,
     pickFor,
+    aiVerdicts,
     thresholds,
     saveThresholds,
     sortMode,

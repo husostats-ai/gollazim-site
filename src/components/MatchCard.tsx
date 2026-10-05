@@ -3,6 +3,7 @@ import { statSummary } from '../services/analysis/summary'
 import type { Prediction, SortMode } from '../services/analysis/types'
 import { useApp } from '../state/AppContext'
 import { formatScore } from '../utils/score'
+import AiVerdictBadges from './ai/AiVerdictBadges'
 import CautiousBadge from './CautiousBadge'
 import NoteBadges from './NoteBadges'
 import OutcomeBadge from './OutcomeBadge'
@@ -58,6 +59,8 @@ export default function MatchCard({ prediction, rank, sortMode }: Props) {
         <NoteBadges notes={notes} />
         {sortMode === 'cautious' && supportsCautious(category) && <CautiousBadge value={cautiousPercent} />}
       </div>
+
+      <AiVerdictBadges matchId={match.id} />
 
       <div className="border-t border-line pt-2.5 text-xs text-muted">
         {summary.length > 0 && (

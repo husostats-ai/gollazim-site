@@ -1,3 +1,4 @@
+import type { AiDecision, AiProvider } from './config/ai'
 import type { CategoryId } from './config/categories'
 import type { ReliabilityLevel } from './services/analysis/types'
 
@@ -72,6 +73,33 @@ export interface Pick {
   conflict?: boolean
 }
 
+/** Bir yapay zekânın bir maç için verdiği karar; maç başına her sağlayıcıdan en fazla bir tane */
+export interface AiVerdict {
+  /** matchId + provider */
+  id: string
+  matchId: string
+  date: string
+  provider: AiProvider
+  decision: AiDecision
+  reason: string
+  risk: string
+  savedAt: string
+}
+
+/**
+ * Kopyalanan son prompt'taki numaralandırma. Cevap, kopyalama anındaki
+ * numaralara göre eşleştirilir; sonradan eşik değişse de karışmaz.
+ */
+export interface AiPromptBatch {
+  /** date + provider */
+  id: string
+  date: string
+  provider: AiProvider
+  createdAt: string
+  /** Sıra numarası - 1 konumundaki maç kimliği: matchIds[0] = #1 */
+  matchIds: string[]
+}
+
 export type Thresholds = Record<CategoryId, number>
 
 export interface BackupFile {
@@ -83,4 +111,7 @@ export interface BackupFile {
   results: MatchResult[]
   picks: Pick[]
   thresholds: Thresholds
+  /** Eski yedeklerde bulunmaz */
+  aiVerdicts?: AiVerdict[]
+  aiPrompts?: AiPromptBatch[]
 }
