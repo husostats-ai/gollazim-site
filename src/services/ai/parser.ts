@@ -82,10 +82,11 @@ export function parseLine(raw: string, numbers: ReadonlyMap<number, string>): Li
       message: `KARAR tanınmadı: “${fields[1]}”. Beklenen: ${AI_DECISIONS.map((d) => d.label).join(', ')}.`,
     }
   }
-  const reason = fields[2]
-  if (reason === '') return { kind: 'error', message: 'Gerekçe boş.' }
-  // Risk alanında "|" kullanılmışsa kalan parçalar risk sayılır
-  const risk = fields.slice(3).join(' | ')
+  // İlk alan numara, ikinci karar, sonuncu risktir; aradaki her şey gerekçedir.
+  // Böylece gerekçenin içinde geçen fazladan "|" karakteri satırı bozmaz.
+  const reason = fields.slice(2, -1).join(' | ').trim()
+  if (fields.slice(2, -1).every((f) => f === '')) return { kind: 'error', message: 'Gerekçe boş.' }
+  const risk = fields[fields.length - 1]
   return { kind: 'verdict', verdict: { number, matchId, decision, reason, risk } }
 }
 

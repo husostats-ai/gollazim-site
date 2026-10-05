@@ -199,15 +199,56 @@ describe('cevabı çözme', () => {
         '| #1 | **GÜÇLÜ** | Gerekçe bir. | Risk bir |',
         '- #2 | orta | Gerekçe iki. | Risk iki',
         '3 | Zayif | Gerekçe üç. | Risk üç',
-        '# 4 | eleme | Gerekçe dört. | Risk | iki parçalı',
+        '# 4 | eleme | Gerekçe dört. | Risk dört',
         'Not: bunlar olasılık değerlendirmesidir.',
       ].join('\n'),
       numbers,
     )
     expect(r.errors).toEqual([])
     expect(r.verdicts.map((v) => v.decision)).toEqual(['strong', 'medium', 'weak', 'reject'])
-    expect(r.verdicts[3].risk).toBe('Risk | iki parçalı')
+    expect(r.verdicts[3]).toMatchObject({ reason: 'Gerekçe dört.', risk: 'Risk dört' })
     expect(r.ignored).toBe(4)
+  })
+
+  it('gerekçede fazladan | geçerse bozulmaz: ilk alan numara, ikinci karar, sonuncu risk, arası gerekçe', () => {
+    const one = parseLine('#2 | Orta | Ev sahibi formda | deplasman yorgun (kaynak: A | B). | Rotasyon', numbers)
+    expect(one).toEqual({
+      kind: 'verdict',
+      verdict: {
+        number: 2,
+        matchId: 'mB',
+        decision: 'medium',
+        reason: 'Ev sahibi formda | deplasman yorgun (kaynak: A | B).',
+        risk: 'Rotasyon',
+      },
+    })
+
+    const r = parseAiResponse(
+      [
+        '#1 | Güçlü | Skor beklentisi 2|1 civarı. Kadro tam. | Erken kırmızı kart',
+        '| #3 | **Zayıf** | a | b | c | d | Son alan risk |', // tablo satırı olarak gelse de
+        '#4 | Eleme | Tek gerekçe. | Risk',
+      ].join('\n'),
+      numbers,
+    )
+    expect(r.errors).toEqual([])
+    expect(r.verdicts.map((v) => [v.number, v.decision, v.reason, v.risk])).toEqual([
+      [1, 'strong', 'Skor beklentisi 2 | 1 civarı. Kadro tam.', 'Erken kırmızı kart'],
+      [3, 'weak', 'a | b | c | d', 'Son alan risk'],
+      [4, 'reject', 'Tek gerekçe.', 'Risk'],
+    ])
+  })
+
+  it('fazladan | olsa da kurallar aynı kalır: karar ikinci alanda aranır, gerekçe boş olamaz', () => {
+    // Karar ikinci alanda değil: gerekçedeki "Orta" kelimesi karar sayılmaz
+    expect(parseLine('#1 | Ev sahibi | Orta | iyi | risk', numbers)).toMatchObject({
+      kind: 'error',
+      message: 'KARAR tanınmadı: “Ev sahibi”. Beklenen: Güçlü, Orta, Zayıf, Eleme.',
+    })
+    // Aradaki tüm alanlar boşsa gerekçe boştur
+    expect(parseLine('#1 | Orta |  |  | risk', numbers)).toEqual({ kind: 'error', message: 'Gerekçe boş.' })
+    // Dört alandan azı yine eksik sayılır
+    expect(parseLine('#1 | Orta | gerekçe', numbers).kind).toBe('error')
   })
 
   it('bozuk satırları hata listesine alır, geçerli satırları yine de çözer', () => {
