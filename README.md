@@ -1,0 +1,118 @@
+# GOLLAZIM
+
+Günlük FootyStats CSV dosyasından futbol maç önerileri çıkaran, tamamen tarayıcıda çalışan analiz uygulaması.
+
+**Akış:** CSV yükle → otomatik analiz → kategori bazlı sıralama (en fazla 15 öneri) → story görseli → skor girişi → otomatik kazandı/kaybetti → istatistik.
+
+> **Önemli:** Uygulamada giriş/şifre yoktur. Yayınlanan adresi bilen herkes uygulamayı açıp tüm sayfaları (CSV yükleme, skor girişi, ayarlar dahil) kullanabilir. Ancak veriler her ziyaretçinin kendi tarayıcısında saklandığı için bir ziyaretçi başkasının maçlarını, skorlarını veya istatistiklerini göremez ve değiştiremez; boş bir uygulama açar. Analizleri başkalarıyla paylaşmak ya da erişimi kısıtlamak istenirse sunucu tarafında kimlik doğrulaması ve ortak veritabanı gerekir.
+
+## Kurulum ve komutlar
+
+Gereken: Node.js 20 veya üzeri.
+
+```bash
+npm install        # bağımlılıkları kur
+npm run dev        # yerelde çalıştır: http://localhost:5173
+npm test           # birim testleri
+npm run typecheck  # tip denetimi
+npm run build      # derle (dist/ klasörüne)
+npm run preview    # derlenmiş sürümü yerelde aç: http://localhost:4173/gollazim-site/
+```
+
+## Günlük kullanım
+
+1. **Admin → CSV YÜKLE:** Günün FootyStats CSV dosyasını seçin. Maçlar okunur, Türkiye saatine göre günlere ayrılır ve kategorilere yerleşir. Aynı maç tekrar yüklenirse kopya oluşmaz, kayıt güncellenir.
+2. **Ana sayfa / kategori sayfaları:** Eşiği geçen en güçlü maçlar, yüzdeye göre sıralı. "Temkinli sıra" anahtarı, küçük örneklemden gelen yüksek yüzdeleri geriye iter (ham yüzde değişmez).
+3. **Görsel oluştur:** Her kategori listesinin üstünde ve Admin sayfasında; 1080 × 1920 Instagram Story PNG'si üretir.
+4. **Skor Girişi:** Maç bitince ilk yarı ve maç skorunu (isteğe bağlı korner ve kart) girip "Tamamlandı" olarak kaydedin. Öneriler o anki yüzde ve eşikle dondurulur, kazandı/kaybetti otomatik hesaplanır.
+5. **İstatistik:** Dondurulmuş öneriler üzerinden genel, kategori, güvenilirlik, günlük, haftalık ve aylık başarı.
+6. **Admin → VERİ YEDEĞİ:** Düzenli olarak "Veriyi dışa aktar (JSON)" ile yedek alın.
+
+## Veri nerede saklanır
+
+- **Veri her cihazda ve her tarayıcıda ayrıdır.** Maçlar, skorlar, öneriler ve eşikler yalnızca kullandığınız tarayıcının yerel deposunda (IndexedDB) durur; hiçbir sunucuya gönderilmez. Başka bir bilgisayarda, başka bir tarayıcıda veya gizli pencerede uygulama boş açılır.
+- **Veri JSON ile taşınır.** Admin sayfasında "Veriyi dışa aktar (JSON)" ile indirdiğiniz dosyayı diğer cihazda "Veriyi içe aktar (JSON)" ile yükleyin. İçe aktarma, o tarayıcıdaki mevcut verinin tamamını yedektekiyle değiştirir; iki cihazın verisi birleştirilmez.
+- **Tarayıcı verisi silinirse veri kaybolur** ("site verilerini temizle", tarayıcıyı kaldırma vb.). Tek güvence JSON yedeğidir.
+- **CSV ve yedek dosyaları repoya girmez.** `samples/`, `*.csv` ve `gollazim-yedek-*.json` `.gitignore`'dadır. Günlük CSV'ler uygulamadan yüklenir.
+- **Bu repo herkese açıktır (public).** Repoya eklenen her dosya ve her commit herkes tarafından görülebilir ve sonradan silinse de geçmişte kalır. CSV, yedek veya gizli bilgi içeren hiçbir dosya commit edilmemelidir.
+- **`public/` altına veri dosyası koymayın.** Bu klasördeki her dosya derlenen siteye aynen kopyalanır ve site yayınlanırsa herkese açık olur.
+
+## Analiz nasıl hesaplanır
+
+| Kategori | Kaynak |
+|---|---|
+| 2.5 Üst, 3.5 Üst, 4.5 Üst | CSV'deki `Over25/35/45 Average` yüzdesi |
+| İlk Yarı 0.5 / 1.5 Üst | `Over05/15 FHG HT Average` |
+| 2. Yarı 0.5 Üst | `Over05 2HG Average` |
+| KG Var | `BTTS Average` |
+| 2.5 Üst & KG Var | Maç öncesi xG değerlerinden Poisson ile ortak olasılık |
+| Korner 8.5 / 9.5 / 10.5 Üst | `Average Over 8.5/9.5/10.5 Corners` |
+| Kart 3.5 / 4.5 Üst | `Average Cards` ortalamasından Poisson |
+| Taraf & Gol (Ev / Deplasman kazanır & 1.5 / 2.5 Üst) | 1X2 ve 2.5 Alt/Üst oranlarına kalibre edilmiş Poisson skor modeli; ikinci hesap xG'den |
+
+- Yüzdeler yalnızca CSV'deki değerlerden gelir; veri yoksa (`N/A`, `-1`, sıfır ortalama) maç o kategoride gösterilmez ve nedeni yazılır. Oranlar (`Odds_*`) yalnızca Taraf & Gol grubunda kullanılır.
+- **Taraf & Gol:** Oranlardan bahisçi marjı çıkarılır; toplam gol beklentisi 2.5 Üst olasılığına, takımlara dağılımı 1X2 olasılıklarına kalibre edilir ve ortak olasılık skor tablosundan toplanır (marjinal yüzdeler çarpılmaz). 2.5 Alt/Üst oranı yoksa toplam gol xG ve gol ortalamasından tahmin edilir ("Piyasa (kısmi)"); 1X2 de yoksa yalnızca xG kullanılır. Ana yüzde ile xG yüzdesi arasında 15 puandan fazla fark "çelişki"dir; xG örneklemi orta/yüksekse yıldız 2 ile sınırlanır. Model 1X2'yi piyasadan 3 puandan fazla saptırıyorsa yıldız 3 ile sınırlanır.
+- Her kategoride yalnızca eşiği geçen maçlar, en fazla 15 tane gösterilir. Eşikler Admin sayfasından değiştirilir.
+- **Veri güvenilirliği:** CSV'de "kaç maç üzerinden" bilgisi olmadığı için örneklem, yüzdelerin alabildiği değerlerden tahmin edilir (alt sınırdır). 8 maçtan az düşük, 8–15 orta, 16+ yüksek. Düşük güvenilirlikte en fazla 3, ortada en fazla 4 yıldız verilir. Korner ve kart verisinin örneklemi ölçülemez.
+- **Temkinli yüzde:** Wilson güven aralığının alt sınırı (%95, tek taraflı); yalnızca sıralama için kullanılır.
+- **Başarı oranı:** kazanan / (kazanan + kaybeden). "Değerlendirilemedi" (gerekli veri girilmedi) ve "bekliyor" (maç tamamlanmadı) orana girmez. 20'den az sonuçlanmış öneride "az veri" uyarısı çıkar.
+
+## Klasör yapısı
+
+```
+src/
+  config/        kategori kayıt defteri, CSV kolon eşlemeleri, tema
+  services/
+    csv/         CSV okuma, kolon eşleme, tarih, yükleme
+    analysis/    hesaplayıcılar, güvenilirlik, yıldız, sıralama motoru
+    results/     skor doğrulama, kazandı/kaybetti, öneri dondurma
+    stats/       istatistik motoru
+    image/       story görseli
+    data/        veri katmanı arayüzleri + IndexedDB (Dexie) uygulaması
+  state/         uygulama durumu
+  components/    arayüz parçaları
+  pages/         sayfalar
+public/          logo, simge, robots.txt (veri dosyası konmaz)
+.github/workflows/deploy.yml   GitHub Pages yayını (elle başlatılır)
+```
+
+Genişletme noktaları:
+
+- **Yeni kategori:** `src/config/categories.ts`'e bir kayıt, `src/services/analysis/calculators/` altına bir hesaplayıcı, `src/services/results/evaluator.ts`'e kazanma kuralı. Menü, eşik ayarı, görsel ve istatistik kendiliğinden gelir.
+- **Yeni CSV kolonu veya farklı kolon adı:** `src/config/columnAliases.ts`.
+- **Sunucuya (ör. Supabase) geçiş:** `src/services/data/types.ts`'teki arayüzleri uygulayan yeni dosyalar yazıp `src/services/data/index.ts`'teki import'ları değiştirmek yeterlidir.
+
+## Ortam değişkenleri
+
+Şu an **hiçbir ortam değişkeni gerekmez**; repoda anahtar veya gizli bilgi yoktur. İleride bir veritabanı eklenirse kullanılacak adlar `.env.example` dosyasında belgelenmiştir. `.env` dosyaları `.gitignore`'dadır. `VITE_` ile başlayan değişkenler derlenen sitede herkesçe okunabilir; gizli anahtar oraya konmaz.
+
+## Yayın (GitHub Pages)
+
+Site adresi: **https://husostats-ai.github.io/gollazim-site/**
+
+- Yayın iş akışı `.github/workflows/deploy.yml` dosyasındadır ve **kendiliğinden çalışmaz**. Yeni bir sürümü yayınlamak için değişiklikleri `main` dalına gönderdikten sonra GitHub'da *Actions → "GitHub Pages'e yayınla" → Run workflow* ile ya da `gh workflow run deploy.yml` komutuyla elle başlatın. İş akışı önce testleri çalıştırır; test geçmezse yayınlamaz.
+- Derlemede base yolu repo adıdır (`vite.config.ts` içindeki `REPO_NAME`). Repo adı değişirse orası da değişmelidir.
+- Site arama motorlarında listelenmesin diye `index.html`'de `noindex` etiketi ve `public/robots.txt` (`Disallow: /`) vardır. Not: arama motorları `robots.txt`'yi yalnızca alan adının kökünde arar; bu site bir alt dizinde yayınlandığı için asıl etkili olan `noindex` etiketidir. Bunlar gizlilik sağlamaz, yalnızca listelenmeyi önler.
+- **Yayındaki sitede veri, yereldekinden ayrıdır.** `localhost` ile `github.io` tarayıcı açısından farklı sitelerdir. Yereldeki verinizi yayındaki siteye taşımak için Admin sayfasından JSON olarak dışa aktarıp yayındaki sitede içe aktarın.
+
+### Yayın öncesi kontrol listesi
+
+Her yayından önce:
+
+- [ ] `git status` temiz; commit edilenler arasında CSV, JSON yedek, `.env` yok (`git ls-files | grep -iE "\.csv$|yedek|^\.env$"` boş dönmeli).
+- [ ] `public/` altında yalnızca logo, simge ve `robots.txt` var.
+- [ ] Gizli bilgi yok: kodda anahtar, şifre, token bulunmuyor.
+- [ ] `npm test` ve `npm run build` hatasız.
+- [ ] FootyStats kullanım koşulları, veriden üretilen analizlerin bu şekilde kullanılmasına izin veriyor.
+
+## Geçmiş ve arşiv
+
+Bu repo, geliştirmenin yapıldığı özel (private) arşiv reposunun `3665878` commit'indeki dosyalardan, git geçmişi olmadan başlatılmıştır. Arşiv reposunun geçmişinde örnek bir CSV bulunduğu için o repo herkese açılmaz; yeni geliştirme yalnızca bu repoda yapılır.
+
+## Yazı tipi
+
+Arayüzde ve story görsellerinde [Inter](https://rsms.me/inter/) kullanılır. Yazı tipi projeye gömülüdür (`@fontsource-variable/inter`, internetten indirilmez) ve SIL Open Font License 1.1 ile lisanslıdır; lisans metni `node_modules/@fontsource-variable/inter/LICENSE` dosyasındadır.
+
+## Tarayıcı desteği
+
+Chrome 107 ve üzerinde denenmiştir.

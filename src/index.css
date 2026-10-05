@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+/* Inter (SIL Open Font License 1.1), projeye gömülü: arayüz ve story görselleri
+   her bilgisayarda aynı yazı tipiyle çıkar. latin-ext, Türkçe harfleri (ğ, ı, İ, ş) içerir. */
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("@fontsource-variable/inter/files/inter-latin-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* Palet public/logo.png'den çıkarıldı: lacivert zemin + turuncu vurgu + beyaz. */
+@theme {
+  --color-navy-950: #00111f;
+  --color-navy-900: #00192d;
+  --color-navy-800: #011d31;
+  --color-navy-700: #0a2a44;
+  --color-navy-600: #123a5c;
+  --color-navy-500: #1f4f78;
+  --color-brand: #fb7d27;
+  --color-brand-dark: #e0640f;
+  --color-muted: #8ea4b8;
+  --color-win: #22c55e;
+  --color-loss: #ef4444;
+  /* Yarı saydam renkler yerine düz karşılıkları: eski tarayıcılarda (Chrome < 111)
+     Tailwind'in opaklık ekleri ve oklch paleti çalışmıyor. */
+  --color-win-soft: #0d3d47;
+  --color-win-line: #157050;
+  --color-loss-soft: #252d44;
+  --color-loss-line: #713644;
+  --color-warn-soft: #273c40;
+  --color-warn-line: #766d36;
+  --color-info-soft: #103c5a;
+  --color-info-line: #1f6c95;
+  --color-warn: #fcd34d;
+  --color-info: #7dd3fc;
+  --color-loss-text: #fca5a5;
+  --color-line: #0e3250;
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-navy-900 text-white antialiased;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

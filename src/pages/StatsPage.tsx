@@ -1,0 +1,178 @@
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import EmptyState from '../components/EmptyState'
+import PageTitle from '../components/PageTitle'
+import LowSampleBadge from '../components/stats/LowSampleBadge'
+import RateBars from '../components/stats/RateBars'
+import SideGoalsStatsCard from '../components/stats/SideGoalsStatsCard'
+import StatsTable from '../components/stats/StatsTable'
+import TrendChart from '../components/stats/TrendChart'
+import { getCategory, GROUPS } from '../config/categories'
+import { RELIABILITY_LABELS } from '../services/analysis/reliability'
+import { picksRepo } from '../services/data'
+import { buildStats, LOW_SAMPLE_LIMIT, type Bucket } from '../services/stats/statsEngine'
+import { useApp } from '../state/AppContext'
+import type { Pick } from '../types'
+import { formatDateChip, formatDay, formatMonth, formatRate, formatWeek } from '../utils/format'
+
+type Period = 'daily' | 'weekly' | 'monthly'
+
+const PERIODS: { id: Period; label: string; column: string }[] = [
+  { id: 'daily', label: 'Günlük', column: 'Gün' },
+  { id: 'weekly', label: 'Haftalık', column: 'Hafta (Pzt – Paz)' },
+  { id: 'monthly', label: 'Aylık', column: 'Ay' },
+]
+
+const dayMonth = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+const shortMonth = new Intl.DateTimeFormat('tr-TR', { month: 'short', year: '2-digit', timeZone: 'UTC' })
+const utc = (date: string) => new Date(`${date}T00:00:00Z`)
+
+function Card({ title, note, children }: { title: string; note?: string; children: ReactNode }) {
+  return (
+    <section className="min-w-0 rounded-2xl border border-line bg-navy-700 p-4">
+      <h2 className="font-extrabold tracking-wide">{title}</h2>
+      {note && <p className="mt-1 text-xs text-muted">{note}</p>}
+      <div className="mt-4">{children}</div>
+    </section>
+  )
+}
+
+function Figure({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl bg-navy-800 px-3 py-2.5">
+      <p className="text-xs text-muted">{label}</p>
+      <p className="text-xl font-extrabold">{value}</p>
+    </div>
+  )
+}
+
+function TableToggle({ children }: { children: ReactNode }) {
+  return (
+    <details className="mt-4">
+      <summary className="cursor-pointer text-xs font-bold text-brand">Tablo olarak göster</summary>
+      <div className="mt-2">{children}</div>
+    </details>
+  )
+}
+
+export default function StatsPage() {
+  const { dataVersion, today } = useApp()
+  const [picks, setPicks] = useState<Pick[] | null>(null)
+  const [period, setPeriod] = useState<Period>('daily')
+
+  useEffect(() => {
+    void picksRepo.listAll().then(setPicks)
+  }, [dataVersion])
+
+  const stats = useMemo(() => buildStats(picks ?? []), [picks])
+  if (picks === null) return <PageTitle title="İSTATİSTİK" />
+
+  const { overall } = stats
+  const categoryRows = stats.byCategory.map((b) => ({ ...b, label: getCategory(b.key).label }))
+  const reliabilityRows = stats.byReliability.map((b) => ({ ...b, label: RELIABILITY_LABELS[b.key] }))
+
+  const labelFor: Record<Period, (b: Bucket) => { label: string; shortLabel: string }> = {
+    daily: (b) => ({
+      label: `${formatDay(b.key)}${b.key === today ? ' (bugün)' : ''}`,
+      shortLabel: b.key === today ? formatDateChip(b.key, today) : dayMonth.format(utc(b.key)),
+    }),
+    weekly: (b) => ({ label: formatWeek(b.key), shortLabel: dayMonth.format(utc(b.key)) }),
+    monthly: (b) => ({ label: formatMonth(b.key), shortLabel: shortMonth.format(utc(`${b.key}-01`)) }),
+  }
+  const periodRows = stats[period].map((b) => ({ ...b, ...labelFor[period](b) }))
+  const activePeriod = PERIODS.find((p) => p.id === period)!
+
+  return (
+    <>
+      <PageTitle
+        title="İSTATİSTİK"
+        subtitle="Yalnızca skoru girilip dondurulmuş öneriler sayılır. Başarı oranı = kazanan / (kazanan + kaybeden)."
+      />
+      {overall.total === 0 ? (
+        <EmptyState>
+          Henüz sonuçlanmış öneri yok. Skor Girişi sayfasından maç sonuçlarını “Tamamlandı” olarak kaydedin.
+        </EmptyState>
+      ) : (
+        <div className="grid grid-cols-1 gap-4">
+          <Card title="GENEL BAŞARI">
+            <div className="flex flex-wrap items-end gap-x-4 gap-y-1">
+              <p className="text-5xl leading-none font-black sm:text-6xl" data-testid="overall-rate">
+                {formatRate(overall.rate)}
+              </p>
+              <p className="flex flex-wrap items-center gap-1.5 pb-1 text-sm text-muted">
+                · {overall.decided} öneri · <span data-testid="unique-matches">{stats.matches.decided}</span> benzersiz
+                maç
+                {overall.decided > 0 && overall.lowSample && <LowSampleBadge />}
+              </p>
+            </div>
+            {overall.decided > 0 && overall.lowSample && (
+              <p className="mt-2 text-xs text-warn">
+                {LOW_SAMPLE_LIMIT}'den az sonuçlanmış öneri var; bu oran henüz güvenilir bir gösterge değil.
+              </p>
+            )}
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <Figure label="Kazanan" value={overall.won} />
+              <Figure label="Kaybeden" value={overall.lost} />
+              <Figure label="Değerlendirilemedi" value={overall.void} />
+              <Figure label="Bekliyor" value={overall.pending} />
+            </div>
+            <p className="mt-2 text-xs text-muted">
+              Toplam {overall.total} dondurulmuş öneri, {stats.matches.total} benzersiz maç. Aynı maç birden çok
+              kategoride önerilebildiği için öneri sayısı maç sayısından büyüktür. “Değerlendirilemedi” ve “bekliyor”
+              başarı oranına girmez.
+            </p>
+          </Card>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Card title="KATEGORİ BAZLI BAŞARI" note="Çizgili çubuk: az veri (20'den az sonuçlanmış öneri).">
+              <RateBars rows={categoryRows} />
+              <TableToggle>
+                <StatsTable firstColumn="Kategori" rows={categoryRows} />
+              </TableToggle>
+            </Card>
+
+            <Card
+              title="VERİ GÜVENİLİRLİĞİNE GÖRE BAŞARI"
+              note="Önerinin dondurulduğu andaki güvenilirlik rozetine göre. Yüksek güvenilirlikte oran belirgin biçimde daha iyiyse rozet işe yarıyor demektir."
+            >
+              <RateBars rows={reliabilityRows} />
+              <TableToggle>
+                <StatsTable firstColumn="Güvenilirlik" rows={reliabilityRows} />
+              </TableToggle>
+            </Card>
+          </div>
+
+          {stats.sideGoals && (
+            <Card
+              title={`${GROUPS.find((g) => g.id === 'sidegoals')!.label}: ÇELİŞKİ VE KALİBRASYON`}
+              note="Yalnızca Taraf & Gol listelerindeki dondurulmuş öneriler."
+            >
+              <SideGoalsStatsCard stats={stats.sideGoals} />
+            </Card>
+          )}
+
+          <Card title="ZAMAN İÇİNDE BAŞARI" note="Tarihler Türkiye saatine göredir; haftalar pazartesi başlar.">
+            <div className="mb-3 inline-flex rounded-xl border border-navy-600 bg-navy-800 p-0.5" role="group" aria-label="Dönem">
+              {PERIODS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  aria-pressed={period === p.id}
+                  onClick={() => setPeriod(p.id)}
+                  className={`rounded-[10px] px-3 py-1.5 text-xs font-bold transition-colors ${
+                    period === p.id ? 'bg-brand text-navy-950' : 'text-muted hover:text-white'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <TrendChart key={period} points={periodRows} />
+            <div className="mt-4">
+              <StatsTable firstColumn={activePeriod.column} rows={[...periodRows].reverse()} />
+            </div>
+          </Card>
+        </div>
+      )}
+    </>
+  )
+}

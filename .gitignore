@@ -1,0 +1,14 @@
+node_modules
+dist
+*.log
+.DS_Store
+
+# Gizli bilgiler: ortam değişkenleri repoya girmez (.env.example hariç)
+.env
+.env.*
+!.env.example
+
+# Veri dosyaları: CSV'ler ve JSON yedekler repoya girmez
+samples/
+*.csv
+gollazim-yedek-*.json
