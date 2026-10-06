@@ -1,4 +1,4 @@
-import { RELIABILITY_LABELS } from '../services/analysis/reliability'
+import { RELIABILITY_LABELS, SAMPLE_HINT, sampleText } from '../services/analysis/reliability'
 import type { Reliability, ReliabilityLevel } from '../services/analysis/types'
 
 const TONE: Record<ReliabilityLevel, string> = {
@@ -25,10 +25,10 @@ const TITLE: Record<ReliabilityLevel, string> = {
 export default function ReliabilityBadge({ reliability, compact }: { reliability: Reliability; compact?: boolean }) {
   const { level, sampleSize } = reliability
   const isMarket = level === 'market' || level === 'market-partial'
-  const sample = sampleSize !== null ? (compact ? `≥${sampleSize} maç` : `en az ${sampleSize} maç (tahmini)`) : null
+  const sample = sampleSize !== null ? (compact ? `≥${sampleSize} maç` : sampleText(sampleSize)) : null
   return (
     <span
-      title={TITLE[level]}
+      title={sample ? `${TITLE[level]} ${SAMPLE_HINT}` : TITLE[level]}
       // Uzun biçim çok dar ekranda (320 px) kartı taşırmasın diye satır atlayabilir.
       className={`inline-flex max-w-full items-center gap-x-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
         compact ? 'whitespace-nowrap' : 'flex-wrap'

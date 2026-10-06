@@ -6,7 +6,7 @@ import { toAppDateTime } from '../../utils/date'
 import { formatDay, formatNumber, formatRate, shiftDate } from '../../utils/format'
 import { AI_SOURCES, buildAiStats, type AiSource } from '../ai/aiStats'
 import { MODEL_CONFLICT_LIMIT } from '../analysis/goalModel'
-import { RELIABILITY_LABELS } from '../analysis/reliability'
+import { RELIABILITY_LABELS, SAMPLE_HINT } from '../analysis/reliability'
 import { stat } from '../analysis/stat'
 import { findActiveShared, sharedPicksOnly } from '../story/shared'
 import { backfillMarket, buildMarketStats } from './marketStats'
@@ -143,7 +143,7 @@ export function buildStatsSummary(input: SummaryInput): string {
       stats.byReliability.map((b) => [RELIABILITY_LABELS[b.key], b.tally.decided, b.tally.won, formatRate(b.tally.rate), lowMark(b.tally)]),
     ),
     '',
-    'Güvenilirlik, önerinin dondurulduğu andaki rozettir.',
+    `Güvenilirlik, önerinin dondurulduğu andaki rozettir. Seviye, kartta "en az N saha maçı (tahmini)" olarak yazan örnekleme göre belirlenir (Düşük: 8'den az, Orta: 8–15, Yüksek: 16+). ${SAMPLE_HINT}`,
     '',
   )
 

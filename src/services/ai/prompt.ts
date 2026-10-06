@@ -1,7 +1,7 @@
 import { AI_CHUNK_SIZE, AI_DECISIONS, AI_PROVIDERS, type AiProvider } from '../../config/ai'
 import { getCategory } from '../../config/categories'
 import { formatNumber } from '../../utils/format'
-import { RELIABILITY_LABELS } from '../analysis/reliability'
+import { RELIABILITY_LABELS, SAMPLE_HINT, sampleText } from '../analysis/reliability'
 import { goalModelPercent, MODEL_CONFLICT_LIMIT } from '../analysis/goalModel'
 import { MARKET_CATEGORY_IDS, MARKET_CONFLICT_LABEL, marketPercent } from '../analysis/market'
 import { stat } from '../analysis/stat'
@@ -28,7 +28,7 @@ const pair = (home: number | null, away: number | null): string =>
 
 function predictionText(p: Prediction): string {
   const details: string[] = [`güvenilirlik: ${RELIABILITY_LABELS[p.reliability.level]}`]
-  if (p.reliability.sampleSize !== null) details.push(`en az ${p.reliability.sampleSize} maçlık veri`)
+  if (p.reliability.sampleSize !== null) details.push(sampleText(p.reliability.sampleSize))
   // Cümle içinde: "Model" -> "model", "xG modeli" olduğu gibi
   const secondLabel = p.secondLabel.charAt(0).toLocaleLowerCase('tr') + p.secondLabel.slice(1)
   if (p.secondPercent != null) details.push(`${secondLabel} %${p.secondPercent}`)
@@ -108,6 +108,7 @@ function chunkText(args: {
     '- "veri yok" yazan alanlar için tahmin yürütme.',
     `- "Gol modeli" satırı, maç öncesi xG değerlerinden (yoksa gol ortalamasından) Poisson ile hesaplanan ikinci bir tahmindir. Önerideki hazır yüzde ile model arasında ${MODEL_CONFLICT_LIMIT} puandan fazla fark varsa "Model çelişkisi" yazar; bunu kararında dikkate al.`,
     '- "Piyasa" satırı, bahis oranlarından marj arındırılarak çıkarılan olasılıktır; yalnızca oranı olan kategoriler yazılır. Öneride "Piyasa çelişkisi" yazıyorsa hazır yüzde ile piyasa arasındaki fark büyüktür; bunu kararında dikkate al.',
+    `- Önerilerdeki "en az N saha maçı (tahmini)" ifadesi örneklem büyüklüğüdür: ${SAMPLE_HINT}`,
     '',
     'GÖREV',
     `Her maç için listelenen önerilerin ne kadar güvenilir olduğunu değerlendir ve tek bir KARAR ver. KARAR şunlardan biri olmalı: ${decisions}.`,

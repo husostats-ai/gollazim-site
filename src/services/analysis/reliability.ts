@@ -7,8 +7,9 @@ import type { Reliability, ReliabilityLevel } from './types'
 // yüzdelerin alabildiği değerlerden geri çıkarılır: maç yüzdesi, ev sahibinin
 // (nh maç) ve deplasmanın (na maç) yüzdelerinin ortalamasıdır; yani her değer
 // (a/nh + b/na) / 2 biçiminde olmak zorundadır. Tüm gol yüzdelerini ve maç
-// başı puanları (puan = PPG x maç sayısı tam sayı olmalı) açıklayan en küçük
-// nh + na aranır. Sonuç bir alt sınırdır: gerçek örneklem daha büyük olabilir.
+// başı puanları (puan = PPG x maç sayısı, o kadar maçta alınabilecek bir puan
+// olmalı) açıklayan en küçük nh + na aranır. Sonuç bir alt sınırdır ve ev sahibinin
+// iç saha + deplasmanın dış saha maçlarını sayar; lig tablosundaki toplam değildir.
 
 const PERCENT_FIELDS: FieldKey[] = [
   'bttsPct',
@@ -29,6 +30,13 @@ const PERCENT_TOLERANCE = 1
 /** Güvenilir bir tahmin için gereken en az yüzde kolonu */
 const MIN_PERCENT_VALUES = 4
 
+/** Örneklem sayısının neyi ifade ettiği; kartta ipucu olarak, prompt ve özette açıklama olarak kullanılır */
+export const SAMPLE_HINT =
+  'Ev sahibinin iç saha + deplasmanın dış saha maçları, CSV yüzdelerinden çıkarılan tahmini alt sınır. Lig tablosundaki toplam oynanan maç sayısı değildir.'
+
+/** Kartta ve prompt'ta örneklem sayısının yazımı */
+export const sampleText = (sampleSize: number): string => `en az ${sampleSize} saha maçı (tahmini)`
+
 export const RELIABILITY_LIMITS = { medium: 8, high: 16 } as const
 
 const achievableCache = new Map<string, number[]>()
@@ -48,11 +56,23 @@ const fitsPercents = (percents: number[], nh: number, na: number): boolean => {
   return percents.every((p) => values.some((v) => Math.abs(p - v) <= PERCENT_TOLERANCE))
 }
 
-/** PPG iki ondalığa yuvarlandığı için puan = ppg x n tam sayıya n x 0.005 kadar yaklaşmalı */
-const fitsPpg = (ppg: number | null, n: number): boolean => {
+/**
+ * n maçta toplanabilecek bir puan mı: puan = 3 x galibiyet + beraberlik ve
+ * galibiyet + beraberlik <= n olmalı. 0..3n arasındaki tam sayılardan yalnızca
+ * 3n - 1 üretilemez (ör. 1 maçta 2 puan, 2 maçta 5 puan alınamaz).
+ */
+export const isPossiblePoints = (points: number, n: number): boolean =>
+  Number.isInteger(points) && points >= 0 && points <= 3 * n && points !== 3 * n - 1
+
+/**
+ * PPG iki ondalığa yuvarlandığı için puan = ppg x n bir tam sayıya n x 0.005 kadar
+ * yaklaşmalı; o tam sayı da n maçta gerçekten alınabilecek bir puan olmalı.
+ */
+export const fitsPpg = (ppg: number | null, n: number): boolean => {
   if (ppg === null) return true
   const points = ppg * n
-  return Math.abs(points - Math.round(points)) <= 0.005 * n + 1e-9
+  const rounded = Math.round(points)
+  return Math.abs(points - rounded) <= 0.005 * n + 1e-9 && isPossiblePoints(rounded, n)
 }
 
 export const levelForSample = (sampleSize: number | null): ReliabilityLevel => {
