@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import EmptyState from '../components/EmptyState'
 import PageTitle from '../components/PageTitle'
 import AiStatsCard from '../components/stats/AiStatsCard'
+import DailyStoryPanel from '../components/stats/DailyStoryPanel'
 import GoalModelStatsCard from '../components/stats/GoalModelStatsCard'
 import LowSampleBadge from '../components/stats/LowSampleBadge'
 import RateBars from '../components/stats/RateBars'
@@ -173,6 +174,13 @@ export default function StatsPage() {
               <AiStatsCard stats={aiStats} />
             </Card>
           )}
+
+          <Card
+            title="GÜNLÜK GÖRSEL"
+            note="Seçilen günün 5 ana kategorideki sonuçlarını özetleyen 1080 × 1920 Instagram Story görseli (PNG)."
+          >
+            <DailyStoryPanel picks={picks} />
+          </Card>
 
           <Card title="ZAMAN İÇİNDE BAŞARI" note="Tarihler Türkiye saatine göredir; haftalar pazartesi başlar.">
             <div className="mb-3 inline-flex rounded-xl border border-navy-600 bg-navy-800 p-0.5" role="group" aria-label="Dönem">

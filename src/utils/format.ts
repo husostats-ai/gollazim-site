@@ -28,6 +28,11 @@ export const formatDateChip = (date: string, today: string): string => {
 
 export const formatLongDate = (date: string): string => longDate.format(asUtc(date))
 
+const plainDate = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
+
+/** "6 Ekim 2026" */
+export const formatPlainDate = (date: string): string => plainDate.format(asUtc(date))
+
 const rate = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 1 })
 const monthYear = new Intl.DateTimeFormat('tr-TR', { month: 'long', year: 'numeric', timeZone: 'UTC' })
 const dayMonthYear = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })

@@ -35,7 +35,7 @@ export const STORY_NOTE = 'Veri destekli sinyal, garanti değil.'
 // Projeye gömülü yazı tipi (index.css); yedekler yalnızca yüklenemezse devreye girer.
 const FONT_FAMILY = '"Inter Variable"'
 const FONT = `${FONT_FAMILY}, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`
-const font = (weight: number, size: number) => `${weight} ${size}px ${FONT}`
+export const font = (weight: number, size: number) => `${weight} ${size}px ${FONT}`
 const FONT_WEIGHTS = [500, 600, 700, 800, 900]
 
 /**
@@ -50,7 +50,7 @@ async function loadStoryFonts(): Promise<void> {
 /** Logonun, çevresindeki şeffaf boşluk dışında kalan kısmı (1024x1024 kaynak üzerinde) */
 const LOGO_CROP = { x: 140, y: 36, size: 800 }
 
-type Ctx = CanvasRenderingContext2D
+export type Ctx = CanvasRenderingContext2D
 
 /** Analiz sonucundan görsel verisi. Oranlar (odds) ve ham istatistikler görsele girmez. */
 export const storyFromAnalysis = (analysis: CategoryAnalysis, dateLabel: string): StoryData => ({
@@ -66,7 +66,7 @@ export const storyFromAnalysis = (analysis: CategoryAnalysis, dateLabel: string)
   })),
 })
 
-function roundRect(ctx: Ctx, x: number, y: number, w: number, h: number, r: number) {
+export function roundRect(ctx: Ctx, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath()
   ctx.moveTo(x + r, y)
   ctx.arcTo(x + w, y, x + w, y + h, r)
@@ -96,7 +96,7 @@ function drawStars(ctx: Ctx, rightX: number, cy: number, radius: number, count: 
   }
 }
 
-function drawBackground(ctx: Ctx) {
+export function drawBackground(ctx: Ctx) {
   const gradient = ctx.createLinearGradient(0, 0, 0, STORY.height)
   gradient.addColorStop(0, theme.navy950)
   gradient.addColorStop(0.5, theme.navy900)
@@ -115,7 +115,7 @@ function drawBackground(ctx: Ctx) {
  * Logo şeffaf zeminlidir ve koyu lacivert konturu koyu arka planda kaybolur;
  * bu yüzden bir ton açık, çerçeveli bir rozetin içine yerleştirilir.
  */
-function drawLogoBadge(ctx: Ctx, logo: CanvasImageSource | null, x: number, y: number, size: number) {
+export function drawLogoBadge(ctx: Ctx, logo: CanvasImageSource | null, x: number, y: number, size: number) {
   roundRect(ctx, x, y, size, size, 44)
   ctx.fillStyle = theme.navy700
   ctx.fill()
@@ -299,16 +299,22 @@ const loadImage = (src: string): Promise<HTMLImageElement | null> =>
     image.src = src
   })
 
-/** Story görselini PNG olarak üretir. */
-export async function createStoryPng(data: StoryData): Promise<Blob> {
+/**
+ * 1080x1920 tuvali hazırlar (gömülü yazı tipi + logo), verilen çizimi uygular
+ * ve PNG olarak verir. Tüm story görselleri bu yoldan üretilir.
+ */
+export async function renderStoryPng(draw: (ctx: Ctx, logo: CanvasImageSource | null) => void): Promise<Blob> {
   const canvas = document.createElement('canvas')
   canvas.width = STORY.width
   canvas.height = STORY.height
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('Tarayıcı görsel oluşturmayı desteklemiyor.')
   const [logo] = await Promise.all([loadImage('./logo.png'), loadStoryFonts()])
-  drawStory(ctx, data, logo)
+  draw(ctx, logo)
   return new Promise((resolve, reject) =>
     canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Görsel oluşturulamadı.'))), 'image/png'),
   )
 }
+
+/** Story görselini PNG olarak üretir. */
+export const createStoryPng = (data: StoryData): Promise<Blob> => renderStoryPng((ctx, logo) => drawStory(ctx, data, logo))
