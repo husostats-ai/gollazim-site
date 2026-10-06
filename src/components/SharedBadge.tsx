@@ -11,7 +11,7 @@ export default function SharedBadge({ record, onRemove }: { record: SharedPick; 
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]" data-testid="shared">
       <span
-        title={`Story görselinde yer aldı: ${sharedAtFmt.format(new Date(record.sharedAt))}`}
+        title={`İndirilen Story görselinde yer aldı: ${sharedAtFmt.format(new Date(record.sharedAt))}`}
         className="inline-flex items-center rounded-full border border-brand bg-navy-800 px-2 py-0.5 font-bold whitespace-nowrap text-brand"
         data-testid="shared-badge"
       >

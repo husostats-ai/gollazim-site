@@ -2,8 +2,8 @@ import type { CategoryId } from '../../config/categories'
 import type { Match, Pick, SharedPick } from '../../types'
 import { toAppDateTime } from '../../utils/date'
 
-// "Paylaşılan öneriler" kaydı: bir kategori Story görseli üretildiğinde
-// görseldeki maçlar kalıcı olarak paylaşıldı diye işaretlenir. Görsele ekle
+// "Paylaşılan öneriler" kaydı: bir kategori Story görseli indirildiğinde
+// görseldeki maçlar kalıcı olarak paylaşıldı diye işaretlenir (önizleme kayıt açmaz). Görsele ekle
 // seçiminden ayrıdır (o geçicidir) ve önerileri, dondurmayı ya da tüm öneriler
 // üzerinden yapılan istatistikleri değiştirmez.
 
@@ -41,7 +41,7 @@ export function isAfterKickoff(match: Pick_<Match, 'date' | 'time'>, now: string
 type Pick_<T, K extends keyof T> = { [P in K]: T[P] }
 
 /**
- * Bir görsel üretimi için eklenecek yeni kayıtlar. Zaten geçerli kaydı olan maç
+ * Bir görsel indirmesi için eklenecek yeni kayıtlar. Zaten geçerli kaydı olan maç
  * yeniden eklenmez (paylaşılanlar birleşir, ilk paylaşım zamanı korunur); görselde
  * olmayan maçlar da paylaşılandan çıkmaz. Daha önce çıkarılmış bir maç yeniden
  * paylaşılırsa eski kayıt geçmişte kalır, yeni bir kayıt açılır.

@@ -4,12 +4,15 @@ import type { CategoryAnalysis } from '../services/analysis/types'
 import { createStoryPng, storyFromAnalysis } from '../services/image/storyGenerator'
 import { STORY } from '../services/image/storyLayout'
 import { resolveSelection } from '../services/story/selection'
+import { downloadStory, previewStory, type DownloadResult, type StoryPreview } from '../services/story/storyFlow'
 import { useApp } from '../state/AppContext'
 import { LATE_SHARE_NOTE } from './SharedBadge'
 import { formatLongDate } from '../utils/format'
 
 const lateText = (count: number): string =>
   count === 1 ? LATE_SHARE_NOTE : `${count} maç başladıktan sonra paylaşıldı olarak işaretlendi`
+
+export const PREVIEW_NOTE = 'Önizleme kaydetmez; indirince bu maçlar paylaşıldı olarak kaydedilir.'
 
 export const SELECT_FIRST = 'Önce görsele girecek maçları seç'
 
@@ -23,10 +26,12 @@ const disabledReason = (analysis: CategoryAnalysis, totalMatches: number, select
 
 export default function StoryButton({ categoryId }: { categoryId: CategoryAnalysis['categoryId'] }) {
   const { matches, analysis: dayAnalysis, storySelections, selectedDate, recordShared } = useApp()
-  const [preview, setPreview] = useState<{ url: string; fileName: string } | null>(null)
+  const [preview, setPreview] = useState<{ url: string; fileName: string; story: StoryPreview } | null>(null)
+  /** Açık önizlemenin indirme sonucu; indirilmediyse null */
+  const [saved, setSaved] = useState<DownloadResult | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  /** Son üretimde, başladıktan sonra paylaşıldı olarak işaretlenen maç sayısı */
+  /** Son indirmede, başladıktan sonra paylaşıldı olarak işaretlenen maç sayısı */
   const [late, setLate] = useState(0)
 
   const category = getCategory(categoryId)
@@ -42,18 +47,29 @@ export default function StoryButton({ categoryId }: { categoryId: CategoryAnalys
     setBusy(true)
     setError(null)
     try {
-      const blob = await createStoryPng(storyFromAnalysis({ ...analysis, predictions: selected }, formatLongDate(selectedDate)))
-      // Görsel üretildiği an, içindeki maçlar paylaşıldı olarak kaydedilir (önceki kayıtlarla birleşir).
-      const added = await recordShared(
-        categoryId,
+      // Önizleme hiçbir kayıt oluşturmaz; paylaşıldı kaydı yalnızca indirme anında açılır.
+      const story = await previewStory(
+        { render: () => createStoryPng(storyFromAnalysis({ ...analysis, predictions: selected }, formatLongDate(selectedDate))) },
         selected.map((p) => p.match),
       )
-      setLate(added.filter((r) => r.afterKickoff).length)
-      setPreview({ url: URL.createObjectURL(blob), fileName: `gollazim-${category.slug}-${selectedDate}.png` })
+      setSaved(null)
+      setPreview({ url: URL.createObjectURL(story.blob), fileName: `gollazim-${category.slug}-${selectedDate}.png`, story })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Görsel oluşturulamadı.')
     } finally {
       setBusy(false)
+    }
+  }
+
+  // Bağlantı dosyayı indirir (varsayılan davranış engellenmez); aynı anda görseldeki maçlar kaydedilir.
+  const onDownload = async () => {
+    if (!preview) return
+    try {
+      const result = await downloadStory({ record: (shared) => recordShared(categoryId, shared) }, preview.story)
+      setSaved(result)
+      setLate(result.late)
+    } catch {
+      setError('Görsel indirildi ama paylaşıldı kaydı yazılamadı.')
     }
   }
 
@@ -87,7 +103,7 @@ export default function StoryButton({ categoryId }: { categoryId: CategoryAnalys
           data-testid={`story-${categoryId}`}
           className="rounded-lg border border-brand px-3 py-1.5 text-xs font-bold whitespace-nowrap text-brand hover:bg-navy-600 disabled:cursor-not-allowed disabled:border-navy-500 disabled:text-muted disabled:hover:bg-transparent"
         >
-          {busy ? 'Hazırlanıyor…' : 'Görsel oluştur'}
+          {busy ? 'Hazırlanıyor…' : 'Görseli önizle'}
         </button>
       </span>
 
@@ -103,20 +119,32 @@ export default function StoryButton({ categoryId }: { categoryId: CategoryAnalys
             alt={`Günün ${category.label} önerileri`}
             width={STORY.width}
             height={STORY.height}
-            className="max-h-[78vh] w-auto rounded-xl border border-navy-600"
+            className="max-h-[68vh] w-auto rounded-xl border border-navy-600"
           />
-          <p className="text-xs text-muted">
-            {STORY.width} × {STORY.height} piksel · Instagram Story · görseldeki maçlar paylaşıldı olarak kaydedildi
+          <p className="text-center text-xs text-muted">
+            ÖNİZLEME · {STORY.width} × {STORY.height} piksel · Instagram Story
           </p>
-          {late > 0 && <p className="text-xs text-warn">{lateText(late)}</p>}
-          <div className="flex gap-2">
+          {saved ? (
+            <p className="text-center text-xs text-win" data-testid="story-saved">
+              İndirildi; görseldeki {preview.story.matches.length} maç paylaşıldı olarak kayıtlı
+              {saved.added > 0 ? ` (${saved.added} yeni kayıt).` : ' (yeni kayıt yok, hepsi zaten kayıtlıydı).'}
+            </p>
+          ) : (
+            <p className="text-center text-xs text-muted" data-testid="story-preview-note">
+              {PREVIEW_NOTE}
+            </p>
+          )}
+          {saved && saved.late > 0 && <p className="text-center text-xs text-warn">{lateText(saved.late)}</p>}
+          {error && <p className="text-center text-xs text-loss-text">{error}</p>}
+          <div className="flex flex-wrap justify-center gap-2">
             <a
               href={preview.url}
               download={preview.fileName}
+              onClick={() => void onDownload()}
               data-testid="story-download"
-              className="rounded-xl bg-brand px-5 py-2.5 text-sm font-bold text-navy-950 hover:bg-brand-dark"
+              className="rounded-xl bg-brand px-5 py-2.5 text-center text-sm font-bold text-navy-950 hover:bg-brand-dark"
             >
-              PNG indir
+              İndir ve paylaşıldı olarak kaydet
             </a>
             <button
               type="button"

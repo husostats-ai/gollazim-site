@@ -120,7 +120,7 @@ export interface StorySelection {
 }
 
 /**
- * Bir kategori Story görseli üretilirken görselde yer aldığı için "paylaşıldı" sayılan öneri.
+ * İndirilen bir kategori Story görselinde yer aldığı için "paylaşıldı" sayılan öneri.
  * Kalıcı kayıttır: elle çıkarılınca silinmez, removedAt ile işaretlenir.
  */
 export interface SharedPick {
@@ -129,7 +129,7 @@ export interface SharedPick {
   date: string
   categoryId: CategoryId
   matchId: string
-  /** Görselin üretildiği an (ISO) */
+  /** Görselin indirildiği an (ISO) */
   sharedAt: string
   /** Kayıt, maç başladıktan sonra yapıldı */
   afterKickoff: boolean
