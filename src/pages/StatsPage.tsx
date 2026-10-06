@@ -3,6 +3,7 @@ import EmptyState from '../components/EmptyState'
 import PageTitle from '../components/PageTitle'
 import AiStatsCard from '../components/stats/AiStatsCard'
 import DailyStoryPanel from '../components/stats/DailyStoryPanel'
+import StatsSummaryPanel from '../components/stats/StatsSummaryPanel'
 import GoalModelStatsCard from '../components/stats/GoalModelStatsCard'
 import MarketStatsCard from '../components/stats/MarketStatsCard'
 import LowSampleBadge from '../components/stats/LowSampleBadge'
@@ -13,7 +14,6 @@ import TrendChart from '../components/stats/TrendChart'
 import { getCategory, GROUPS } from '../config/categories'
 import { RELIABILITY_LABELS } from '../services/analysis/reliability'
 import { buildAiStats } from '../services/ai/aiStats'
-import { hasMarket } from '../services/analysis/market'
 import { aiRepo, matchesRepo, picksRepo, sharedRepo } from '../services/data'
 import { SCOPE_LABELS, sharedPicksOnly, type StatsScope } from '../services/story/shared'
 import { backfillMarket, buildMarketStats } from '../services/stats/marketStats'
@@ -66,7 +66,7 @@ export default function StatsPage() {
   const { dataVersion, today, marketConflictLimit } = useApp()
   const [picks, setPicks] = useState<Pick[] | null>(null)
   const [verdicts, setVerdicts] = useState<AiVerdict[]>([])
-  /** Piyasa bilgisi kaydedilmeden dondurulmuş önerilerin maç kayıtları (oranlar için) */
+  /** Önerilerin maç kayıtları: geriye dönük piyasa yüzdesi ve özet / CSV için */
   const [legacyMatches, setLegacyMatches] = useState<Match[]>([])
   const [period, setPeriod] = useState<Period>('daily')
   const [shared, setShared] = useState<SharedPick[]>([])
@@ -75,8 +75,7 @@ export default function StatsPage() {
 
   useEffect(() => {
     void picksRepo.listAll().then(async (all) => {
-      const ids = all.filter((p) => hasMarket(p.categoryId) && p.marketPercent === undefined).map((p) => p.matchId)
-      setLegacyMatches(await matchesRepo.getMany([...new Set(ids)]))
+      setLegacyMatches(await matchesRepo.getMany([...new Set(all.map((p) => p.matchId))]))
       setPicks(all)
     })
     void aiRepo.listVerdicts().then(setVerdicts)
@@ -117,6 +116,14 @@ export default function StatsPage() {
         title="İSTATİSTİK"
         subtitle="Yalnızca skoru girilip dondurulmuş öneriler sayılır. Başarı oranı = kazanan / (kazanan + kaybeden)."
       />
+      <div className="mb-4">
+        <Card
+          title="ANALİZ İÇİN ÖZET"
+          note="İstatistiklerin düz metin özeti; bir yapay zekâ sohbetine yapıştırıp yorumlatmak için. Sayılar aşağıdaki tablolarla aynıdır ve Tümü / Paylaşılan geçişinden etkilenmez."
+        >
+          <StatsSummaryPanel picks={picks} matches={legacyMatches} verdicts={verdicts} shared={shared} />
+        </Card>
+      </div>
       {allStats.overall.total === 0 ? (
         <EmptyState>
           Henüz sonuçlanmış öneri yok. Skor Girişi sayfasından maç sonuçlarını “Tamamlandı” olarak kaydedin.
