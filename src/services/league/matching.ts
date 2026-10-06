@@ -2,8 +2,8 @@ import type { LeagueTable, LeagueTableRow, TeamAlias } from '../../types'
 
 // CSV'deki takım adı ile lig tablosundaki ad farklı olabilir ("Coventry City U21" /
 // "Coventry City FC"). Sıra: kullanıcının seçimi (takma ad), tam eşleşme, normalize
-// eşleşme. Normalize eşleşme yalnızca tek anlamlıysa kabul edilir; emin olunmayan
-// eşleşme yapılmaz, kullanıcıya sorulur.
+// eşleşme. Normalize eşleşme yalnızca tek anlamlıysa ve iki adın yaş grubu eki (U21 vb.)
+// aynıysa kabul edilir; emin olunmayan eşleşme yapılmaz, kullanıcıya sorulur.
 
 /** Takma ad kaydında "bu takım tabloda yok" seçimi */
 export const NOT_IN_TABLE = ''
@@ -22,12 +22,22 @@ export function normalizeTeam(name: string): string {
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
     .replace(/&/g, ' and ')
-    .replace(/under\s+(\d{2})/g, 'u$1')
+    // "U-21", "U 21" ve "Under 21" tek tipe ("u21") getirilir
+    .replace(/\b(?:u|under)[\s-]?(\d{2})\b/g, 'u$1')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
     .split(' ')
     .filter((token) => token !== '' && !DROPPED_TOKENS.has(token) && !AGE_TOKEN.test(token))
     .join(' ')
+}
+
+/**
+ * Addaki yaş grubu eki, tek tipte ("u21"); yoksa null. "U21", "U-21" ve "Under 21" aynıdır.
+ * A takım ile altyapı takımı farklı takımlardır: ekleri farklı iki ad kendiliğinden eşleştirilmez.
+ */
+export function ageGroup(name: string): string | null {
+  const found = /\b(?:u|under)[\s-]?(\d{2})\b/i.exec(name)
+  return found ? `u${found[1]}` : null
 }
 
 /** alias: kullanıcı seçti; exact: adlar aynı; normalized: ekler atılınca aynı; none: eşleşme yok */
@@ -39,7 +49,7 @@ export interface TeamMatch {
   row: LeagueTableRow | null
   kind: MatchKind
   /** Eşleşme yoksa nedeni: kullanıcı "tabloda yok" dedi, birden çok aday var ya da aday yok */
-  reason?: 'declared-absent' | 'ambiguous' | 'no-candidate' | 'alias-missing'
+  reason?: 'declared-absent' | 'ambiguous' | 'no-candidate' | 'alias-missing' | 'age-mismatch'
 }
 
 const sameText = (a: string, b: string): boolean => a.trim().toLocaleLowerCase('tr') === b.trim().toLocaleLowerCase('tr')
@@ -50,8 +60,10 @@ const sameText = (a: string, b: string): boolean => a.trim().toLocaleLowerCase('
  */
 export function matchTeams(league: string, csvTeams: string[], rows: LeagueTableRow[], aliases: TeamAlias[]): TeamMatch[] {
   const aliasByTeam = new Map(aliases.filter((a) => a.league === league).map((a) => [a.csvTeam, a.tableTeam]))
+  // Karşılaştırma anahtarı adın yanında yaş grubunu da taşır: "X U21" ile "X" ayrı takımlardır.
+  const keyOf = (name: string) => `${normalizeTeam(name)}|${ageGroup(name) ?? ''}`
   const csvKeyCount = new Map<string, number>()
-  for (const team of csvTeams) csvKeyCount.set(normalizeTeam(team), (csvKeyCount.get(normalizeTeam(team)) ?? 0) + 1)
+  for (const team of csvTeams) csvKeyCount.set(keyOf(team), (csvKeyCount.get(keyOf(team)) ?? 0) + 1)
 
   return csvTeams.map((csvTeam): TeamMatch => {
     const alias = aliasByTeam.get(csvTeam)
@@ -64,10 +76,13 @@ export function matchTeams(league: string, csvTeams: string[], rows: LeagueTable
     const exact = rows.find((r) => sameText(r.team, csvTeam))
     if (exact) return { csvTeam, row: exact, kind: 'exact' }
 
-    const key = normalizeTeam(csvTeam)
-    const candidates = key === '' ? [] : rows.filter((r) => normalizeTeam(r.team) === key)
-    if (candidates.length === 1 && csvKeyCount.get(key) === 1) return { csvTeam, row: candidates[0], kind: 'normalized' }
-    return { csvTeam, row: null, kind: 'none', reason: candidates.length > 0 ? 'ambiguous' : 'no-candidate' }
+    const name = normalizeTeam(csvTeam)
+    const sameName = name === '' ? [] : rows.filter((r) => normalizeTeam(r.team) === name)
+    const candidates = sameName.filter((r) => ageGroup(r.team) === ageGroup(csvTeam))
+    if (candidates.length === 1 && csvKeyCount.get(keyOf(csvTeam)) === 1) return { csvTeam, row: candidates[0], kind: 'normalized' }
+    if (candidates.length > 0) return { csvTeam, row: null, kind: 'none', reason: 'ambiguous' }
+    // Ad aynı ama yaş grubu eki farklı (ör. "X U21" / "X FC"): kendiliğinden eşleştirilmez, kullanıcı seçer.
+    return { csvTeam, row: null, kind: 'none', reason: sameName.length > 0 ? 'age-mismatch' : 'no-candidate' }
   })
 }
 

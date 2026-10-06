@@ -6,7 +6,7 @@ import { buildPrompts } from '../ai/prompt'
 import { analyzeDay } from '../analysis/engine'
 import { makeMatch } from '../analysis/testUtils'
 import { assembleBackup, isBackupFile } from '../data/backupFormat'
-import { aliasId, findStanding, matchTeams, normalizeAliases, normalizeLeagueTables, normalizeTeam, NOT_IN_TABLE } from './matching'
+import { ageGroup, aliasId, findStanding, matchTeams, normalizeAliases, normalizeLeagueTables, normalizeTeam, NOT_IN_TABLE } from './matching'
 import { checkRow, parseLeagueTable } from './parser'
 import { matchStandings, playedHint, standingInfo, tableAgeText } from './standing'
 
@@ -126,11 +126,47 @@ describe('takım adı eşleştirme', () => {
   const match = (csvTeams: string[], aliases: TeamAlias[] = []) => matchTeams(LEAGUE, csvTeams, rows, aliases).map((m) => [m.csvTeam, m.kind, m.row?.team ?? null, m.reason ?? null])
 
   it('önce tam eşleşme, sonra normalize eşleşme', () => {
-    expect(match(['güney spor afc', 'Kuzey Yıldızı U21', 'Doğu and Batı Birliği U21'])).toEqual([
+    expect(match(['güney spor afc', 'Kuzey Yıldızı', 'Doğu and Batı Birliği'])).toEqual([
       ['güney spor afc', 'exact', 'Güney Spor AFC', null],
-      ['Kuzey Yıldızı U21', 'normalized', 'Kuzey Yıldızı FC', null],
-      ['Doğu and Batı Birliği U21', 'normalized', 'Doğu & Batı Birliği FC', null],
+      ['Kuzey Yıldızı', 'normalized', 'Kuzey Yıldızı FC', null],
+      ['Doğu and Batı Birliği', 'normalized', 'Doğu & Batı Birliği FC', null],
     ])
+  })
+
+  it('yaş eki bir tarafta varsa kendiliğinden eşleşmez (her iki yönde)', () => {
+    // CSV'de U21 var, tabloda yok
+    for (const age of ['U17', 'U18', 'U19', 'U20', 'U21', 'U23', 'U-21', 'Under 21']) {
+      expect(match([`Kuzey Yıldızı ${age}`]), age).toEqual([[`Kuzey Yıldızı ${age}`, 'none', null, 'age-mismatch']])
+    }
+    // Tabloda U21 var, CSV'de yok
+    const youthTable = [{ team: 'Kuzey Yıldızı U21', rank: 1, played: 5, points: 15, ppg: 3 }]
+    expect(matchTeams(LEAGUE, ['Kuzey Yıldızı FC'], youthTable, [])[0]).toMatchObject({ row: null, kind: 'none', reason: 'age-mismatch' })
+    // Ekler farklı
+    expect(matchTeams(LEAGUE, ['Kuzey Yıldızı U19'], youthTable, [])[0]).toMatchObject({ row: null, reason: 'age-mismatch' })
+  })
+
+  it('aynı yaş eki iki tarafta da varsa eşleşir; yazım farkı sorun olmaz', () => {
+    const youthTable = [
+      { team: 'Kuzey Yıldızı FC U21', rank: 1, played: 5, points: 15, ppg: 3 },
+      { team: 'Güney Spor Under 21', rank: 2, played: 5, points: 10, ppg: 2 },
+      { team: 'Kuzey Yıldızı FC', rank: 3, played: 5, points: 9, ppg: 1.8 },
+    ]
+    const result = matchTeams(LEAGUE, ['Kuzey Yıldızı U21', 'AFC Güney Spor U-21', 'Kuzey Yıldızı'], youthTable, [])
+    expect(result.map((m) => [m.kind, m.row?.team])).toEqual([
+      ['normalized', 'Kuzey Yıldızı FC U21'],
+      ['normalized', 'Güney Spor Under 21'],
+      ['normalized', 'Kuzey Yıldızı FC'],
+    ])
+    expect(ageGroup('Güney Spor Under 21')).toBe('u21')
+    expect(ageGroup('Kuzey Yıldızı U-21')).toBe('u21')
+    expect(ageGroup('Kuzey Yıldızı FC')).toBeNull()
+    expect(ageGroup('Union 1921')).toBeNull()
+  })
+
+  it('yaş eki farklı olsa da kullanıcı elle seçebilir ve tam ad eşleşmesi çalışır', () => {
+    expect(match(['Kuzey Yıldızı U21'], [alias('Kuzey Yıldızı U21', 'Kuzey Yıldızı FC')])).toEqual([['Kuzey Yıldızı U21', 'alias', 'Kuzey Yıldızı FC', null]])
+    const youthTable = [{ team: 'Kuzey Yıldızı U21', rank: 1, played: 5, points: 15, ppg: 3 }]
+    expect(matchTeams(LEAGUE, ['kuzey yıldızı u21'], youthTable, [])[0]).toMatchObject({ kind: 'exact' })
   })
 
   it('benzer ad yoksa eşleştirilmez (kısaltma tahmin edilmez)', () => {
@@ -141,13 +177,18 @@ describe('takım adı eşleştirme', () => {
   })
 
   it('belirsizse sessizce eşleştirilmez: iki CSV takımı aynı ada düşüyorsa ikisi de sorulur', () => {
-    expect(match(['Kuzey Yıldızı', 'Kuzey Yıldızı U21'])).toEqual([
+    expect(match(['Kuzey Yıldızı', 'Kuzey Yıldızı SC'])).toEqual([
       ['Kuzey Yıldızı', 'none', null, 'ambiguous'],
-      ['Kuzey Yıldızı U21', 'none', null, 'ambiguous'],
+      ['Kuzey Yıldızı SC', 'none', null, 'ambiguous'],
     ])
     // Tabloda aynı ada düşen iki takım varsa da
     const twins = [...rows, { team: 'Kuzey Yıldızı AFC', rank: 4, played: 5, points: 3, ppg: 0.6 }]
-    expect(matchTeams(LEAGUE, ['Kuzey Yıldızı U21'], twins, [])[0]).toMatchObject({ kind: 'none', reason: 'ambiguous' })
+    expect(matchTeams(LEAGUE, ['Kuzey Yıldızı'], twins, [])[0]).toMatchObject({ kind: 'none', reason: 'ambiguous' })
+    // A takım ile U21 aynı listede olunca birbirini engellemez: A takım eşleşir, U21 sorulur
+    expect(match(['Kuzey Yıldızı', 'Kuzey Yıldızı U21'])).toEqual([
+      ['Kuzey Yıldızı', 'normalized', 'Kuzey Yıldızı FC', null],
+      ['Kuzey Yıldızı U21', 'none', null, 'age-mismatch'],
+    ])
   })
 
   it('kullanıcının seçimi hatırlanır ve her şeyin önüne geçer', () => {
@@ -158,7 +199,7 @@ describe('takım adı eşleştirme', () => {
   })
 
   it('"tabloda yok" seçimi normalize eşleşmeyi de kapatır; başka ligin seçimi karışmaz', () => {
-    expect(match(['Kuzey Yıldızı U21'], [alias('Kuzey Yıldızı U21', NOT_IN_TABLE)])).toEqual([['Kuzey Yıldızı U21', 'none', null, 'declared-absent']])
+    expect(match(['Kuzey Yıldızı'], [alias('Kuzey Yıldızı', NOT_IN_TABLE)])).toEqual([['Kuzey Yıldızı', 'none', null, 'declared-absent']])
     const other: TeamAlias = { id: aliasId('Başka Lig', 'KY U21'), league: 'Başka Lig', csvTeam: 'KY U21', tableTeam: 'Kuzey Yıldızı FC' }
     expect(match(['KY U21'], [other])).toEqual([['KY U21', 'none', null, 'no-candidate']])
   })
@@ -168,14 +209,17 @@ describe('takım adı eşleştirme', () => {
   })
 
   it('findStanding: tablo, lig ya da güvenli eşleşme yoksa null', () => {
-    expect(findStanding(LEAGUE, 'Kuzey Yıldızı U21', [], [table()], [])?.row).toMatchObject({ rank: 1, played: 5 })
+    expect(findStanding(LEAGUE, 'Kuzey Yıldızı', [], [table()], [])?.row).toMatchObject({ rank: 1, played: 5 })
+    // Yaş eki farklı: kendiliğinden eşleşmez, kayıtlı seçim varsa eşleşir
+    expect(findStanding(LEAGUE, 'Kuzey Yıldızı U21', [], [table()], [])).toBeNull()
+    expect(findStanding(LEAGUE, 'Kuzey Yıldızı U21', [], [table()], [alias('Kuzey Yıldızı U21', 'Kuzey Yıldızı FC')])?.row.rank).toBe(1)
     expect(findStanding(LEAGUE, 'KY U21', [], [table()], [])).toBeNull()
     expect(findStanding(LEAGUE, 'KY U21', [], [table()], [alias('KY U21', 'Kuzey Yıldızı FC')])?.row.rank).toBe(1)
-    expect(findStanding('Başka Lig', 'Kuzey Yıldızı U21', [], [table()], [])).toBeNull()
-    expect(findStanding(undefined, 'Kuzey Yıldızı U21', [], [table()], [])).toBeNull()
-    expect(findStanding(LEAGUE, 'Kuzey Yıldızı U21', [], [], [])).toBeNull()
+    expect(findStanding('Başka Lig', 'Kuzey Yıldızı', [], [table()], [])).toBeNull()
+    expect(findStanding(undefined, 'Kuzey Yıldızı', [], [table()], [])).toBeNull()
+    expect(findStanding(LEAGUE, 'Kuzey Yıldızı', [], [], [])).toBeNull()
     // Aynı ligde aynı ada düşen başka bir CSV takımı biliniyorsa eşleştirilmez
-    expect(findStanding(LEAGUE, 'Kuzey Yıldızı U21', ['Kuzey Yıldızı'], [table()], [])).toBeNull()
+    expect(findStanding(LEAGUE, 'Kuzey Yıldızı', ['Kuzey Yıldızı SC'], [table()], [])).toBeNull()
   })
 })
 
@@ -184,33 +228,33 @@ describe('kartta gösterim ve bayatlık', () => {
   const game = (home: string, away: string, league: string | undefined = LEAGUE): Match => makeMatch({ over25Pct: 90 }, { home, away, league })
 
   it('"Ligde N. sıra · M maç · tablo X gün önce"', () => {
-    const standing = findStanding(LEAGUE, 'Kuzey Yıldızı U21', [], [table()], [])!
+    const standing = findStanding(LEAGUE, 'Kuzey Yıldızı', [], [table()], [])!
     expect(standingInfo(standing, now)).toEqual({ text: 'Ligde 1. sıra · 5 maç · tablo 2 gün önce', rank: 1, played: 5, ageDays: 2, stale: false })
     expect(tableAgeText(0)).toBe('tablo bugün')
-    expect(standingInfo(findStanding(LEAGUE, 'Kuzey Yıldızı U21', [], [table(now.toISOString())], [])!, now).text).toBe('Ligde 1. sıra · 5 maç · tablo bugün')
+    expect(standingInfo(findStanding(LEAGUE, 'Kuzey Yıldızı', [], [table(now.toISOString())], [])!, now).text).toBe('Ligde 1. sıra · 5 maç · tablo bugün')
   })
 
   it('7 günden eski tablo "güncel değil" sayılır; tam 7 gün sayılmaz', () => {
-    const at = (days: number) => standingInfo(findStanding(LEAGUE, 'Kuzey Yıldızı U21', [], [table(new Date(now.getTime() - days * 86_400_000).toISOString())], [])!, now)
+    const at = (days: number) => standingInfo(findStanding(LEAGUE, 'Kuzey Yıldızı', [], [table(new Date(now.getTime() - days * 86_400_000).toISOString())], [])!, now)
     expect(at(7)).toMatchObject({ ageDays: 7, stale: false })
     expect(at(8)).toMatchObject({ ageDays: 8, stale: true, text: 'Ligde 1. sıra · 5 maç · tablo 8 gün önce' })
   })
 
   it('ev ve deplasman ayrı ayrı; eşleşmeyen taraf boş kalır', () => {
-    const match = game('Kuzey Yıldızı U21', 'Bilinmeyen U21')
+    const match = game('Kuzey Yıldızı', 'Bilinmeyen U21')
     const standings = matchStandings(match, [match], [table()], [], now)
     expect(standings.home?.text).toBe('Ligde 1. sıra · 5 maç · tablo 2 gün önce')
     expect(standings.away).toBeNull()
     expect(playedHint(standings)).toBe('Lig tablosuna göre oynanan maç: ev sahibi 5 (tablo 2 gün önce).')
-    const both = game('Kuzey Yıldızı U21', 'Doğu and Batı Birliği U21')
+    const both = game('Kuzey Yıldızı', 'Doğu and Batı Birliği')
     expect(playedHint(matchStandings(both, [both], [table()], [], now))).toBe('Lig tablosuna göre oynanan maç: ev sahibi 5, deplasman 6 (tablo 2 gün önce).')
   })
 
   it('tablo yoksa hiçbir şey gösterilmez', () => {
-    const match = game('Kuzey Yıldızı U21', 'Güney Spor U21')
+    const match = game('Kuzey Yıldızı', 'Güney Spor')
     expect(matchStandings(match, [match], [], [], now)).toEqual({ home: null, away: null })
     expect(playedHint({ home: null, away: null })).toBeNull()
-    const noLeague = game('Kuzey Yıldızı U21', 'Güney Spor U21', undefined)
+    const noLeague = game('Kuzey Yıldızı', 'Güney Spor', undefined)
     expect(matchStandings({ ...noLeague, league: undefined }, [noLeague], [table()], [], now)).toEqual({ home: null, away: null })
   })
 })

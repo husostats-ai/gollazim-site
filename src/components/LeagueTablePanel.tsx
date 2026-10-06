@@ -19,6 +19,7 @@ const REASON_TEXT: Record<NonNullable<TeamMatch['reason']>, string> = {
   ambiguous: 'birden fazla aday var',
   'no-candidate': 'benzer ad bulunamadı',
   'alias-missing': 'seçilen takım bu tabloda yok',
+  'age-mismatch': 'benzer ad var ama yaş grubu eki (U21 vb.) farklı',
 }
 
 /** Lig tablosu yapıştırma: yalnızca kartta gösterilir; analizi, seviyeyi ve yıldızı etkilemez. */
