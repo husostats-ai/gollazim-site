@@ -177,7 +177,7 @@ export default function StatsPage() {
 
           <Card
             title="GÜNLÜK GÖRSEL"
-            note="Seçilen günün 5 ana kategorideki sonuçlarını özetleyen 1080 × 1920 Instagram Story görseli (PNG)."
+            note="Seçilen günün 5 ana kategorideki sonuçlarını özetleyen 1080 × 1920 Instagram Story görseli (PNG). Alttaki Telegram, Instagram ve uyarı metinleri Admin sayfasından düzenlenir."
           >
             <DailyStoryPanel picks={picks} />
           </Card>

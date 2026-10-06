@@ -1,5 +1,6 @@
 import type { AiDecision, AiProvider } from './config/ai'
 import type { CategoryId } from './config/categories'
+import type { StoryTexts } from './config/storyTexts'
 import type { ReliabilityLevel } from './services/analysis/types'
 
 export type StatValue = number | string | null
@@ -116,4 +117,6 @@ export interface BackupFile {
   /** Eski yedeklerde bulunmaz */
   aiVerdicts?: AiVerdict[]
   aiPrompts?: AiPromptBatch[]
+  /** Günlük görselin alt metinleri; eski yedeklerde bulunmaz */
+  storyTexts?: StoryTexts
 }

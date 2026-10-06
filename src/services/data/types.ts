@@ -1,4 +1,5 @@
 import type { AiProvider } from '../../config/ai'
+import type { StoryTexts } from '../../config/storyTexts'
 import type { AiPromptBatch, AiVerdict, BackupFile, Match, MatchResult, Pick, Thresholds, Upload } from '../../types'
 
 // Uygulamanın geri kalanı sadece bu arayüzleri bilir. Supabase'e geçiş:
@@ -53,6 +54,9 @@ export interface AiRepo {
 export interface SettingsRepo {
   getThresholds(): Promise<Thresholds>
   setThresholds(thresholds: Thresholds): Promise<void>
+  /** Günlük görselin alt metinleri; kayıt yoksa varsayılanlar */
+  getStoryTexts(): Promise<StoryTexts>
+  setStoryTexts(texts: StoryTexts): Promise<void>
 }
 
 export interface BackupRepo {

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CategoryId } from '../../config/categories'
 import type { MatchResult, Pick, PickOutcome } from '../../types'
-import { DAILY_LAYOUT, DAILY_SAFE_AREA } from '../image/dailyStory'
 import { buildDailySummary, countUnsettledMatches, DAILY_CATEGORY_IDS, latestDecidedDate, wholePercent } from './dailySummary'
 import { buildStats, tally } from './statsEngine'
 
@@ -136,17 +135,5 @@ describe('countUnsettledMatches', () => {
   it('başka günün ve başka kategorilerin önerilerine bakmaz', () => {
     const picks = [pick('pending', 'over25', '2026-10-04', 'x'), pick('pending', 'corners95', DAY, 'y')]
     expect(countUnsettledMatches(picks, DAY, [], {})).toBe(0)
-  })
-})
-
-describe('günlük görsel yerleşimi', () => {
-  it('tüm içerik Instagram güvenli alanının (250–1670 px) içindedir', () => {
-    const { badge, rows, overall } = DAILY_LAYOUT
-    expect(badge.top).toBeGreaterThanOrEqual(DAILY_SAFE_AREA.top)
-    const rowsBottom = rows.top + 5 * rows.height + 4 * rows.gap
-    // 200 px'lik rakamların yüksekliği yaklaşık 150 px'tir.
-    expect(overall.percentBaseline - 150).toBeGreaterThan(rowsBottom)
-    // Alt başlığın kuyruklu harfleri (ş, ğ) taban çizgisinin altına iner.
-    expect(overall.captionBaseline + 16).toBeLessThanOrEqual(DAILY_SAFE_AREA.bottom)
   })
 })

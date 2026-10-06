@@ -71,3 +71,23 @@ export function fitTeams(home: string, away: string, maxWidth: number, measure: 
 export function pickFontSize(sizes: number[], fits: (size: number) => boolean): number {
   return sizes.find(fits) ?? sizes[sizes.length - 1]
 }
+
+/**
+ * Metni sözcük aralarından satırlara böler; her satır genişliğe sığar. Tek
+ * başına sığmayan bir sözcük kendi satırında kalır (çağıran kırpar ya da küçültür).
+ */
+export function wrapText(text: string, maxWidth: number, measure: Measure): string[] {
+  const lines: string[] = []
+  let line = ''
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const candidate = line ? `${line} ${word}` : word
+    if (line && measure(candidate) > maxWidth) {
+      lines.push(line)
+      line = word
+    } else {
+      line = candidate
+    }
+  }
+  if (line) lines.push(line)
+  return lines
+}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { analyzeDay } from '../../services/analysis/engine'
-import { matchesRepo, resultsRepo } from '../../services/data'
+import { matchesRepo, resultsRepo, settingsRepo } from '../../services/data'
 import { createDailyStoryPng, dailyStoryFileName } from '../../services/image/dailyStory'
 import { STORY } from '../../services/image/storyLayout'
 import {
@@ -58,7 +58,9 @@ export default function DailyStoryPanel({ picks }: { picks: Pick[] }) {
     setBusy(true)
     setError(null)
     try {
-      use(URL.createObjectURL(await createDailyStoryPng(summary, formatPlainDate(date))))
+      // Alt metinler her üretimde ayarlardan okunur; Admin'de yapılan değişiklik hemen yansır.
+      const texts = await settingsRepo.getStoryTexts()
+      use(URL.createObjectURL(await createDailyStoryPng(summary, formatPlainDate(date), texts)))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Görsel oluşturulamadı.')
     } finally {
