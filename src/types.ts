@@ -74,6 +74,13 @@ export interface Pick {
   conflict?: boolean
   /** Dondurma anındaki ikinci hesap (xG / gol modeli) yüzdesi; hesaplanamadıysa null */
   secondPercent?: number | null
+  /**
+   * Dondurma anındaki piyasa yüzdesi (marjsız oran olasılığı); iki yönlü oran yoksa 'none'.
+   * Alan hiç yoksa öneri bu özellikten önce dondurulmuştur ya da kategori kapsam dışıdır.
+   */
+  marketPercent?: number | 'none'
+  /** Dondurma anında hazır yüzde ile piyasa çelişiyor muydu; oran yoksa 'none' */
+  marketConflict?: boolean | 'none'
 }
 
 /** Bir yapay zekânın bir maç için verdiği karar; maç başına her sağlayıcıdan en fazla bir tane */
@@ -119,4 +126,6 @@ export interface BackupFile {
   aiPrompts?: AiPromptBatch[]
   /** Günlük görselin alt metinleri; eski yedeklerde bulunmaz */
   storyTexts?: StoryTexts
+  /** Piyasa çelişkisi sınırı (puan); eski yedeklerde bulunmaz */
+  marketConflictLimit?: number
 }

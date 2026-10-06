@@ -3,6 +3,7 @@ import type { FieldKey } from '../../config/columnAliases'
 import type { Match, Thresholds } from '../../types'
 import { CALCULATORS } from './calculators'
 import { cautiousPercent } from './cautious'
+import { DEFAULT_MARKET_CONFLICT_LIMIT, marketInfo } from './market'
 import { starsFor } from './confidence'
 import { assessReliability, UNMEASURED } from './reliability'
 import type { CategoryAnalysis, Prediction, SortMode } from './types'
@@ -28,6 +29,7 @@ export function analyzeCategory(
   categoryId: CategoryId,
   threshold: number,
   sortMode: SortMode = 'percent',
+  marketConflictLimit: number = DEFAULT_MARKET_CONFLICT_LIMIT,
 ): CategoryAnalysis {
   const calculator = CALCULATORS[categoryId]
   const { starSteps, sampleUnmeasured } = getCategory(categoryId)
@@ -58,6 +60,7 @@ export function analyzeCategory(
       secondLabel: extras.secondLabel ?? 'xG modeli',
       conflict: extras.conflict,
       notes: extras.notes ?? [],
+      market: marketInfo(match, categoryId, result.percent, marketConflictLimit),
     })
   }
 
@@ -77,8 +80,16 @@ export function analyzeCategory(
 export type DayAnalysis = Record<CategoryId, CategoryAnalysis>
 
 /** Bir günün maçlarını tüm kategoriler için analiz eder. */
-export function analyzeDay(matches: Match[], thresholds: Thresholds, sortMode: SortMode = 'percent'): DayAnalysis {
+export function analyzeDay(
+  matches: Match[],
+  thresholds: Thresholds,
+  sortMode: SortMode = 'percent',
+  marketConflictLimit: number = DEFAULT_MARKET_CONFLICT_LIMIT,
+): DayAnalysis {
   return Object.fromEntries(
-    CATEGORIES.map((c) => [c.id, analyzeCategory(matches, c.id, thresholds[c.id] ?? c.defaultThreshold, sortMode)]),
+    CATEGORIES.map((c) => [
+      c.id,
+      analyzeCategory(matches, c.id, thresholds[c.id] ?? c.defaultThreshold, sortMode, marketConflictLimit),
+    ]),
   ) as DayAnalysis
 }

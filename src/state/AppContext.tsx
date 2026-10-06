@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { defaultThresholds, type CategoryId } from '../config/categories'
 import { analyzeDay, type DayAnalysis } from '../services/analysis/engine'
+import { DEFAULT_MARKET_CONFLICT_LIMIT } from '../services/analysis/market'
 import type { SortMode } from '../services/analysis/types'
 import { aiRepo, matchesRepo, picksRepo, resultsRepo, settingsRepo } from '../services/data'
 import type { AiVerdict, Match, MatchResult, Pick, Thresholds } from '../types'
@@ -25,6 +26,9 @@ interface AppState {
   thresholds: Thresholds
   /** Eşikleri kaydeder; analiz hemen yeniden hesaplanır */
   saveThresholds: (thresholds: Thresholds) => Promise<void>
+  /** Hazır yüzde ile piyasa yüzdesi arasındaki fark en az bu kadar puansa "piyasa çelişkisi" */
+  marketConflictLimit: number
+  saveMarketConflictLimit: (limit: number) => Promise<void>
   sortMode: SortMode
   setSortMode: (mode: SortMode) => void
   analysis: DayAnalysis
@@ -61,6 +65,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [picks, setPicks] = useState<Pick[]>([])
   const [aiVerdicts, setAiVerdicts] = useState<AiVerdict[]>([])
   const [thresholds, setThresholds] = useState<Thresholds>(defaultThresholds)
+  const [marketConflictLimit, setMarketConflictLimit] = useState(DEFAULT_MARKET_CONFLICT_LIMIT)
   const [sortMode, setSortModeState] = useState<SortMode>(readSortMode)
   const [version, setVersion] = useState(0)
   const today = todayInAppZone()
@@ -68,7 +73,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false
     void (async () => {
-      const [nextDates, nextThresholds] = await Promise.all([matchesRepo.listDates(), settingsRepo.getThresholds()])
+      const [nextDates, nextThresholds, nextMarketLimit] = await Promise.all([
+        matchesRepo.listDates(),
+        settingsRepo.getThresholds(),
+        settingsRepo.getMarketConflictLimit(),
+      ])
       if (cancelled) return
       const date = selectedDate && nextDates.includes(selectedDate) ? selectedDate : pickDefaultDate(nextDates, today)
       const nextMatches = date ? await matchesRepo.listByDate(date) : []
@@ -80,6 +89,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (cancelled) return
       setDates(nextDates)
       setThresholds(nextThresholds)
+      setMarketConflictLimit(nextMarketLimit)
       setSelectedDate(date)
       setMatches(nextMatches)
       setResults(Object.fromEntries(nextResults.map((r) => [r.matchId, r])))
@@ -99,6 +109,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await settingsRepo.setThresholds(next)
   }, [])
 
+  const saveMarketConflictLimit = useCallback(async (limit: number) => {
+    setMarketConflictLimit(limit)
+    await settingsRepo.setMarketConflictLimit(limit)
+  }, [])
+
   const setSortMode = useCallback((mode: SortMode) => {
     setSortModeState(mode)
     try {
@@ -108,7 +123,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const analysis = useMemo(() => analyzeDay(matches, thresholds, sortMode), [matches, thresholds, sortMode])
+  const analysis = useMemo(
+    () => analyzeDay(matches, thresholds, sortMode, marketConflictLimit),
+    [matches, thresholds, sortMode, marketConflictLimit],
+  )
 
   const pickFor = useCallback(
     (matchId: string, categoryId: CategoryId) => picks.find((p) => p.matchId === matchId && p.categoryId === categoryId),
@@ -128,6 +146,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     aiVerdicts,
     thresholds,
     saveThresholds,
+    marketConflictLimit,
+    saveMarketConflictLimit,
     sortMode,
     setSortMode,
     analysis,

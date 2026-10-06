@@ -3,6 +3,7 @@ import { getCategory } from '../../config/categories'
 import { formatNumber } from '../../utils/format'
 import { RELIABILITY_LABELS } from '../analysis/reliability'
 import { goalModelPercent, MODEL_CONFLICT_LIMIT } from '../analysis/goalModel'
+import { MARKET_CATEGORY_IDS, MARKET_CONFLICT_LABEL, marketPercent } from '../analysis/market'
 import { stat } from '../analysis/stat'
 import type { Prediction } from '../analysis/types'
 import type { AiMatchItem } from './collect'
@@ -32,6 +33,7 @@ function predictionText(p: Prediction): string {
   const secondLabel = p.secondLabel.charAt(0).toLocaleLowerCase('tr') + p.secondLabel.slice(1)
   if (p.secondPercent != null) details.push(`${secondLabel} %${p.secondPercent}`)
   for (const note of p.notes) details.push(note.label)
+  if (p.market?.conflict) details.push(MARKET_CONFLICT_LABEL)
   return `${getCategory(p.categoryId).label} %${p.percent} (${details.join('; ')})`
 }
 
@@ -42,7 +44,19 @@ const GOAL_MODEL_LINES = [
   ['btts', 'KG Var'],
 ] as const
 
-/** Bir maçın veri bloğundaki dört satırı. Numara, cevabın maça bağlanacağı tek anahtardır. */
+/** "Piyasa: 2.5 Üst %67 ; KG Var %60": yalnızca iki yönlü oranı olan kategoriler; hiç oran yoksa null */
+function marketLine(item: AiMatchItem): string | null {
+  const parts = MARKET_CATEGORY_IDS.flatMap((id) => {
+    const percent = marketPercent(item.match, id)
+    return percent === null ? [] : [`${getCategory(id).label} %${percent}`]
+  })
+  return parts.length > 0 ? `Piyasa: ${parts.join(' ; ')}` : null
+}
+
+/**
+ * Bir maçın veri bloğundaki satırlar (oran varsa "Piyasa" satırı eklenir).
+ * Numara, cevabın maça bağlanacağı tek anahtardır.
+ */
 export function matchBlock(item: AiMatchItem, number: number): string {
   const { match } = item
   const odds = [stat(match, 'oddsHome'), stat(match, 'oddsDraw'), stat(match, 'oddsAway')]
@@ -58,11 +72,13 @@ export function matchBlock(item: AiMatchItem, number: number): string {
     const result = goalModelPercent(match, id)
     return `${label} ${result ? `%${result.percent}` : MISSING}`
   })
+  const market = marketLine(item)
   return [
     `#${number} | ${match.time ?? 'saat yok'} | ${match.league ?? 'lig yok'} | ${match.home} - ${match.away}`,
     `Öneriler: ${item.predictions.map(predictionText).join(' ; ')}`,
     `İstatistik: ${stats.join(' ; ')}`,
     `Gol modeli: ${model.join(' ; ')}`,
+    ...(market ? [market] : []),
   ].join('\n')
 }
 
@@ -91,6 +107,7 @@ function chunkText(args: {
     '- Kesinlik iddia etme. Yüzdeler geçmiş maç istatistiklerinden ve oranlardan hesaplanmış olasılık tahminleridir, garanti değildir.',
     '- "veri yok" yazan alanlar için tahmin yürütme.',
     `- "Gol modeli" satırı, maç öncesi xG değerlerinden (yoksa gol ortalamasından) Poisson ile hesaplanan ikinci bir tahmindir. Önerideki hazır yüzde ile model arasında ${MODEL_CONFLICT_LIMIT} puandan fazla fark varsa "Model çelişkisi" yazar; bunu kararında dikkate al.`,
+    '- "Piyasa" satırı, bahis oranlarından marj arındırılarak çıkarılan olasılıktır; yalnızca oranı olan kategoriler yazılır. Öneride "Piyasa çelişkisi" yazıyorsa hazır yüzde ile piyasa arasındaki fark büyüktür; bunu kararında dikkate al.',
     '',
     'GÖREV',
     `Her maç için listelenen önerilerin ne kadar güvenilir olduğunu değerlendir ve tek bir KARAR ver. KARAR şunlardan biri olmalı: ${decisions}.`,

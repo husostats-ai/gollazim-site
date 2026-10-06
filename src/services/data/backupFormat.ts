@@ -14,6 +14,7 @@ export const isBackupFile = (data: unknown): data is BackupFile => {
     typeof d.thresholds === 'object' &&
     d.thresholds !== null &&
     ['aiVerdicts', 'aiPrompts'].every((k) => d[k] === undefined || Array.isArray(d[k])) &&
-    (d.storyTexts === undefined || (typeof d.storyTexts === 'object' && d.storyTexts !== null))
+    (d.storyTexts === undefined || (typeof d.storyTexts === 'object' && d.storyTexts !== null)) &&
+    (d.marketConflictLimit === undefined || typeof d.marketConflictLimit === 'number')
   )
 }

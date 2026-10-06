@@ -22,12 +22,13 @@ export async function saveResult(matchId: string, draft: ScoreDraft, status: Mat
 
   const now = new Date().toISOString()
   const result: MatchResult = { matchId, status, ...parsed.scores, updatedAt: now }
-  const [dayMatches, thresholds, existing] = await Promise.all([
+  const [dayMatches, thresholds, existing, marketConflictLimit] = await Promise.all([
     matchesRepo.listByDate(match.date),
     settingsRepo.getThresholds(),
     picksRepo.listByMatch(matchId),
+    settingsRepo.getMarketConflictLimit(),
   ])
-  const picks = buildPicksForResult({ match, dayMatches, thresholds, result, existing, now })
+  const picks = buildPicksForResult({ match, dayMatches, thresholds, result, existing, now, marketConflictLimit })
 
   await resultsRepo.save(result)
   await picksRepo.replaceForMatch(matchId, picks)

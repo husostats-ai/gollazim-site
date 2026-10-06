@@ -1,4 +1,5 @@
 import { getCategory, supportsCautious } from '../config/categories'
+import { marketNotes } from '../services/analysis/market'
 import type { Prediction, SortMode } from '../services/analysis/types'
 import { useApp } from '../state/AppContext'
 import CautiousBadge from './CautiousBadge'
@@ -16,9 +17,10 @@ interface Props {
 
 /** Ana sayfa özetleri için kısa satır */
 export default function PredictionRow({ prediction, sortMode, showCategory }: Props) {
-  const { match, percent, stars, reliability, cautiousPercent, categoryId, notes } = prediction
+  const { match, percent, stars, reliability, cautiousPercent, categoryId, notes, market } = prediction
   const category = getCategory(categoryId)
-  const pick = useApp().pickFor(match.id, categoryId)
+  const { pickFor, marketConflictLimit } = useApp()
+  const pick = pickFor(match.id, categoryId)
   return (
     <li className="flex items-center justify-between gap-3 py-2.5">
       <div className="min-w-0">
@@ -31,6 +33,7 @@ export default function PredictionRow({ prediction, sortMode, showCategory }: Pr
           {pick && <OutcomeBadge outcome={pick.outcome} />}
           <ReliabilityBadge reliability={reliability} compact />
           <NoteBadges notes={notes.filter((n) => n.kind === 'conflict')} />
+          <NoteBadges notes={marketNotes(percent, market, marketConflictLimit).filter((n) => n.kind === 'market-conflict')} />
           {sortMode === 'cautious' && supportsCautious(category) && <CautiousBadge value={cautiousPercent} />}
         </div>
       </div>

@@ -1,10 +1,11 @@
 import type { CategoryId } from '../../config/categories'
 import type { FieldKey } from '../../config/columnAliases'
 import type { Match } from '../../types'
+import type { MarketInfo } from './market'
 
 /** Kartta rozet olarak gösterilen kısa uyarı */
 export interface PredictionNote {
-  kind: 'conflict' | 'weak-xg' | 'model-drift'
+  kind: 'conflict' | 'weak-xg' | 'model-drift' | 'market-conflict' | 'no-odds'
   label: string
   /** Üzerine gelince görünen açıklama */
   title: string
@@ -74,6 +75,11 @@ export interface Prediction {
   secondLabel: string
   conflict?: boolean
   notes: PredictionNote[]
+  /**
+   * Oranlardan çıkarılan piyasa yüzdesi ve çelişki durumu; yalnızca gösterilir ve
+   * kaydedilir, yüzdeyi/yıldızı/sıralamayı etkilemez. Kapsam dışı kategorilerde yoktur.
+   */
+  market?: MarketInfo
 }
 
 export interface CategoryAnalysis {

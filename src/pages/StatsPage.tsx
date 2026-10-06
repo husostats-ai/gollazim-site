@@ -4,6 +4,7 @@ import PageTitle from '../components/PageTitle'
 import AiStatsCard from '../components/stats/AiStatsCard'
 import DailyStoryPanel from '../components/stats/DailyStoryPanel'
 import GoalModelStatsCard from '../components/stats/GoalModelStatsCard'
+import MarketStatsCard from '../components/stats/MarketStatsCard'
 import LowSampleBadge from '../components/stats/LowSampleBadge'
 import RateBars from '../components/stats/RateBars'
 import SideGoalsStatsCard from '../components/stats/SideGoalsStatsCard'
@@ -12,10 +13,12 @@ import TrendChart from '../components/stats/TrendChart'
 import { getCategory, GROUPS } from '../config/categories'
 import { RELIABILITY_LABELS } from '../services/analysis/reliability'
 import { buildAiStats } from '../services/ai/aiStats'
-import { aiRepo, picksRepo } from '../services/data'
+import { hasMarket } from '../services/analysis/market'
+import { aiRepo, matchesRepo, picksRepo } from '../services/data'
+import { backfillMarket, buildMarketStats } from '../services/stats/marketStats'
 import { buildStats, LOW_SAMPLE_LIMIT, type Bucket } from '../services/stats/statsEngine'
 import { useApp } from '../state/AppContext'
-import type { AiVerdict, Pick } from '../types'
+import type { AiVerdict, Match, Pick } from '../types'
 import { formatDateChip, formatDay, formatMonth, formatRate, formatWeek } from '../utils/format'
 
 type Period = 'daily' | 'weekly' | 'monthly'
@@ -59,18 +62,28 @@ function TableToggle({ children }: { children: ReactNode }) {
 }
 
 export default function StatsPage() {
-  const { dataVersion, today } = useApp()
+  const { dataVersion, today, marketConflictLimit } = useApp()
   const [picks, setPicks] = useState<Pick[] | null>(null)
   const [verdicts, setVerdicts] = useState<AiVerdict[]>([])
+  /** Piyasa bilgisi kaydedilmeden dondurulmuş önerilerin maç kayıtları (oranlar için) */
+  const [legacyMatches, setLegacyMatches] = useState<Match[]>([])
   const [period, setPeriod] = useState<Period>('daily')
 
   useEffect(() => {
-    void picksRepo.listAll().then(setPicks)
+    void picksRepo.listAll().then(async (all) => {
+      const ids = all.filter((p) => hasMarket(p.categoryId) && p.marketPercent === undefined).map((p) => p.matchId)
+      setLegacyMatches(await matchesRepo.getMany([...new Set(ids)]))
+      setPicks(all)
+    })
     void aiRepo.listVerdicts().then(setVerdicts)
   }, [dataVersion])
 
   const stats = useMemo(() => buildStats(picks ?? []), [picks])
   const aiStats = useMemo(() => buildAiStats(picks ?? [], verdicts), [picks, verdicts])
+  const marketStats = useMemo(
+    () => buildMarketStats(backfillMarket(picks ?? [], legacyMatches, marketConflictLimit)),
+    [picks, legacyMatches, marketConflictLimit],
+  )
   if (picks === null) return <PageTitle title="İSTATİSTİK" />
 
   const { overall } = stats
@@ -154,6 +167,15 @@ export default function StatsPage() {
               note="2.5 Üst, 3.5 Üst, 4.5 Üst ve KG Var önerilerinden, model yüzdesi dondurulmuş olanlar."
             >
               <GoalModelStatsCard stats={stats.goalModel} />
+            </Card>
+          )}
+
+          {marketStats && (
+            <Card
+              title="PİYASA: ÇELİŞKİ VE KALİBRASYON"
+              note="2.5 / 3.5 / 4.5 Üst, KG Var, İlk Yarı 0.5 / 1.5 Üst, 2. Yarı 0.5 Üst ve Korner önerileri. Piyasa yüzdesi: CSV'deki iki yönlü oranın marjdan arındırılmış olasılığı."
+            >
+              <MarketStatsCard stats={marketStats} limit={marketConflictLimit} />
             </Card>
           )}
 

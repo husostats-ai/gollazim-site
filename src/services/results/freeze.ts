@@ -1,6 +1,7 @@
 import { CATEGORIES } from '../../config/categories'
 import type { Match, MatchResult, Pick, Thresholds } from '../../types'
 import { analyzeDay } from '../analysis/engine'
+import type { MarketInfo } from '../analysis/market'
 import { evaluatePick } from './evaluator'
 
 interface FreezeInput {
@@ -12,7 +13,17 @@ interface FreezeInput {
   /** Bu maç için daha önce dondurulmuş öneriler */
   existing: Pick[]
   now: string
+  /** Piyasa çelişkisi sınırı (puan); verilmezse varsayılan */
+  marketConflictLimit?: number
 }
+
+/** Öneriye yazılan piyasa alanları; oran yoksa null ya da 0 değil, açıkça 'none' */
+export const frozenMarket = (market: MarketInfo): PickSubset<'marketPercent' | 'marketConflict'> =>
+  market.percent === null
+    ? { marketPercent: 'none', marketConflict: 'none' }
+    : { marketPercent: market.percent, marketConflict: market.conflict }
+
+type PickSubset<K extends keyof Pick> = { [P in K]: NonNullable<Pick[P]> }
 
 /**
  * Skor kaydedilirken maçın önerilerini belirler.
@@ -22,13 +33,21 @@ interface FreezeInput {
  *   eşiği geçen ilk 15 içinde) göründüğü kategoriler o anki yüzde ve eşikle dondurulur.
  * - Henüz tamamlanmadıysa ve dondurulmuş öneri yoksa hiçbir şey dondurulmaz.
  */
-export function buildPicksForResult({ match, dayMatches, thresholds, result, existing, now }: FreezeInput): Pick[] {
+export function buildPicksForResult({
+  match,
+  dayMatches,
+  thresholds,
+  result,
+  existing,
+  now,
+  marketConflictLimit,
+}: FreezeInput): Pick[] {
   if (existing.length > 0) {
     return existing.map((pick) => ({ ...pick, outcome: evaluatePick(pick.categoryId, result) }))
   }
   if (result.status !== 'completed') return []
 
-  const analysis = analyzeDay(dayMatches, thresholds, 'percent')
+  const analysis = analyzeDay(dayMatches, thresholds, 'percent', marketConflictLimit)
   const picks: Pick[] = []
   for (const category of CATEGORIES) {
     const { predictions, threshold } = analysis[category.id]
@@ -46,6 +65,7 @@ export function buildPicksForResult({ match, dayMatches, thresholds, result, exi
       reliability: prediction.reliability.level,
       ...(prediction.conflict !== undefined && { conflict: prediction.conflict }),
       ...(prediction.secondPercent !== undefined && { secondPercent: prediction.secondPercent }),
+      ...(prediction.market && frozenMarket(prediction.market)),
     })
   }
   return picks

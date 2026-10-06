@@ -4,7 +4,8 @@ import { settingsRepo } from './settingsRepo'
 
 export const backupRepo: BackupRepo = {
   async exportAll() {
-    const [uploads, matches, results, picks, thresholds, aiVerdicts, aiPrompts, storyTexts] = await Promise.all([
+    const [uploads, matches, results, picks, thresholds, aiVerdicts, aiPrompts, storyTexts, marketConflictLimit] =
+      await Promise.all([
       db.uploads.toArray(),
       db.matches.toArray(),
       db.results.toArray(),
@@ -13,6 +14,7 @@ export const backupRepo: BackupRepo = {
       db.aiVerdicts.toArray(),
       db.aiPrompts.toArray(),
       settingsRepo.getStoryTexts(),
+      settingsRepo.getMarketConflictLimit(),
     ])
     return {
       app: 'gollazim',
@@ -26,6 +28,7 @@ export const backupRepo: BackupRepo = {
       aiVerdicts,
       aiPrompts,
       storyTexts,
+      marketConflictLimit,
     }
   },
 
@@ -48,6 +51,7 @@ export const backupRepo: BackupRepo = {
       await settingsRepo.setThresholds(backup.thresholds)
       // Eski yedeklerde görsel metinleri yoktur; o zaman varsayılanlara dönülür.
       if (backup.storyTexts) await settingsRepo.setStoryTexts(backup.storyTexts)
+      if (backup.marketConflictLimit !== undefined) await settingsRepo.setMarketConflictLimit(backup.marketConflictLimit)
       // Yapay zekâ kayıtları olmayan eski yedekler de geçerlidir.
       await db.aiVerdicts.bulkPut(backup.aiVerdicts ?? [])
       await db.aiPrompts.bulkPut(backup.aiPrompts ?? [])

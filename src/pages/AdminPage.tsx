@@ -1,4 +1,5 @@
 import BackupPanel from '../components/BackupPanel'
+import MarketLimitPanel from '../components/MarketLimitPanel'
 import MatchEditPanel from '../components/MatchEditPanel'
 import PageTitle from '../components/PageTitle'
 import StoryPanel from '../components/StoryPanel'
@@ -13,6 +14,7 @@ export default function AdminPage() {
       <div className="grid grid-cols-1 gap-4">
         <UploadPanel />
         <ThresholdPanel />
+        <MarketLimitPanel />
         <MatchEditPanel />
         <StoryPanel />
         <StoryTextsPanel />

@@ -57,6 +57,9 @@ export interface SettingsRepo {
   /** Günlük görselin alt metinleri; kayıt yoksa varsayılanlar */
   getStoryTexts(): Promise<StoryTexts>
   setStoryTexts(texts: StoryTexts): Promise<void>
+  /** Piyasa çelişkisi sınırı (puan); kayıt yoksa varsayılan */
+  getMarketConflictLimit(): Promise<number>
+  setMarketConflictLimit(limit: number): Promise<void>
 }
 
 export interface BackupRepo {

@@ -1,4 +1,5 @@
 import { getCategory, supportsCautious } from '../config/categories'
+import { marketNotes } from '../services/analysis/market'
 import { statSummary } from '../services/analysis/summary'
 import type { Prediction, SortMode } from '../services/analysis/types'
 import { useApp } from '../state/AppContext'
@@ -17,11 +18,11 @@ interface Props {
 }
 
 export default function MatchCard({ prediction, rank, sortMode }: Props) {
-  const { match, percent, stars, reliability, cautiousPercent, basis, categoryId, secondPercent, secondLabel, notes } =
+  const { match, percent, stars, reliability, cautiousPercent, basis, categoryId, secondPercent, secondLabel, notes, market } =
     prediction
   const category = getCategory(categoryId)
   const summary = statSummary(match, categoryId)
-  const { pickFor, results } = useApp()
+  const { pickFor, results, marketConflictLimit } = useApp()
   const pick = pickFor(match.id, categoryId)
   const score = formatScore(results[match.id])
 
@@ -49,6 +50,11 @@ export default function MatchCard({ prediction, rank, sortMode }: Props) {
               {secondLabel} <span className="font-bold text-white">%{secondPercent}</span>
             </p>
           )}
+          {market && market.percent !== null && (
+            <p className="mt-1 text-xs text-muted" data-testid="market-percent">
+              Piyasa <span className="font-bold text-white">%{market.percent}</span>
+            </p>
+          )}
           <Stars count={stars} className="mt-1.5 block text-sm" />
         </div>
       </div>
@@ -58,6 +64,7 @@ export default function MatchCard({ prediction, rank, sortMode }: Props) {
         {score && <span className="self-center text-xs font-bold">{score}</span>}
         <ReliabilityBadge reliability={reliability} />
         <NoteBadges notes={notes} />
+        <NoteBadges notes={marketNotes(percent, market, marketConflictLimit)} />
         {sortMode === 'cautious' && supportsCautious(category) && <CautiousBadge value={cautiousPercent} />}
       </div>
 
