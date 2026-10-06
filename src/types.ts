@@ -173,6 +173,37 @@ export interface SharedPick {
   removedAt?: string
 }
 
+/** Yapıştırılan lig tablosundan saklanan satır (yalnızca gösterim içindir) */
+export interface LeagueTableRow {
+  team: string
+  rank: number
+  /** Oynanan maç (MP) */
+  played: number
+  points: number
+  /** Tabloda yazan maç başı puan; okunamadıysa null */
+  ppg: number | null
+}
+
+/** Bir ligin en son yapıştırılan tablosu; aynı lig yeniden yapıştırılınca üzerine yazılır */
+export interface LeagueTable {
+  /** league ile aynı */
+  id: string
+  /** Maç kaydındaki lig adı ("England · Professional Development League") */
+  league: string
+  /** Yapıştırma anı (ISO) */
+  pastedAt: string
+  rows: LeagueTableRow[]
+}
+
+/** Kullanıcının "bu takım hangisi?" seçimi: CSV'deki ad -> tablodaki ad ('' = tabloda yok) */
+export interface TeamAlias {
+  /** league + csvTeam */
+  id: string
+  league: string
+  csvTeam: string
+  tableTeam: string
+}
+
 export type Thresholds = Record<CategoryId, number>
 
 export interface BackupFile {
@@ -195,4 +226,7 @@ export interface BackupFile {
   storySelections?: StorySelection[]
   /** Paylaşılan öneriler kaydı (çıkarılmış olanlar dahil); eski yedeklerde bulunmaz */
   sharedPicks?: SharedPick[]
+  /** Yapıştırılan lig tabloları ve takım adı eşleştirmeleri; eski yedeklerde bulunmaz */
+  leagueTables?: LeagueTable[]
+  teamAliases?: TeamAlias[]
 }

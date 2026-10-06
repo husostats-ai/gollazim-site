@@ -102,7 +102,7 @@ describe('yedek zamanı yedek dosyasına girmez', () => {
     const file = assembleBackup(smuggled, NOW)
     expect(isBackupFile(file)).toBe(true)
     expect(Object.keys(file).sort()).toEqual(
-      ['aiPrompts', 'aiVerdicts', 'app', 'exportedAt', 'marketConflictLimit', 'matches', 'picks', 'results', 'sharedPicks', 'storySelections', 'storyTexts', 'thresholds', 'uploads', 'version'].sort(),
+      ['aiPrompts', 'aiVerdicts', 'app', 'exportedAt', 'leagueTables', 'marketConflictLimit', 'matches', 'picks', 'results', 'sharedPicks', 'storySelections', 'storyTexts', 'teamAliases', 'thresholds', 'uploads', 'version'].sort(),
     )
     expect(JSON.stringify(file)).not.toContain('lastBackupAt')
     expect(file.exportedAt).toBe(NOW.toISOString())
@@ -112,7 +112,7 @@ describe('yedek zamanı yedek dosyasına girmez', () => {
     const file = JSON.parse(JSON.stringify({ ...assembleBackup(content, NOW), lastBackupAt: '2020-01-01T00:00:00.000Z' })) as BackupFile
     expect(isBackupFile(file)).toBe(true)
     // BackupFile tipinde bu alan yoktur; içe aktarma yalnızca tipteki alanları yazar.
-    const known: (keyof BackupFile)[] = ['app', 'version', 'exportedAt', 'uploads', 'matches', 'results', 'picks', 'thresholds', 'aiVerdicts', 'aiPrompts', 'storyTexts', 'marketConflictLimit', 'storySelections', 'sharedPicks']
+    const known: (keyof BackupFile)[] = ['app', 'version', 'exportedAt', 'uploads', 'matches', 'results', 'picks', 'thresholds', 'aiVerdicts', 'aiPrompts', 'storyTexts', 'marketConflictLimit', 'storySelections', 'sharedPicks', 'leagueTables', 'teamAliases']
     expect(known).not.toContain('lastBackupAt')
   })
 })

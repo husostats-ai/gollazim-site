@@ -1,5 +1,6 @@
 import BackupPanel from '../components/BackupPanel'
 import BackupReminder from '../components/BackupReminder'
+import LeagueTablePanel from '../components/LeagueTablePanel'
 import MarketLimitPanel from '../components/MarketLimitPanel'
 import MatchEditPanel from '../components/MatchEditPanel'
 import PageTitle from '../components/PageTitle'
@@ -20,6 +21,7 @@ export default function AdminPage() {
         <ThresholdPanel />
         <MarketLimitPanel />
         <MatchEditPanel />
+        <LeagueTablePanel />
         <StoryPanel />
         <StoryTextsPanel />
         <BackupPanel />

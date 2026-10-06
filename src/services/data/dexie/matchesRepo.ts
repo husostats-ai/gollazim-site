@@ -19,6 +19,17 @@ export const matchesRepo: MatchesRepo = {
 
   countByUpload: (uploadId) => db.matches.where('uploadId').equals(uploadId).count(),
 
+  async listTeamsByLeague() {
+    const teams = new Map<string, Set<string>>()
+    await db.matches.each((m) => {
+      if (!m.league) return
+      const set = teams.get(m.league) ?? new Set<string>()
+      set.add(m.home).add(m.away)
+      teams.set(m.league, set)
+    })
+    return Object.fromEntries([...teams].sort(([a], [b]) => a.localeCompare(b, 'tr')).map(([league, set]) => [league, [...set].sort((a, b) => a.localeCompare(b, 'tr'))]))
+  },
+
   async upsertMany(matches) {
     await db.matches.bulkPut(matches)
   },

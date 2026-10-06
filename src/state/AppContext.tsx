@@ -3,10 +3,10 @@ import { defaultThresholds, type CategoryId } from '../config/categories'
 import { analyzeDay, type DayAnalysis } from '../services/analysis/engine'
 import { DEFAULT_MARKET_CONFLICT_LIMIT } from '../services/analysis/market'
 import type { SortMode } from '../services/analysis/types'
-import { aiRepo, matchesRepo, picksRepo, resultsRepo, settingsRepo, sharedRepo, storySelectionsRepo } from '../services/data'
+import { leagueRepo, aiRepo, matchesRepo, picksRepo, resultsRepo, settingsRepo, sharedRepo, storySelectionsRepo } from '../services/data'
 import { findActiveShared, recordShare } from '../services/story/shared'
 import { selectionsForDate, type DaySelections } from '../services/story/selection'
-import type { AiVerdict, Match, MatchResult, Pick, SharedPick, Thresholds } from '../types'
+import type { AiVerdict, LeagueTable, Match, MatchResult, Pick, SharedPick, TeamAlias, Thresholds } from '../types'
 import { todayInAppZone } from '../utils/date'
 
 interface AppState {
@@ -40,6 +40,9 @@ interface AppState {
   recordShared: (categoryId: CategoryId, shared: Match[]) => Promise<SharedPick[]>
   /** Geçerli kaydı "çıkarıldı" olarak işaretler */
   removeShared: (categoryId: CategoryId, matchId: string) => Promise<void>
+  /** Yapıştırılan lig tabloları ve takım adı eşleştirmeleri; yalnızca kartta gösterim içindir */
+  leagueTables: LeagueTable[]
+  teamAliases: TeamAlias[]
   sortMode: SortMode
   setSortMode: (mode: SortMode) => void
   analysis: DayAnalysis
@@ -77,6 +80,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [aiVerdicts, setAiVerdicts] = useState<AiVerdict[]>([])
   const [storySelections, setStorySelections] = useState<DaySelections>({})
   const [sharedPicks, setSharedPicks] = useState<SharedPick[]>([])
+  const [leagueTables, setLeagueTables] = useState<LeagueTable[]>([])
+  const [teamAliases, setTeamAliases] = useState<TeamAlias[]>([])
   // Seçim yazmaları sırayla yapılır ki art arda işaretlemelerde son durum kalsın.
   const selectionWrites = useRef<Promise<void>>(Promise.resolve())
   const [thresholds, setThresholds] = useState<Thresholds>(defaultThresholds)
@@ -88,10 +93,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false
     void (async () => {
-      const [nextDates, nextThresholds, nextMarketLimit] = await Promise.all([
+      const [nextDates, nextThresholds, nextMarketLimit, nextTables, nextAliases] = await Promise.all([
         matchesRepo.listDates(),
         settingsRepo.getThresholds(),
         settingsRepo.getMarketConflictLimit(),
+        leagueRepo.listTables(),
+        leagueRepo.listAliases(),
       ])
       if (cancelled) return
       const date = selectedDate && nextDates.includes(selectedDate) ? selectedDate : pickDefaultDate(nextDates, today)
@@ -107,6 +114,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setDates(nextDates)
       setThresholds(nextThresholds)
       setMarketConflictLimit(nextMarketLimit)
+      setLeagueTables(nextTables)
+      setTeamAliases(nextAliases)
       setSelectedDate(date)
       setMatches(nextMatches)
       setResults(Object.fromEntries(nextResults.map((r) => [r.matchId, r])))
@@ -206,6 +215,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveMarketConflictLimit,
     storySelections,
     setStorySelection,
+    leagueTables,
+    teamAliases,
     sharedPicks,
     recordShared,
     removeShared,

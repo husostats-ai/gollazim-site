@@ -1,6 +1,7 @@
 import { getCategory, supportsCautious } from '../config/categories'
 import { marketNotes } from '../services/analysis/market'
 import { statSummary } from '../services/analysis/summary'
+import { matchStandings, playedHint } from '../services/league/standing'
 import type { Prediction, SortMode } from '../services/analysis/types'
 import { useApp } from '../state/AppContext'
 import type { SharedPick } from '../types'
@@ -29,7 +30,9 @@ export default function MatchCard({ prediction, rank, sortMode, storySelection, 
     prediction
   const category = getCategory(categoryId)
   const summary = statSummary(match, categoryId)
-  const { pickFor, results, marketConflictLimit } = useApp()
+  const { pickFor, results, marketConflictLimit, matches, leagueTables, teamAliases } = useApp()
+  // Lig tablosu yalnızca gösterilir; tablo yoksa kartta hiçbir şey değişmez.
+  const standings = matchStandings(match, matches, leagueTables, teamAliases, new Date())
   const pick = pickFor(match.id, categoryId)
   const score = formatScore(results[match.id])
 
@@ -82,11 +85,25 @@ export default function MatchCard({ prediction, rank, sortMode, storySelection, 
       <div className="flex flex-wrap gap-1.5">
         {pick && <OutcomeBadge outcome={pick.outcome} />}
         {score && <span className="self-center text-xs font-bold">{score}</span>}
-        <ReliabilityBadge reliability={reliability} />
+        <ReliabilityBadge reliability={reliability} hint={playedHint(standings)} />
         <NoteBadges notes={notes} />
         <NoteBadges notes={marketNotes(percent, market, marketConflictLimit)} />
         {sortMode === 'cautious' && supportsCautious(category) && <CautiousBadge value={cautiousPercent} />}
       </div>
+
+      {(standings.home || standings.away) && (
+        <div className="text-xs text-muted" data-testid="league-standing">
+          {([['Ev', standings.home], ['Dep', standings.away]] as const).map(
+            ([side, info]) =>
+              info && (
+                <p key={side} className="break-words">
+                  <span className="font-semibold text-white">{side}:</span> {info.text}
+                  {info.stale && <span className="font-bold text-warn"> · ⚠ güncel değil</span>}
+                </p>
+              ),
+          )}
+        </div>
+      )}
 
       {shared && <SharedBadge record={shared.record} onRemove={shared.onRemove} />}
 

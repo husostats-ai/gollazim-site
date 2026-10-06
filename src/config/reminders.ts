@@ -8,3 +8,6 @@ export const BACKUP_WARN_DAYS = 3
 
 /** Son yedekten bu kadar gün geçince belirgin uyarı çıkar */
 export const BACKUP_ALERT_DAYS = 7
+
+/** Yapıştırılan lig tablosu bu kadar günden eskiyse kartta "güncel değil" uyarısı çıkar */
+export const LEAGUE_TABLE_STALE_DAYS = 7

@@ -5,11 +5,13 @@ import type {
   AiPromptBatch,
   AiVerdict,
   BackupFile,
+  LeagueTable,
   Match,
   MatchResult,
   Pick,
   SharedPick,
   StorySelection,
+  TeamAlias,
   Thresholds,
   Upload,
 } from '../../types'
@@ -32,6 +34,8 @@ export interface MatchesRepo {
   /** Verilen kimliklerden kayıtlı olan maçlar */
   getMany(ids: string[]): Promise<Match[]>
   countByUpload(uploadId: string): Promise<number>
+  /** Lig adı -> o ligde CSV'de geçen takım adları (alfabetik) */
+  listTeamsByLeague(): Promise<Record<string, string[]>>
   upsertMany(matches: Match[]): Promise<void>
   update(id: string, patch: Partial<Omit<Match, 'id'>>): Promise<void>
   /** Maçı, skorunu, önerilerini ve yapay zekâ kararlarını siler */
@@ -69,6 +73,15 @@ export interface StorySelectionsRepo {
   listByDate(date: string): Promise<StorySelection[]>
   /** Gün + kategorinin seçimini verilen listeyle değiştirir; boş liste kaydı siler */
   set(date: string, categoryId: CategoryId, matchIds: string[]): Promise<void>
+}
+
+export interface LeagueRepo {
+  listTables(): Promise<LeagueTable[]>
+  /** Ligin tablosunu kaydeder; aynı lig için eski tablo varsa üzerine yazar */
+  saveTable(table: LeagueTable): Promise<void>
+  listAliases(): Promise<TeamAlias[]>
+  saveAliases(aliases: TeamAlias[]): Promise<void>
+  removeAlias(id: string): Promise<void>
 }
 
 export interface SharedRepo {
