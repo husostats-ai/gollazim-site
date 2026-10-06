@@ -26,7 +26,11 @@ export async function uploadCsvFile(file: File): Promise<UploadSummary> {
 
   const existing = await matchesRepo.getMany(matches.map((m) => m.id))
   const editedIds = new Set(existing.filter((m) => m.edited).map((m) => m.id))
-  await matchesRepo.upsertMany(matches.filter((m) => !editedIds.has(m.id)))
+  // CSV yeniden yüklense de maçın kayıtlı skor anlık görüntüsü korunur.
+  const snapshots = new Map(existing.filter((m) => m.scoreSnapshot).map((m) => [m.id, m.scoreSnapshot!]))
+  await matchesRepo.upsertMany(
+    matches.filter((m) => !editedIds.has(m.id)).map((m) => (snapshots.has(m.id) ? { ...m, scoreSnapshot: snapshots.get(m.id) } : m)),
+  )
   await Promise.all([...editedIds].map((id) => matchesRepo.update(id, { uploadId })))
   const upload: Upload = {
     id: uploadId,

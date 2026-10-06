@@ -325,7 +325,7 @@ describe('ayrıntılı maç tablosu (CSV)', () => {
     const rows = buildDetailRows(input())
     const col = (name: (typeof DETAIL_CSV_COLUMNS)[number]) => DETAIL_CSV_COLUMNS.indexOf(name)
     const first = rows.find((r) => r[col('ev_sahibi')] === 'Ev 0')!
-    expect(first).toEqual(['2026-10-09', '2.5 ÜST', 'Ev 0', 'Dep 0', 'England · EFL Trophy', '90', '60', '62', '3', 'Düşük', 'Güçlü', 'Güçlü', 'evet', 'tuttu'])
+    expect(first).toEqual(['2026-10-09', '2.5 ÜST', 'Ev 0', 'Dep 0', 'England · EFL Trophy', '90', '60', '62', '3', 'Düşük', 'Güçlü', 'Güçlü', 'evet', 'tuttu', '', '', '', ''])
     const side = rows.find((r) => r[col('kategori')] === 'EV KAZANIR & 1.5 ÜST')!
     expect(side[col('yildiz')]).toBe('')
     expect(side[col('piyasa_yuzde')]).toBe('')

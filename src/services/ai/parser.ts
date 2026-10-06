@@ -1,4 +1,5 @@
 import { AI_DECISIONS, type AiDecision } from '../../config/ai'
+import type { ScoreLine } from '../../types'
 
 export interface ParsedVerdict {
   number: number
@@ -6,6 +7,8 @@ export interface ParsedVerdict {
   decision: AiDecision
   reason: string
   risk: string
+  /** İsteğe bağlı skor tahmini; cevapta yoksa alan da yoktur */
+  score?: ScoreLine
 }
 
 export interface ParseError {
@@ -43,6 +46,17 @@ const clean = (line: string): string =>
     .replace(/^\|/, '')
     .replace(/\|$/, '')
     .trim()
+
+/** En fazla iki haneli gol sayıları: "2-1", "2:1", "2 - 1", "2–1", "SKOR: 2-1", "Skor tahmini 2-1" */
+const SCORE_PATTERN = /^(?:skor(?:\s+tahmini)?\s*[:=]?\s*)?(\d{1,2})\s*[-:–—]\s*(\d{1,2})$/
+/** Skor alanının bilerek boş bırakıldığını gösteren yazımlar */
+const NO_SCORE_PATTERN = /^(?:skor(?:\s+tahmini)?\s*[:=]?\s*)?(?:|-|–|—|yok|bilinmiyor|belirsiz|n\/a)$/
+
+/** Alan bir skor tahminiyse skoru verir; değilse null */
+export function parseScore(field: string): ScoreLine | null {
+  const found = SCORE_PATTERN.exec(normalize(field))
+  return found ? { home: Number(found[1]), away: Number(found[2]) } : null
+}
 
 type LineResult =
   | { kind: 'verdict'; verdict: ParsedVerdict }
@@ -82,12 +96,21 @@ export function parseLine(raw: string, numbers: ReadonlyMap<number, string>): Li
       message: `KARAR tanınmadı: “${fields[1]}”. Beklenen: ${AI_DECISIONS.map((d) => d.label).join(', ')}.`,
     }
   }
+  // İsteğe bağlı beşinci alan skor tahminidir. Yalnızca 5 ve üzeri alan varsa ve son alan
+  // skora (ya da "skor yok" yazımına) benziyorsa ayrılır; 4 alanlı eski cevaplar aynen okunur.
+  let body = fields
+  let score: ScoreLine | null = null
+  if (fields.length >= 5) {
+    const last = fields[fields.length - 1]
+    score = parseScore(last)
+    if (score || NO_SCORE_PATTERN.test(normalize(last))) body = fields.slice(0, -1)
+  }
   // İlk alan numara, ikinci karar, sonuncu risktir; aradaki her şey gerekçedir.
   // Böylece gerekçenin içinde geçen fazladan "|" karakteri satırı bozmaz.
-  const reason = fields.slice(2, -1).join(' | ').trim()
-  if (fields.slice(2, -1).every((f) => f === '')) return { kind: 'error', message: 'Gerekçe boş.' }
-  const risk = fields[fields.length - 1]
-  return { kind: 'verdict', verdict: { number, matchId, decision, reason, risk } }
+  const reason = body.slice(2, -1).join(' | ').trim()
+  if (body.slice(2, -1).every((f) => f === '')) return { kind: 'error', message: 'Gerekçe boş.' }
+  const risk = body[body.length - 1]
+  return { kind: 'verdict', verdict: { number, matchId, decision, reason, risk, ...(score && { score }) } }
 }
 
 /** Yapıştırılan cevabın tamamını çözer. Aynı numara iki kez gelirse ikincisi hata sayılır. */

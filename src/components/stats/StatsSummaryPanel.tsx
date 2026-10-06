@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react'
 import { buildDetailCsv, buildStatsSummary, detailFileName, SCOPE_OPTIONS, summaryFileName, type SummaryScope } from '../../services/stats/statsSummary'
 import { useApp } from '../../state/AppContext'
-import type { AiVerdict, Match, Pick, SharedPick } from '../../types'
+import type { AiVerdict, Match, MatchResult, Pick, SharedPick } from '../../types'
 import { copyText } from '../../utils/clipboard'
 import { shiftDate } from '../../utils/format'
 
 interface Props {
   picks: Pick[]
   matches: Match[]
+  results: MatchResult[]
   verdicts: AiVerdict[]
   shared: SharedPick[]
 }
@@ -25,7 +26,7 @@ function saveFile(name: string, text: string, type: string) {
 }
 
 /** İstatistiklerin analiz için düz metin özeti ve ayrıntılı CSV. Hiçbir kaydı değiştirmez. */
-export default function StatsSummaryPanel({ picks, matches, verdicts, shared }: Props) {
+export default function StatsSummaryPanel({ picks, matches, results, verdicts, shared }: Props) {
   const { today, thresholds, marketConflictLimit } = useApp()
   const [kind, setKind] = useState<SummaryScope['kind']>('all')
   const [from, setFrom] = useState(() => shiftDate(today, -6))
@@ -35,8 +36,8 @@ export default function StatsSummaryPanel({ picks, matches, verdicts, shared }: 
 
   const scope: SummaryScope = useMemo(() => (kind === 'range' ? { kind, from, to } : { kind }), [kind, from, to])
   const base = useMemo(
-    () => ({ today, scope, picks, matches, verdicts, shared, marketConflictLimit }),
-    [today, scope, picks, matches, verdicts, shared, marketConflictLimit],
+    () => ({ today, scope, picks, matches, results, verdicts, shared, marketConflictLimit }),
+    [today, scope, picks, matches, results, verdicts, shared, marketConflictLimit],
   )
   // Oluşturulma saati önizlemede sabit kalsın diye özet, girdiler değişince yeniden üretilir.
   const text = useMemo(() => buildStatsSummary({ ...base, now: new Date(), includeGuide, thresholds }), [base, includeGuide, thresholds])

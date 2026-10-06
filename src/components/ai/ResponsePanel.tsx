@@ -2,7 +2,11 @@ import { useState } from 'react'
 import { decisionLabel, type AiProvider } from '../../config/ai'
 import { parseAiResponse, parseLine, type ParsedVerdict, type ParseError } from '../../services/ai/parser'
 import { aiRepo } from '../../services/data'
+import { isAfterKickoff } from '../../services/story/shared'
 import type { AiVerdict, Match } from '../../types'
+
+/** Maç kaydı yoksa başlama saati bilinemez; tahmin güvenli tarafta kalıp ölçüm dışı sayılır */
+const lateFor = (match: Match | undefined, savedAt: string): boolean => (match ? isAfterKickoff(match, savedAt) : true)
 
 interface Props {
   date: string
@@ -71,6 +75,8 @@ export default function ResponsePanel({ date, provider, providerLabel, numbers, 
       reason: v.reason,
       risk: v.risk,
       savedAt,
+      // Skor tahmini, kaydedildiği anla saklanır; maç başladıktan sonra kaydedilen tahmin ölçüme girmez.
+      ...(v.score && { score: v.score, scoreLate: lateFor(matchesById.get(v.matchId), savedAt) }),
     }))
     await aiRepo.saveVerdicts(verdicts)
     await onSaved()
@@ -87,7 +93,7 @@ export default function ResponsePanel({ date, provider, providerLabel, numbers, 
         value={text}
         onChange={(e) => setText(e.target.value)}
         rows={7}
-        placeholder={'#1 | Güçlü | gerekçe | risk\n#2 | Orta | gerekçe | risk'}
+        placeholder={'#1 | Güçlü | gerekçe | risk | SKOR: 2-1\n#2 | Orta | gerekçe | risk'}
         data-testid="ai-response"
         aria-label={`${providerLabel} cevabı`}
         className="w-full rounded-lg border border-navy-500 bg-navy-800 p-2.5 font-mono text-xs leading-relaxed outline-none focus:border-brand"
@@ -169,6 +175,11 @@ export default function ResponsePanel({ date, provider, providerLabel, numbers, 
                       <span className="rounded-full border border-navy-500 px-2 py-0.5 text-[11px] font-bold">
                         {decisionLabel(v.decision)}
                       </span>
+                      {v.score && (
+                        <span className="ml-1 text-[11px] font-bold whitespace-nowrap text-muted" data-testid="ai-parsed-score">
+                          Skor {v.score.home}-{v.score.away}
+                        </span>
+                      )}
                     </p>
                     <p className="mt-0.5 text-xs text-muted">
                       {v.reason} {v.risk && <span>Risk: {v.risk}</span>}

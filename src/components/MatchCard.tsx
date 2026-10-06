@@ -10,6 +10,7 @@ import CautiousBadge from './CautiousBadge'
 import NoteBadges from './NoteBadges'
 import OutcomeBadge from './OutcomeBadge'
 import ReliabilityBadge from './ReliabilityBadge'
+import ScoreOdds from './ScoreOdds'
 import SharedBadge from './SharedBadge'
 import Stars from './Stars'
 
@@ -90,6 +91,8 @@ export default function MatchCard({ prediction, rank, sortMode, storySelection, 
       {shared && <SharedBadge record={shared.record} onRemove={shared.onRemove} />}
 
       <AiVerdictBadges matchId={match.id} />
+
+      <ScoreOdds match={match} />
 
       <div className="border-t border-line pt-2.5 text-xs text-muted">
         {summary.length > 0 && (

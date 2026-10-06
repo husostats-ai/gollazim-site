@@ -1,5 +1,6 @@
 import type { MatchResult, MatchStatus, Pick } from '../../types'
 import { aiRepo, matchesRepo, picksRepo, resultsRepo, settingsRepo } from '../data'
+import { snapshotToSave } from '../analysis/scoreForecast'
 import { buildPicksForResult } from './freeze'
 import { parseScores, type ScoreDraft } from './validation'
 
@@ -32,6 +33,9 @@ export async function saveResult(matchId: string, draft: ScoreDraft, status: Mat
 
   await resultsRepo.save(result)
   await picksRepo.replaceForMatch(matchId, picks)
+  // Skor modelinin tahmini, maç ilk kez "tamamlandı" kaydedilirken bir kez yazılır (deney ölçümü için).
+  const scoreSnapshot = snapshotToSave(match, status, now)
+  if (scoreSnapshot) await matchesRepo.update(matchId, { scoreSnapshot })
   return picks
 }
 

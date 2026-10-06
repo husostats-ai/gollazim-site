@@ -38,3 +38,10 @@ export const outcomeProbs = (homeGoals: number, awayGoals: number): OutcomeProbs
 /** P(seçilen taraf kazanır VE toplam gol >= minGoals) */
 export const sideWinsAndGoals = (homeGoals: number, awayGoals: number, side: Side, minGoals: number): number =>
   scoreProbability(homeGoals, awayGoals, (i, j) => (side === 'home' ? i > j : j > i) && i + j >= minGoals)
+
+/** Skor tablosunun tamamı: table[i][j] = P(ev i gol, deplasman j gol). Yukarıdaki toplamlarla aynı hücrelerdir. */
+export function scoreTable(homeGoals: number, awayGoals: number): number[][] {
+  const h = pmfs(homeGoals)
+  const a = pmfs(awayGoals)
+  return h.map((ph) => a.map((pa) => ph * pa))
+}

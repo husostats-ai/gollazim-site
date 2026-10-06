@@ -1,7 +1,7 @@
 import Papa from 'papaparse'
 import { AI_DECISIONS, AI_PROVIDERS, decisionLabel } from '../../config/ai'
 import { CATEGORIES, categoriesInGroup, getCategory, type CategoryId } from '../../config/categories'
-import type { AiVerdict, Match, Pick, SharedPick, Thresholds } from '../../types'
+import type { AiVerdict, Match, MatchResult, Pick, ScoreLine, SharedPick, Thresholds } from '../../types'
 import { toAppDateTime } from '../../utils/date'
 import { formatDay, formatNumber, formatRate, shiftDate } from '../../utils/format'
 import { AI_SOURCES, buildAiStats, type AiSource } from '../ai/aiStats'
@@ -10,6 +10,7 @@ import { RELIABILITY_LABELS } from '../analysis/reliability'
 import { stat } from '../analysis/stat'
 import { findActiveShared, sharedPicksOnly } from '../story/shared'
 import { backfillMarket, buildMarketStats } from './marketStats'
+import { actualScore, buildScoreStats } from './scoreStats'
 import { buildStarStats, frozenStars, recomputedNote, STAR_LEVELS } from './starStats'
 import { buildStats, LOW_SAMPLE_LIMIT, tally, type Tally } from './statsEngine'
 
@@ -56,6 +57,8 @@ export interface SummaryInput {
   picks: Pick[]
   /** Önerilerin maç kayıtları (silinmiş olanlar eksik olabilir) */
   matches: Match[]
+  /** Girilmiş skorlar (skor tahminleri bölümü ve CSV için); verilmezse o bölüm boş çıkar */
+  results?: MatchResult[]
   verdicts: AiVerdict[]
   shared: SharedPick[]
   thresholds: Thresholds
@@ -259,6 +262,20 @@ export function buildStatsSummary(input: SummaryInput): string {
     '',
   )
 
+  const scores = buildScoreStats({ matches: input.matches.filter((m) => inScope(m.date, bounds)), results: input.results ?? [], verdicts })
+  out.push('## Skor tahminleri (deney)', '')
+  out.push(
+    table(
+      ['Kaynak', 'Tam skor', 'Sonuç (1/X/2)', 'Toplam gol ort. hata', 'n', 'Az veri'],
+      scores.rows.map((r) => [r.label, formatRate(r.exact), formatRate(r.outcome), r.totalGoalsError === null ? '—' : formatNumber(r.totalGoalsError), r.n, r.n > 0 && r.lowSample ? 'az veri' : '']),
+    ),
+    '',
+    `Kapsamda skoru girilmiş ${scores.scored} maç. Yalnızca skoru girilmiş ve o kaynağın tahmini olan maçlar sayılır. Model: maç ilk "tamamlandı" kaydedilirken alınan en olası skor. Referanslar (her maçta aynı skor) skoru girilmiş tüm maçlarda ölçülür.${
+      scores.late > 0 ? ` ${scores.late} yapay zekâ tahmini maç başladıktan sonra kaydedildiği için sayılmadı.` : ''
+    }`,
+    '',
+  )
+
   const cornerIds = categoriesInGroup('corners').map((c) => c.id)
   const cardIds = categoriesInGroup('cards').map((c) => c.id)
   const voidIn = (ids: CategoryId[]) => picks.filter((p) => p.outcome === 'void' && ids.includes(p.categoryId)).length
@@ -295,6 +312,9 @@ export const DETAIL_CSV_COLUMNS = [
   ...AI_PROVIDERS.map((p) => `ai_${p.id}`),
   'paylasildi',
   'sonuc',
+  'mac_skoru',
+  'model_skor',
+  ...AI_PROVIDERS.map((p) => `ai_${p.id}_skor`),
 ] as const
 
 const OUTCOME_TEXT = { won: 'tuttu', lost: 'tutmadı', void: 'değerlendirilemedi' } as const
@@ -304,9 +324,14 @@ const OUTCOME_TEXT = { won: 'tuttu', lost: 'tutmadı', void: 'değerlendirilemed
  * (tuttu / tutmadı / değerlendirilemedi; bekleyenler girmez). Kayıtta olmayan
  * alan boş bırakılır.
  */
-export function buildDetailRows(input: Pick_<SummaryInput, 'picks' | 'matches' | 'verdicts' | 'shared' | 'scope' | 'today' | 'marketConflictLimit'>): string[][] {
+const scoreText = (score: ScoreLine | null | undefined): string => (score ? `${score.home}-${score.away}` : '')
+
+export function buildDetailRows(
+  input: Pick_<SummaryInput, 'picks' | 'matches' | 'results' | 'verdicts' | 'shared' | 'scope' | 'today' | 'marketConflictLimit'>,
+): string[][] {
   const { picks, verdicts, shared } = scopeData(input)
   const matchById = new Map(input.matches.map((m) => [m.id, m]))
+  const resultById = new Map((input.results ?? []).map((r) => [r.matchId, r]))
   const filled = backfillMarket(picks, input.matches, input.marketConflictLimit).picks
   const order = (id: CategoryId) => CATEGORIES.findIndex((c) => c.id === id)
   return filled
@@ -315,9 +340,15 @@ export function buildDetailRows(input: Pick_<SummaryInput, 'picks' | 'matches' |
     .map((p) => {
       const match = matchById.get(p.matchId)
       const stars = frozenStars(p)
+      const verdictOf = (provider: string) => verdicts.find((v) => v.matchId === p.matchId && v.provider === provider)
       const verdict = (provider: string) => {
-        const found = verdicts.find((v) => v.matchId === p.matchId && v.provider === provider)
+        const found = verdictOf(provider)
         return found ? decisionLabel(found.decision) : ''
+      }
+      // Maç başladıktan sonra kaydedilen skor tahmini ölçüme girmediği için burada da boş kalır.
+      const aiScore = (provider: string) => {
+        const found = verdictOf(provider)
+        return found && !found.scoreLate ? scoreText(found.score) : ''
       }
       return [
         p.date,
@@ -333,6 +364,9 @@ export function buildDetailRows(input: Pick_<SummaryInput, 'picks' | 'matches' |
         ...AI_PROVIDERS.map((provider) => verdict(provider.id)),
         findActiveShared(shared, p.date, p.categoryId, p.matchId) ? 'evet' : 'hayır',
         OUTCOME_TEXT[p.outcome],
+        scoreText(actualScore(resultById.get(p.matchId))),
+        scoreText(match?.scoreSnapshot?.best),
+        ...AI_PROVIDERS.map((provider) => aiScore(provider.id)),
       ]
     })
 }

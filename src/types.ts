@@ -20,6 +20,31 @@ export interface Match {
   stats: Record<string, StatValue>
   /** Admin panelinden elle düzenlendi; aynı maç CSV ile tekrar gelirse üzerine yazılmaz */
   edited?: boolean
+  /** Maç ilk "tamamlandı" kaydedilirken alınan skor olasılıkları; sonradan değişmez */
+  scoreSnapshot?: ScoreSnapshot
+}
+
+export interface ScoreLine {
+  home: number
+  away: number
+}
+
+/**
+ * Skor modelinin maç skoru girildiği andaki tahmini (deney amaçlı, iç kullanım).
+ * source 'none': oran da xG de yoktu; diğer alanlar yazılmaz.
+ */
+export interface ScoreSnapshot {
+  source: 'market' | 'market-side' | 'xg' | 'none'
+  /** Anlık görüntünün alındığı an (ISO) */
+  takenAt: string
+  /** En olası skor */
+  best?: ScoreLine
+  /** En olası üç skor ve yüzdeleri (bir ondalık) */
+  top?: (ScoreLine & { percent: number })[]
+  /** 1 / X / 2 olasılıkları, yüzde (bir ondalık) */
+  outcome?: { home: number; draw: number; away: number }
+  /** Beklenen toplam gol */
+  expectedGoals?: number
 }
 
 export interface Upload {
@@ -101,6 +126,10 @@ export interface AiVerdict {
   reason: string
   risk: string
   savedAt: string
+  /** Yapay zekânın skor tahmini (isteğe bağlı); tahmin zamanı savedAt'tir */
+  score?: ScoreLine
+  /** Tahmin maç başladıktan sonra kaydedildi: gösterilir ama ölçüme girmez */
+  scoreLate?: boolean
 }
 
 /**

@@ -26,6 +26,12 @@ export default function AiVerdictBadges({ matchId }: { matchId: string }) {
         >
           <span className="text-muted">{AI_PROVIDERS.find((p) => p.id === v.provider)!.label}:</span>
           <span className="font-bold">{decisionLabel(v.decision)}</span>
+          {v.score && (
+            <span className="text-muted" data-testid="ai-score" title={v.scoreLate ? 'Skor tahmini maç başladıktan sonra kaydedildi; ölçüme girmez.' : 'Skor tahmini'}>
+              · {v.score.home}-{v.score.away}
+              {v.scoreLate && ' (başladıktan sonra)'}
+            </span>
+          )}
         </span>
       ))}
       {isConsensus(verdicts) && (

@@ -3,6 +3,7 @@ import EmptyState from '../components/EmptyState'
 import PageTitle from '../components/PageTitle'
 import AiStatsCard from '../components/stats/AiStatsCard'
 import DailyStoryPanel from '../components/stats/DailyStoryPanel'
+import ScoreStatsCard from '../components/stats/ScoreStatsCard'
 import StatsSummaryPanel from '../components/stats/StatsSummaryPanel'
 import GoalModelStatsCard from '../components/stats/GoalModelStatsCard'
 import MarketStatsCard from '../components/stats/MarketStatsCard'
@@ -14,13 +15,13 @@ import TrendChart from '../components/stats/TrendChart'
 import { getCategory, GROUPS } from '../config/categories'
 import { RELIABILITY_LABELS } from '../services/analysis/reliability'
 import { buildAiStats } from '../services/ai/aiStats'
-import { aiRepo, matchesRepo, picksRepo, sharedRepo } from '../services/data'
+import { aiRepo, matchesRepo, picksRepo, resultsRepo, sharedRepo } from '../services/data'
 import { buildStarStats, recomputedNote } from '../services/stats/starStats'
 import { SCOPE_LABELS, sharedPicksOnly, type StatsScope } from '../services/story/shared'
 import { backfillMarket, buildMarketStats } from '../services/stats/marketStats'
 import { buildStats, LOW_SAMPLE_LIMIT, type Bucket } from '../services/stats/statsEngine'
 import { useApp } from '../state/AppContext'
-import type { AiVerdict, Match, Pick, SharedPick } from '../types'
+import type { AiVerdict, Match, MatchResult, Pick, SharedPick } from '../types'
 import { formatDateChip, formatDay, formatMonth, formatRate, formatWeek } from '../utils/format'
 
 type Period = 'daily' | 'weekly' | 'monthly'
@@ -69,14 +70,17 @@ export default function StatsPage() {
   const [verdicts, setVerdicts] = useState<AiVerdict[]>([])
   /** Önerilerin maç kayıtları: geriye dönük piyasa yüzdesi ve özet / CSV için */
   const [legacyMatches, setLegacyMatches] = useState<Match[]>([])
+  const [results, setResults] = useState<MatchResult[]>([])
   const [period, setPeriod] = useState<Period>('daily')
   const [shared, setShared] = useState<SharedPick[]>([])
   /** Başarı tablolarının hangi öneriler üzerinden hesaplandığı; kalibrasyon kartlarını etkilemez */
   const [scope, setScope] = useState<StatsScope>('all')
 
   useEffect(() => {
-    void picksRepo.listAll().then(async (all) => {
-      setLegacyMatches(await matchesRepo.getMany([...new Set(all.map((p) => p.matchId))]))
+    void Promise.all([picksRepo.listAll(), resultsRepo.listAll()]).then(async ([all, allResults]) => {
+      // Önerisi ya da girilmiş skoru olan maçların kayıtları
+      setLegacyMatches(await matchesRepo.getMany([...new Set([...all.map((p) => p.matchId), ...allResults.map((r) => r.matchId)])]))
+      setResults(allResults)
       setPicks(all)
     })
     void aiRepo.listVerdicts().then(setVerdicts)
@@ -124,7 +128,7 @@ export default function StatsPage() {
           title="ANALİZ İÇİN ÖZET"
           note="İstatistiklerin düz metin özeti; bir yapay zekâ sohbetine yapıştırıp yorumlatmak için. Sayılar aşağıdaki tablolarla aynıdır ve Tümü / Paylaşılan geçişinden etkilenmez."
         >
-          <StatsSummaryPanel picks={picks} matches={legacyMatches} verdicts={verdicts} shared={shared} />
+          <StatsSummaryPanel picks={picks} matches={legacyMatches} results={results} verdicts={verdicts} shared={shared} />
         </Card>
       </div>
       {allStats.overall.total === 0 ? (
@@ -267,6 +271,13 @@ export default function StatsPage() {
             note="Seçilen günün 5 ana kategorideki sonuçlarını özetleyen 1080 × 1920 Instagram Story görseli (PNG). Alttaki Telegram, Instagram ve uyarı metinleri Admin sayfasından düzenlenir."
           >
             <DailyStoryPanel picks={picks} shared={shared} />
+          </Card>
+
+          <Card
+            title="SKOR TAHMİNLERİ (DENEY)"
+            note="Skor modelinin ve yapay zekâların tahmin ettiği skor ile girilen gerçek skor. İç kullanım içindir; görsellere ve paylaşım metinlerine girmez."
+          >
+            <ScoreStatsCard matches={legacyMatches} results={results} verdicts={verdicts} />
           </Card>
 
           <Card title="ZAMAN İÇİNDE BAŞARI" note="Tarihler Türkiye saatine göredir; haftalar pazartesi başlar.">

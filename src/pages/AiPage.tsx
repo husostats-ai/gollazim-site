@@ -191,6 +191,12 @@ export default function AiPage() {
                                   <span>
                                     <span className="font-bold text-muted">{providerLabel(v.provider)}:</span>{' '}
                                     <span className="font-extrabold">{decisionLabel(v.decision)}</span>
+                                    {v.score && (
+                                      <span className="ml-1.5 font-semibold text-muted" data-testid="ai-verdict-score">
+                                        · Skor {v.score.home}-{v.score.away}
+                                        {v.scoreLate && ' (başladıktan sonra; ölçüme girmez)'}
+                                      </span>
+                                    )}
                                   </span>
                                   <button
                                     type="button"
