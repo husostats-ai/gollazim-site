@@ -60,6 +60,7 @@ export function analyzeCategory(
       secondLabel: extras.secondLabel ?? 'xG modeli',
       conflict: extras.conflict,
       notes: extras.notes ?? [],
+      ...(extras.modelDrift !== undefined && { modelDrift: extras.modelDrift }),
       market: marketInfo(match, categoryId, result.percent, marketConflictLimit),
     })
   }

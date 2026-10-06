@@ -66,6 +66,8 @@ export function buildPicksForResult({
       ...(prediction.conflict !== undefined && { conflict: prediction.conflict }),
       ...(prediction.secondPercent !== undefined && { secondPercent: prediction.secondPercent }),
       ...(prediction.market && frozenMarket(prediction.market)),
+      stars: prediction.stars,
+      ...(prediction.modelDrift !== undefined && { modelDrift: prediction.modelDrift }),
     })
   }
   return picks

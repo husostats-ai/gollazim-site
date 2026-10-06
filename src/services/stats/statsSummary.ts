@@ -5,12 +5,12 @@ import type { AiVerdict, Match, Pick, SharedPick, Thresholds } from '../../types
 import { toAppDateTime } from '../../utils/date'
 import { formatDay, formatNumber, formatRate, shiftDate } from '../../utils/format'
 import { AI_SOURCES, buildAiStats, type AiSource } from '../ai/aiStats'
-import { starsFor } from '../analysis/confidence'
-import { hasGoalModel, MODEL_CONFLICT_LIMIT, MODEL_CONFLICT_MAX_STARS } from '../analysis/goalModel'
+import { MODEL_CONFLICT_LIMIT } from '../analysis/goalModel'
 import { RELIABILITY_LABELS } from '../analysis/reliability'
 import { stat } from '../analysis/stat'
 import { findActiveShared, sharedPicksOnly } from '../story/shared'
 import { backfillMarket, buildMarketStats } from './marketStats'
+import { buildStarStats, frozenStars, recomputedNote, STAR_LEVELS } from './starStats'
 import { buildStats, LOW_SAMPLE_LIMIT, tally, type Tally } from './statsEngine'
 
 // İstatistik sayfasındaki tabloların düz metin (markdown) özeti ve ayrıntılı CSV.
@@ -27,6 +27,8 @@ export const SCOPE_OPTIONS: { kind: SummaryScope['kind']; label: string }[] = [
   { kind: 'range', label: 'Tarih aralığı' },
 ]
 
+export { frozenStars }
+
 export const AI_GUIDE =
   'Aşağıda futbol istatistik tarama sitemin ölçülmüş sonuçları var. Görevin: sayıları yorumla; (1) hangi kategoriler yeterli örnekle güvenilir sonuç veriyor, (2) hangi farklar gerçek, hangileri küçük örneklem gürültüsü olabilir, (3) hazır yüzde, model ve piyasa karşılaştırmalarından ne çıkıyor, (4) hangi eşik/ayar değişikliklerini denemeye değer buluyorsun ve bunun için kaç sonuç daha gerekir. Kurallar: sayı uydurma, n<20 olan satırlardan kesin sonuç çıkarma, bahis tavsiyesi verme, belirsizliği açıkça söyle, kısa ve maddeli yaz.'
 
@@ -42,20 +44,6 @@ export function scopeBounds(scope: SummaryScope, today: string): { from: string 
 
 export const inScope = (date: string, bounds: { from: string | null; to: string | null }): boolean =>
   (bounds.from === null || date >= bounds.from) && (bounds.to === null || date <= bounds.to)
-
-/**
- * Dondurulmuş önerinin yıldızı: kayıtlı yüzde, güvenilirlik ve model çelişkisinden,
- * analizdeki kuralla (starsFor + çelişki sınırı) yeniden bulunur. Taraf & Gol'de
- * yıldız "model piyasadan sapıyor" sınırına da bağlıdır ve bu bilgi kayıtlı
- * olmadığı için orada null döner; güvenilirliği kayıtlı olmayan öneride de null.
- */
-export function frozenStars(pick: Pick): number | null {
-  const category = getCategory(pick.categoryId)
-  if (category.group === 'sidegoals' || !pick.reliability) return null
-  const stars = starsFor(pick.percent, pick.reliability, category.starSteps)
-  const capped = hasGoalModel(pick.categoryId) && pick.conflict === true && (pick.reliability === 'medium' || pick.reliability === 'high')
-  return capped ? Math.min(stars, MODEL_CONFLICT_MAX_STARS) : stars
-}
 
 export interface SummaryInput {
   /** Özetin oluşturulduğu an */
@@ -156,38 +144,30 @@ export function buildStatsSummary(input: SummaryInput): string {
     '',
   )
 
-  const starred = picks.map((p) => ({ pick: p, stars: frozenStars(p) })).filter((x): x is { pick: Pick; stars: number } => x.stars !== null)
-  const STARS = [5, 4, 3, 2, 1]
-  const starTally = (stars: number, categoryId?: CategoryId) =>
-    tally(starred.filter((x) => x.stars === stars && (categoryId === undefined || x.pick.categoryId === categoryId)).map((x) => x.pick))
+  const stars = buildStarStats(picks)
   out.push('## Yıldız sayısına göre başarı', '')
-  if (starred.length === 0) out.push('Yıldızı bulunabilen öneri yok.', '')
+  if (stars.byCategory.length === 0) out.push('Yıldızı bulunabilen öneri yok.', '')
   else {
     out.push(
       table(
         ['Yıldız', 'Sonuçlanan', 'Tutan', 'Başarı', 'Az veri'],
-        STARS.map((s) => {
-          const t = starTally(s)
-          return [`${s} yıldız`, t.decided, t.won, formatRate(t.rate), lowMark(t)]
-        }),
+        stars.byStars.map((b) => [`${b.key} yıldız`, b.tally.decided, b.tally.won, formatRate(b.tally.rate), lowMark(b.tally)]),
       ),
       '',
       'Kategori bazında (her hücre: başarı · n):',
       '',
-      table(
-        ['Kategori', ...STARS.map((s) => `${s} yıldız`)],
-        unique(starred.map((x) => x.pick.categoryId))
-          .sort((a, b) => CATEGORIES.findIndex((c) => c.id === a) - CATEGORIES.findIndex((c) => c.id === b))
-          .map((id) => [getCategory(id).label, ...STARS.map((s) => rateCell(starTally(s, id)))]),
-      ),
+      table(['Kategori', ...STAR_LEVELS.map((s) => `${s} yıldız`)], stars.byCategory.map((row) => [getCategory(row.key).label, ...row.byStars.map(rateCell)])),
       '',
     )
   }
-  const withoutStars = picks.length - starred.length
   out.push(
-    `Yıldız ayrıca kaydedilmez; dondurulmuş yüzde, güvenilirlik ve model çelişkisinden analizdeki kuralla ve güncel yıldız basamaklarıyla yeniden bulunur.${
-      withoutStars > 0 ? ` ${withoutStars} öneride (Taraf & Gol ya da güvenilirliği kayıtlı olmayan) yıldız bulunamadığı için bu tablolara girmez.` : ''
-    }`,
+    [
+      'Yıldız, önerinin dondurulduğu anda kartta görünen değerdir.',
+      recomputedNote(stars) && `${recomputedNote(stars)}: yıldız kaydı eklenmeden önce dondurulmuş önerilerde yıldız, kayıtlı yüzde, güvenilirlik ve model çelişkisinden analizdeki kuralla yeniden bulundu.`,
+      stars.missing > 0 && `${stars.missing} eski öneride (Taraf & Gol ya da güvenilirliği kayıtlı olmayan) yıldız bulunamadığı için bu tablolara girmez.`,
+    ]
+      .filter(Boolean)
+      .join(' '),
     '',
   )
 

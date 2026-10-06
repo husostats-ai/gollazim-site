@@ -25,6 +25,8 @@ export interface CalcExtras {
   reliability?: Reliability
   /** Yıldız üst sınırı (güvenilirlik sınırına ek olarak) */
   maxStars?: number
+  /** Taraf & Gol: model piyasadan sapıyor mu; piyasa oranı olmadığı için ölçülemediyse 'none' */
+  modelDrift?: boolean | 'none'
   notes?: PredictionNote[]
 }
 
@@ -75,6 +77,8 @@ export interface Prediction {
   secondLabel: string
   conflict?: boolean
   notes: PredictionNote[]
+  /** Yalnızca Taraf & Gol: yıldızı sınırlayan "model piyasadan sapıyor" durumu; ölçülemediyse 'none' */
+  modelDrift?: boolean | 'none'
   /**
    * Oranlardan çıkarılan piyasa yüzdesi ve çelişki durumu; yalnızca gösterilir ve
    * kaydedilir, yüzdeyi/yıldızı/sıralamayı etkilemez. Kapsam dışı kategorilerde yoktur.

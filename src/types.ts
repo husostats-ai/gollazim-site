@@ -81,6 +81,13 @@ export interface Pick {
   marketPercent?: number | 'none'
   /** Dondurma anında hazır yüzde ile piyasa çelişiyor muydu; oran yoksa 'none' */
   marketConflict?: boolean | 'none'
+  /** Dondurma anında kartta görünen yıldız sayısı (1-5); eski kayıtlarda bulunmaz */
+  stars?: number
+  /**
+   * Yalnızca Taraf & Gol: dondurma anında model piyasadan sapıyor muydu (yıldızı sınırlar);
+   * piyasa oranı olmadığı için ölçülemediyse 'none'. Eski kayıtlarda bulunmaz.
+   */
+  modelDrift?: boolean | 'none'
 }
 
 /** Bir yapay zekânın bir maç için verdiği karar; maç başına her sağlayıcıdan en fazla bir tane */

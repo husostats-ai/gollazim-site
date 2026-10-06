@@ -7,7 +7,11 @@ import { analyzeCategory } from '../analysis/engine'
 import { makeMatch } from '../analysis/testUtils'
 import { recordShare, sharedPicksOnly } from '../story/shared'
 import { backfillMarket, buildMarketStats } from './marketStats'
+import { buildStarStats, recomputedNote, recomputeStars, starsOf } from './starStats'
 import { buildStats } from './statsEngine'
+import { buildPicksForResult } from '../results/freeze'
+import { isBackupFile } from '../data/backupFormat'
+import type { BackupFile, MatchResult } from '../../types'
 import {
   AI_GUIDE,
   buildDetailCsv,
@@ -197,7 +201,9 @@ describe('özet metni', () => {
     const stars = section(text, 'Yıldız sayısına göre başarı')
     expect(row(stars, '5 yıldız').slice(1, 4)).toEqual(['9', '0', '%0'])
     expect(row(stars, '2.5 ÜST')).toEqual(['2.5 ÜST', '%0 · n=9', '— · n=0', '%100 · n=12', '— · n=0', '— · n=0'])
-    expect(stars).toContain('4 öneride (Taraf & Gol ya da güvenilirliği kayıtlı olmayan) yıldız bulunamadığı için')
+    expect(stars).toContain('4 eski öneride (Taraf & Gol ya da güvenilirliği kayıtlı olmayan) yıldız bulunamadığı için')
+    // Bu test verisinde hiçbir öneride kayıtlı yıldız yok: hepsi yeniden hesaplanır
+    expect(stars).toContain(`${picks.length - 4} öneri yeniden hesaplandı (eski kayıt)`)
   })
 
   it('yıldız, analizin ürettiği yıldızla aynıdır', () => {
@@ -338,5 +344,134 @@ describe('ayrıntılı maç tablosu (CSV)', () => {
     const lines = csv.split(/\r?\n/)
     expect(lines[0]).toBe(DETAIL_CSV_COLUMNS.join(','))
     expect(lines).toHaveLength(1 + picks.filter((p) => p.outcome !== 'pending').length)
+  })
+})
+
+describe('yıldız dondurma anında kaydedilir', () => {
+  const NOW_ISO = '2026-10-05T21:00:00Z'
+  const result: MatchResult = {
+    matchId: 'x',
+    status: 'completed',
+    htHome: 1,
+    htAway: 0,
+    ftHome: 2,
+    ftAway: 1,
+    cornersHome: null,
+    cornersAway: null,
+    cardsHome: null,
+    cardsAway: null,
+    updatedAt: NOW_ISO,
+  }
+  const freeze = (match: Match, dayMatches = [match]) =>
+    buildPicksForResult({ match, dayMatches, thresholds: defaultThresholds(), result, existing: [], now: NOW_ISO })
+
+  it('her öneriye o an kartta görünen yıldız yazılır', () => {
+    // 2.5 Üst %92, KG Var %85, İY 0.5 %81, Korner 9.5 %74, kart ort. 6
+    const match = makeMatch({ over25Pct: 92, bttsPct: 85, ht05Pct: 81, corners95Pct: 74, avgCards: 6, homeXg: 1.6, awayXg: 1.5 })
+    const frozen = freeze(match)
+    expect(frozen.length).toBeGreaterThanOrEqual(5)
+    for (const p of frozen) {
+      const live = analyzeCategory([match], p.categoryId, 0).predictions[0]
+      expect(p.stars, p.categoryId).toBe(live.stars)
+      expect(p.stars).toBeGreaterThanOrEqual(1)
+      expect(p.stars).toBeLessThanOrEqual(5)
+      // Taraf & Gol dışında sapma alanı yoktur
+      if (!p.categoryId.includes('Win')) expect('modelDrift' in p).toBe(false)
+    }
+  })
+
+  it('Taraf & Gol: yıldız ve "model piyasadan sapıyor" bilgisi kaydedilir; oran yoksa sapma "none"', () => {
+    const priced = makeMatch({ oddsHome: 1.4, oddsDraw: 5, oddsAway: 8, oddsOver25: 1.6, oddsUnder25: 2.3, homeXg: 1.9, awayXg: 0.8 })
+    const side = freeze(priced).find((p) => p.categoryId === 'homeWin15')!
+    const live = analyzeCategory([priced], 'homeWin15', 0).predictions[0]
+    expect(side.stars).toBe(live.stars)
+    expect(typeof side.modelDrift).toBe('boolean')
+    expect(side.modelDrift).toBe(live.notes.some((n) => n.kind === 'model-drift'))
+
+    // Oran yok: yüzde xG'den gelir, sapma ölçülemez
+    const xgOnly = makeMatch({ homeXg: 2.6, awayXg: 0.5 })
+    const fallback = freeze(xgOnly).find((p) => p.categoryId === 'homeWin15')!
+    expect(fallback).toBeDefined()
+    expect(fallback.modelDrift).toBe('none')
+    expect(fallback.stars).toBe(analyzeCategory([xgOnly], 'homeWin15', 0).predictions[0].stars)
+  })
+
+  it('skor düzeltilince kayıtlı yıldız değişmez', () => {
+    const match = makeMatch({ over25Pct: 92 })
+    const existing = freeze(match)
+    const again = buildPicksForResult({
+      match: { ...match, stats: { over25Pct: 76 } },
+      dayMatches: [match],
+      thresholds: defaultThresholds(),
+      result: { ...result, ftHome: 0, ftAway: 0 },
+      existing,
+      now: NOW_ISO,
+    })
+    expect(again[0]).toMatchObject({ stars: existing[0].stars, percent: 92, outcome: 'lost' })
+  })
+})
+
+describe('yıldız istatistiği: kayıtlı değer ve eski kayıt', () => {
+  it('kayıtlı yıldız varsa o kullanılır; yoksa yeniden hesaplanır ve sayılır', () => {
+    // Yeniden hesap 3 verirdi; kayıtta 2 var (ör. dondurma anında başka bir sınır geçerliydi)
+    const stored = pick('won', 'over25', TODAY, { stars: 2 })
+    const legacy = pick('lost', 'over25', TODAY)
+    expect(recomputeStars(stored)).toBe(3)
+    expect(starsOf(stored)).toEqual({ stars: 2, source: 'stored' })
+    expect(starsOf(legacy)).toEqual({ stars: 3, source: 'recomputed' })
+    const stats = buildStarStats([stored, legacy])
+    expect(stats.byStars.find((b) => b.key === '2')!.tally).toMatchObject({ won: 1, decided: 1 })
+    expect(stats.byStars.find((b) => b.key === '3')!.tally).toMatchObject({ won: 0, decided: 1 })
+    expect(stats).toMatchObject({ recomputed: 1, missing: 0 })
+    expect(recomputedNote(stats)).toBe('1 öneri yeniden hesaplandı (eski kayıt)')
+    expect(recomputedNote(buildStarStats([stored]))).toBeNull()
+  })
+
+  it('Taraf & Gol: kayıtlı yıldızı olan öneri tablolara girer, eski kayıt girmez', () => {
+    const withStars = pick('won', 'homeWin15', TODAY, { reliability: 'market', stars: 4, modelDrift: false })
+    const legacy = pick('lost', 'homeWin15', TODAY, { reliability: 'market' })
+    const stats = buildStarStats([withStars, legacy])
+    expect(stats.byCategory.map((c) => c.key)).toEqual(['homeWin15'])
+    expect(stats.byStars.find((b) => b.key === '4')!.tally).toMatchObject({ won: 1, decided: 1 })
+    expect(stats).toMatchObject({ recomputed: 0, missing: 1 })
+  })
+
+  it('geçersiz kayıt (0, 6, metin) yok sayılır', () => {
+    for (const bad of [0, 6, 2.5, '3' as unknown as number]) expect(starsOf(pick('won', 'over25', TODAY, { stars: bad }))!.source).toBe('recomputed')
+  })
+
+  it('özet ve CSV kayıtlı yıldızı kullanır; not yalnızca eski kayıt varsa yazılır', () => {
+    const fresh = [
+      ...many(3, 'won', 'over25', TODAY, { stars: 5, reliability: 'high' }),
+      ...many(2, 'lost', 'homeWin15', TODAY, { stars: 2, reliability: 'market', modelDrift: true }),
+    ]
+    const allStored = buildStatsSummary(input({ kind: 'all' }, { picks: fresh, matches: [] }))
+    const body = section(allStored, 'Yıldız sayısına göre başarı')
+    expect(row(body, '5 yıldız').slice(1, 4)).toEqual(['3', '3', '%100'])
+    expect(row(body, 'EV KAZANIR & 1.5 ÜST')[4]).toBe('%0 · n=2')
+    expect(body).not.toContain('yeniden hesaplandı')
+    expect(body).not.toContain('yıldız bulunamadığı')
+
+    const mixed = buildStatsSummary(input({ kind: 'all' }, { picks: [...fresh, pick('won', 'btts', TODAY), pick('won', 'awayWin15', TODAY, { reliability: 'market' })], matches: [] }))
+    const mixedBody = section(mixed, 'Yıldız sayısına göre başarı')
+    expect(mixedBody).toContain('1 öneri yeniden hesaplandı (eski kayıt)')
+    expect(mixedBody).toContain('1 eski öneride (Taraf & Gol ya da güvenilirliği kayıtlı olmayan) yıldız bulunamadığı için')
+
+    const rows = buildDetailRows(input({ kind: 'all' }, { picks: fresh, matches: [] }))
+    expect(rows.map((r) => r[DETAIL_CSV_COLUMNS.indexOf('yildiz')])).toEqual(['5', '5', '5', '2', '2'])
+  })
+
+  it('yıldız ve sapma bilgisi yedekten aynen geri gelir', () => {
+    const saved = [pick('won', 'over25', TODAY, { stars: 4 }), pick('lost', 'homeWin15', TODAY, { stars: 2, modelDrift: 'none', reliability: 'market' })]
+    const file = JSON.parse(
+      JSON.stringify({ app: 'gollazim', version: 1, exportedAt: '', uploads: [], matches: [], results: [], picks: saved, thresholds: defaultThresholds() }),
+    ) as BackupFile
+    expect(isBackupFile(file)).toBe(true)
+    expect(file.picks).toEqual(saved)
+    expect(buildStarStats(file.picks)).toMatchObject({ recomputed: 0, missing: 0 })
+    // Yıldız alanı olmayan eski yedek de geçerlidir
+    const old = { ...file, picks: saved.map(({ stars: _stars, modelDrift: _drift, ...rest }) => rest) }
+    expect(isBackupFile(old)).toBe(true)
+    expect(buildStarStats(old.picks as Pick[])).toMatchObject({ recomputed: 1, missing: 1 })
   })
 })

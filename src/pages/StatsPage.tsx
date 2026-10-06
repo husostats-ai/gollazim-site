@@ -15,6 +15,7 @@ import { getCategory, GROUPS } from '../config/categories'
 import { RELIABILITY_LABELS } from '../services/analysis/reliability'
 import { buildAiStats } from '../services/ai/aiStats'
 import { aiRepo, matchesRepo, picksRepo, sharedRepo } from '../services/data'
+import { buildStarStats, recomputedNote } from '../services/stats/starStats'
 import { SCOPE_LABELS, sharedPicksOnly, type StatsScope } from '../services/story/shared'
 import { backfillMarket, buildMarketStats } from '../services/stats/marketStats'
 import { buildStats, LOW_SAMPLE_LIMIT, type Bucket } from '../services/stats/statsEngine'
@@ -88,6 +89,8 @@ export default function StatsPage() {
     () => (scope === 'shared' ? buildStats(sharedPicksOnly(picks ?? [], shared)) : allStats),
     [scope, picks, shared, allStats],
   )
+  const scopedPicks = useMemo(() => (scope === 'shared' ? sharedPicksOnly(picks ?? [], shared) : (picks ?? [])), [scope, picks, shared])
+  const starStats = useMemo(() => buildStarStats(scopedPicks), [scopedPicks])
   const aiStats = useMemo(() => buildAiStats(picks ?? [], verdicts), [picks, verdicts])
   const marketStats = useMemo(
     () => buildMarketStats(backfillMarket(picks ?? [], legacyMatches, marketConflictLimit)),
@@ -201,6 +204,27 @@ export default function StatsPage() {
               </TableToggle>
             </Card>
           </div>
+
+          {starStats.byCategory.length > 0 && (
+            <Card title="YILDIZ SAYISINA GÖRE BAŞARI" note="Yıldız, önerinin dondurulduğu anda kartta görünen değerdir.">
+              <RateBars rows={starStats.byStars.map((b) => ({ ...b, label: `${b.key} yıldız` }))} />
+              <TableToggle>
+                <StatsTable firstColumn="Yıldız" rows={starStats.byStars.map((b) => ({ ...b, label: `${b.key} yıldız` }))} />
+              </TableToggle>
+              {recomputedNote(starStats) && (
+                <p className="mt-2 text-xs text-muted" data-testid="stars-recomputed">
+                  {recomputedNote(starStats)}: yıldız kaydı eklenmeden önce dondurulmuş önerilerde yıldız, kayıtlı yüzde,
+                  güvenilirlik ve model çelişkisinden yeniden bulundu.
+                </p>
+              )}
+              {starStats.missing > 0 && (
+                <p className="mt-2 text-xs text-muted" data-testid="stars-missing">
+                  {starStats.missing} eski öneride (Taraf & Gol ya da güvenilirliği kayıtlı olmayan) yıldız bulunamadığı için bu
+                  tabloya girmez.
+                </p>
+              )}
+            </Card>
+          )}
 
           {allStats.goalModel && (
             <Card

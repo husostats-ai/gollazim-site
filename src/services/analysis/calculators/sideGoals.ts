@@ -83,6 +83,8 @@ export const sideGoals = (line: SideGoalsLine): Calculator => ({
         reliability: result.source === 'market' ? MARKET : result.source === 'market-side' ? MARKET_PARTIAL : undefined,
         maxStars,
         notes,
+        // Yalnızca kayıt içindir; yıldız sınırı yukarıda zaten uygulandı.
+        modelDrift: drift === null ? 'none' : drift > DRIFT_LIMIT,
       },
     }
   },
