@@ -5,7 +5,11 @@ import { createStoryPng, storyFromAnalysis } from '../services/image/storyGenera
 import { STORY } from '../services/image/storyLayout'
 import { resolveSelection } from '../services/story/selection'
 import { useApp } from '../state/AppContext'
+import { LATE_SHARE_NOTE } from './SharedBadge'
 import { formatLongDate } from '../utils/format'
+
+const lateText = (count: number): string =>
+  count === 1 ? LATE_SHARE_NOTE : `${count} maç başladıktan sonra paylaşıldı olarak işaretlendi`
 
 export const SELECT_FIRST = 'Önce görsele girecek maçları seç'
 
@@ -18,10 +22,12 @@ const disabledReason = (analysis: CategoryAnalysis, totalMatches: number, select
 }
 
 export default function StoryButton({ categoryId }: { categoryId: CategoryAnalysis['categoryId'] }) {
-  const { matches, analysis: dayAnalysis, storySelections, selectedDate } = useApp()
+  const { matches, analysis: dayAnalysis, storySelections, selectedDate, recordShared } = useApp()
   const [preview, setPreview] = useState<{ url: string; fileName: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** Son üretimde, başladıktan sonra paylaşıldı olarak işaretlenen maç sayısı */
+  const [late, setLate] = useState(0)
 
   const category = getCategory(categoryId)
   const analysis = dayAnalysis[categoryId]
@@ -37,6 +43,12 @@ export default function StoryButton({ categoryId }: { categoryId: CategoryAnalys
     setError(null)
     try {
       const blob = await createStoryPng(storyFromAnalysis({ ...analysis, predictions: selected }, formatLongDate(selectedDate)))
+      // Görsel üretildiği an, içindeki maçlar paylaşıldı olarak kaydedilir (önceki kayıtlarla birleşir).
+      const added = await recordShared(
+        categoryId,
+        selected.map((p) => p.match),
+      )
+      setLate(added.filter((r) => r.afterKickoff).length)
       setPreview({ url: URL.createObjectURL(blob), fileName: `gollazim-${category.slug}-${selectedDate}.png` })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Görsel oluşturulamadı.')
@@ -48,6 +60,11 @@ export default function StoryButton({ categoryId }: { categoryId: CategoryAnalys
   return (
     <>
       <span className="inline-flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
+        {late > 0 && (
+          <span className="text-[11px] text-warn" data-testid="story-late">
+            {lateText(late)}
+          </span>
+        )}
         {missing > 0 && (
           <span className="text-[11px] text-warn" data-testid="story-missing">
             {missing} seçili maç artık listede değil
@@ -89,8 +106,9 @@ export default function StoryButton({ categoryId }: { categoryId: CategoryAnalys
             className="max-h-[78vh] w-auto rounded-xl border border-navy-600"
           />
           <p className="text-xs text-muted">
-            {STORY.width} × {STORY.height} piksel · Instagram Story
+            {STORY.width} × {STORY.height} piksel · Instagram Story · görseldeki maçlar paylaşıldı olarak kaydedildi
           </p>
+          {late > 0 && <p className="text-xs text-warn">{lateText(late)}</p>}
           <div className="flex gap-2">
             <a
               href={preview.url}

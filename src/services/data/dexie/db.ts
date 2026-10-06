@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie'
 import { getCategory } from '../../../config/categories'
-import type { AiPromptBatch, AiVerdict, Match, MatchResult, Pick, StorySelection, Upload } from '../../../types'
+import type { AiPromptBatch, AiVerdict, Match, MatchResult, Pick, SharedPick, StorySelection, Upload } from '../../../types'
 import { assessReliability } from '../../analysis/reliability'
 
 export interface SettingRow {
@@ -17,6 +17,7 @@ export const db = new Dexie('gollazim') as Dexie & {
   aiVerdicts: EntityTable<AiVerdict, 'id'>
   aiPrompts: EntityTable<AiPromptBatch, 'id'>
   storySelections: EntityTable<StorySelection, 'id'>
+  sharedPicks: EntityTable<SharedPick, 'id'>
 }
 
 db.version(1).stores({
@@ -52,4 +53,9 @@ db.version(3).stores({
 // v4: Story görseline girecek maçların gün + kategori bazında seçimi. Mevcut tablolara dokunmaz.
 db.version(4).stores({
   storySelections: 'id, date',
+})
+
+// v5: paylaşılan öneriler kaydı (Story görselinde yer alan maçlar). Mevcut tablolara dokunmaz.
+db.version(5).stores({
+  sharedPicks: 'id, date',
 })

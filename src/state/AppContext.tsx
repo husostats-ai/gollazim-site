@@ -3,9 +3,10 @@ import { defaultThresholds, type CategoryId } from '../config/categories'
 import { analyzeDay, type DayAnalysis } from '../services/analysis/engine'
 import { DEFAULT_MARKET_CONFLICT_LIMIT } from '../services/analysis/market'
 import type { SortMode } from '../services/analysis/types'
-import { aiRepo, matchesRepo, picksRepo, resultsRepo, settingsRepo, storySelectionsRepo } from '../services/data'
+import { aiRepo, matchesRepo, picksRepo, resultsRepo, settingsRepo, sharedRepo, storySelectionsRepo } from '../services/data'
+import { findActiveShared, recordShare } from '../services/story/shared'
 import { selectionsForDate, type DaySelections } from '../services/story/selection'
-import type { AiVerdict, Match, MatchResult, Pick, Thresholds } from '../types'
+import type { AiVerdict, Match, MatchResult, Pick, SharedPick, Thresholds } from '../types'
 import { todayInAppZone } from '../utils/date'
 
 interface AppState {
@@ -33,6 +34,12 @@ interface AppState {
   /** Seçili günde Story görseline girmesi işaretlenen maçlar, kategoriye göre; yalnızca görsel içindir */
   storySelections: DaySelections
   setStorySelection: (categoryId: CategoryId, matchIds: string[]) => void
+  /** Seçili günün paylaşılan öneri kayıtları (çıkarılmış olanlar dahil) */
+  sharedPicks: SharedPick[]
+  /** Görseldeki maçları paylaşıldı olarak kaydeder; yeni eklenen kayıtları döner */
+  recordShared: (categoryId: CategoryId, shared: Match[]) => Promise<SharedPick[]>
+  /** Geçerli kaydı "çıkarıldı" olarak işaretler */
+  removeShared: (categoryId: CategoryId, matchId: string) => Promise<void>
   sortMode: SortMode
   setSortMode: (mode: SortMode) => void
   analysis: DayAnalysis
@@ -69,6 +76,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [picks, setPicks] = useState<Pick[]>([])
   const [aiVerdicts, setAiVerdicts] = useState<AiVerdict[]>([])
   const [storySelections, setStorySelections] = useState<DaySelections>({})
+  const [sharedPicks, setSharedPicks] = useState<SharedPick[]>([])
   // Seçim yazmaları sırayla yapılır ki art arda işaretlemelerde son durum kalsın.
   const selectionWrites = useRef<Promise<void>>(Promise.resolve())
   const [thresholds, setThresholds] = useState<Thresholds>(defaultThresholds)
@@ -88,11 +96,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (cancelled) return
       const date = selectedDate && nextDates.includes(selectedDate) ? selectedDate : pickDefaultDate(nextDates, today)
       const nextMatches = date ? await matchesRepo.listByDate(date) : []
-      const [nextResults, nextPicks, nextVerdicts, nextSelections] = await Promise.all([
+      const [nextResults, nextPicks, nextVerdicts, nextSelections, nextShared] = await Promise.all([
         resultsRepo.listByMatchIds(nextMatches.map((m) => m.id)),
         date ? picksRepo.listByDate(date) : [],
         date ? aiRepo.listVerdictsByDate(date) : [],
         date ? selectionWrites.current.then(() => storySelectionsRepo.listByDate(date)) : [],
+        date ? sharedRepo.listByDate(date) : [],
       ])
       if (cancelled) return
       setDates(nextDates)
@@ -104,6 +113,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setPicks(nextPicks)
       setAiVerdicts(nextVerdicts)
       setStorySelections(date ? selectionsForDate(nextSelections, date) : {})
+      setSharedPicks(nextShared)
       setLoading(false)
     })()
     return () => {
@@ -132,6 +142,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .then(() => storySelectionsRepo.set(date, categoryId, matchIds))
         // Kayıt başarısız olursa seçim bu oturumda geçerli kalır.
         .catch(() => undefined)
+    },
+    [selectedDate],
+  )
+
+  const recordShared = useCallback(
+    async (categoryId: CategoryId, shared: Match[]) => {
+      if (!selectedDate) return []
+      // Aynı anda iki üretim olsa da çift kayıt açılmasın diye güncel kayıtlar veritabanından okunur.
+      const existing = await sharedRepo.listByDate(selectedDate)
+      const added = recordShare(existing, { date: selectedDate, categoryId, matches: shared, now: new Date().toISOString() })
+      if (added.length > 0) await sharedRepo.addMany(added)
+      setSharedPicks([...existing, ...added])
+      return added
+    },
+    [selectedDate],
+  )
+
+  const removeShared = useCallback(
+    async (categoryId: CategoryId, matchId: string) => {
+      if (!selectedDate) return
+      const existing = await sharedRepo.listByDate(selectedDate)
+      const target = findActiveShared(existing, selectedDate, categoryId, matchId)
+      if (target) await sharedRepo.markRemoved(target.id, new Date().toISOString())
+      setSharedPicks(await sharedRepo.listByDate(selectedDate))
     },
     [selectedDate],
   )
@@ -172,6 +206,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveMarketConflictLimit,
     storySelections,
     setStorySelection,
+    sharedPicks,
+    recordShared,
+    removeShared,
     sortMode,
     setSortMode,
     analysis,

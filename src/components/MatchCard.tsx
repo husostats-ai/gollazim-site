@@ -3,12 +3,14 @@ import { marketNotes } from '../services/analysis/market'
 import { statSummary } from '../services/analysis/summary'
 import type { Prediction, SortMode } from '../services/analysis/types'
 import { useApp } from '../state/AppContext'
+import type { SharedPick } from '../types'
 import { formatScore } from '../utils/score'
 import AiVerdictBadges from './ai/AiVerdictBadges'
 import CautiousBadge from './CautiousBadge'
 import NoteBadges from './NoteBadges'
 import OutcomeBadge from './OutcomeBadge'
 import ReliabilityBadge from './ReliabilityBadge'
+import SharedBadge from './SharedBadge'
 import Stars from './Stars'
 
 interface Props {
@@ -17,9 +19,11 @@ interface Props {
   sortMode: SortMode
   /** Verilirse kartta "Görsele ekle" kutusu görünür; yalnızca Story görselini etkiler */
   storySelection?: { checked: boolean; onToggle: () => void }
+  /** Maçın bu kategorideki geçerli paylaşım kaydı (varsa) ve çıkarma işlemi */
+  shared?: { record: SharedPick; onRemove: () => void }
 }
 
-export default function MatchCard({ prediction, rank, sortMode, storySelection }: Props) {
+export default function MatchCard({ prediction, rank, sortMode, storySelection, shared }: Props) {
   const { match, percent, stars, reliability, cautiousPercent, basis, categoryId, secondPercent, secondLabel, notes, market } =
     prediction
   const category = getCategory(categoryId)
@@ -82,6 +86,8 @@ export default function MatchCard({ prediction, rank, sortMode, storySelection }
         <NoteBadges notes={marketNotes(percent, market, marketConflictLimit)} />
         {sortMode === 'cautious' && supportsCautious(category) && <CautiousBadge value={cautiousPercent} />}
       </div>
+
+      {shared && <SharedBadge record={shared.record} onRemove={shared.onRemove} />}
 
       <AiVerdictBadges matchId={match.id} />
 

@@ -14,11 +14,12 @@ import { getCategory, GROUPS } from '../config/categories'
 import { RELIABILITY_LABELS } from '../services/analysis/reliability'
 import { buildAiStats } from '../services/ai/aiStats'
 import { hasMarket } from '../services/analysis/market'
-import { aiRepo, matchesRepo, picksRepo } from '../services/data'
+import { aiRepo, matchesRepo, picksRepo, sharedRepo } from '../services/data'
+import { SCOPE_LABELS, sharedPicksOnly, type StatsScope } from '../services/story/shared'
 import { backfillMarket, buildMarketStats } from '../services/stats/marketStats'
 import { buildStats, LOW_SAMPLE_LIMIT, type Bucket } from '../services/stats/statsEngine'
 import { useApp } from '../state/AppContext'
-import type { AiVerdict, Match, Pick } from '../types'
+import type { AiVerdict, Match, Pick, SharedPick } from '../types'
 import { formatDateChip, formatDay, formatMonth, formatRate, formatWeek } from '../utils/format'
 
 type Period = 'daily' | 'weekly' | 'monthly'
@@ -68,6 +69,9 @@ export default function StatsPage() {
   /** Piyasa bilgisi kaydedilmeden dondurulmuş önerilerin maç kayıtları (oranlar için) */
   const [legacyMatches, setLegacyMatches] = useState<Match[]>([])
   const [period, setPeriod] = useState<Period>('daily')
+  const [shared, setShared] = useState<SharedPick[]>([])
+  /** Başarı tablolarının hangi öneriler üzerinden hesaplandığı; kalibrasyon kartlarını etkilemez */
+  const [scope, setScope] = useState<StatsScope>('all')
 
   useEffect(() => {
     void picksRepo.listAll().then(async (all) => {
@@ -76,9 +80,15 @@ export default function StatsPage() {
       setPicks(all)
     })
     void aiRepo.listVerdicts().then(setVerdicts)
+    void sharedRepo.listAll().then(setShared)
   }, [dataVersion])
 
-  const stats = useMemo(() => buildStats(picks ?? []), [picks])
+  // Kalibrasyon ve model/piyasa kartları her zaman tüm dondurulmuş önerileri kullanır.
+  const allStats = useMemo(() => buildStats(picks ?? []), [picks])
+  const stats = useMemo(
+    () => (scope === 'shared' ? buildStats(sharedPicksOnly(picks ?? [], shared)) : allStats),
+    [scope, picks, shared, allStats],
+  )
   const aiStats = useMemo(() => buildAiStats(picks ?? [], verdicts), [picks, verdicts])
   const marketStats = useMemo(
     () => buildMarketStats(backfillMarket(picks ?? [], legacyMatches, marketConflictLimit)),
@@ -107,12 +117,36 @@ export default function StatsPage() {
         title="İSTATİSTİK"
         subtitle="Yalnızca skoru girilip dondurulmuş öneriler sayılır. Başarı oranı = kazanan / (kazanan + kaybeden)."
       />
-      {overall.total === 0 ? (
+      {allStats.overall.total === 0 ? (
         <EmptyState>
           Henüz sonuçlanmış öneri yok. Skor Girişi sayfasından maç sonuçlarını “Tamamlandı” olarak kaydedin.
         </EmptyState>
       ) : (
         <div className="grid grid-cols-1 gap-4">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <div className="inline-flex rounded-xl border border-navy-600 bg-navy-800 p-0.5" role="group" aria-label="Ölçü">
+              {(['all', 'shared'] as const).map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  aria-pressed={scope === id}
+                  onClick={() => setScope(id)}
+                  data-testid={`stats-scope-${id}`}
+                  className={`rounded-[10px] px-3 py-1.5 text-xs font-bold transition-colors ${
+                    scope === id ? 'bg-brand text-navy-950' : 'text-muted hover:text-white'
+                  }`}
+                >
+                  {id === 'all' ? 'Tümü' : 'Paylaşılan'}
+                </button>
+              ))}
+            </div>
+            <p className="min-w-0 text-xs text-muted" data-testid="stats-scope-note">
+              {scope === 'shared'
+                ? `${SCOPE_LABELS.shared}: genel başarı, kategori, güvenilirlik ve zaman tabloları yalnızca Story görselinde paylaşılan dondurulmuş önerileri sayar. Kalibrasyon, model/piyasa ve yapay zekâ kartları her zaman tüm önerileri kullanır.`
+                : `${SCOPE_LABELS.all}: tüm dondurulmuş öneriler sayılır.`}
+            </p>
+          </div>
+
           <Card title="GENEL BAŞARI">
             <div className="flex flex-wrap items-end gap-x-4 gap-y-1">
               <p className="text-5xl leading-none font-black sm:text-6xl" data-testid="overall-rate">
@@ -161,12 +195,12 @@ export default function StatsPage() {
             </Card>
           </div>
 
-          {stats.goalModel && (
+          {allStats.goalModel && (
             <Card
               title="GOL MODELİ: ÇELİŞKİ VE KALİBRASYON"
               note="2.5 Üst, 3.5 Üst, 4.5 Üst ve KG Var önerilerinden, model yüzdesi dondurulmuş olanlar."
             >
-              <GoalModelStatsCard stats={stats.goalModel} />
+              <GoalModelStatsCard stats={allStats.goalModel} />
             </Card>
           )}
 
@@ -179,12 +213,12 @@ export default function StatsPage() {
             </Card>
           )}
 
-          {stats.sideGoals && (
+          {allStats.sideGoals && (
             <Card
               title={`${GROUPS.find((g) => g.id === 'sidegoals')!.label}: ÇELİŞKİ VE KALİBRASYON`}
               note="Yalnızca Taraf & Gol listelerindeki dondurulmuş öneriler."
             >
-              <SideGoalsStatsCard stats={stats.sideGoals} />
+              <SideGoalsStatsCard stats={allStats.sideGoals} />
             </Card>
           )}
 
@@ -201,7 +235,7 @@ export default function StatsPage() {
             title="GÜNLÜK GÖRSEL"
             note="Seçilen günün 5 ana kategorideki sonuçlarını özetleyen 1080 × 1920 Instagram Story görseli (PNG). Alttaki Telegram, Instagram ve uyarı metinleri Admin sayfasından düzenlenir."
           >
-            <DailyStoryPanel picks={picks} />
+            <DailyStoryPanel picks={picks} shared={shared} />
           </Card>
 
           <Card title="ZAMAN İÇİNDE BAŞARI" note="Tarihler Türkiye saatine göredir; haftalar pazartesi başlar.">

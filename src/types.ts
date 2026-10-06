@@ -119,6 +119,24 @@ export interface StorySelection {
   matchIds: string[]
 }
 
+/**
+ * Bir kategori Story görseli üretilirken görselde yer aldığı için "paylaşıldı" sayılan öneri.
+ * Kalıcı kayıttır: elle çıkarılınca silinmez, removedAt ile işaretlenir.
+ */
+export interface SharedPick {
+  /** date + categoryId + matchId + sharedAt */
+  id: string
+  date: string
+  categoryId: CategoryId
+  matchId: string
+  /** Görselin üretildiği an (ISO) */
+  sharedAt: string
+  /** Kayıt, maç başladıktan sonra yapıldı */
+  afterKickoff: boolean
+  /** Paylaşılandan elle çıkarıldığı an; yoksa kayıt geçerlidir */
+  removedAt?: string
+}
+
 export type Thresholds = Record<CategoryId, number>
 
 export interface BackupFile {
@@ -139,4 +157,6 @@ export interface BackupFile {
   marketConflictLimit?: number
   /** Story görseli maç seçimleri; eski yedeklerde bulunmaz */
   storySelections?: StorySelection[]
+  /** Paylaşılan öneriler kaydı (çıkarılmış olanlar dahil); eski yedeklerde bulunmaz */
+  sharedPicks?: SharedPick[]
 }

@@ -3,6 +3,7 @@ import { DEFAULT_STORY_TEXTS, type StoryTexts } from '../../config/storyTexts'
 import { theme } from '../../config/theme'
 import { wholePercent, type DailyRow, type DailySummary } from '../stats/dailySummary'
 import type { Tally } from '../stats/statsEngine'
+import type { StatsScope } from '../story/shared'
 import { drawBackground, drawLogoBadge, font, renderStoryPng, roundRect, type Ctx } from './storyGenerator'
 import { ellipsize, pickFontSize, wrapText } from './storyLayout'
 
@@ -25,7 +26,7 @@ export const DAILY_LAYOUT = {
 export const DAILY_TEXT = {
   brand: 'GOL LAZIM ANALİZ',
   results: 'Sonuçlar',
-  subtitle: 'Önerilen maçların gerçekleşen sonuçları',
+  subtitle: { shared: 'Paylaşılan önerilerin sonuçları', all: 'Tüm önerilerin sonuçları' },
   title: 'GÜNÜN ANALİZ SONUÇLARI',
   overall: 'GENEL İSABET',
   noDecided: 'Sonuçlanmış öneri yok',
@@ -48,7 +49,7 @@ const countText = (t: Tally): string => `${t.won}/${t.decided}`
 export const overallSentence = (t: Tally): string =>
   t.decided === 0 ? DAILY_TEXT.noDecided : `${t.decided} önerinin ${t.won} tanesi tuttu`
 
-function drawHeader(ctx: Ctx, dateLabel: string, logo: CanvasImageSource | null) {
+function drawHeader(ctx: Ctx, dateLabel: string, logo: CanvasImageSource | null, scope: StatsScope) {
   const { left, right, badge, header, title } = DAILY_LAYOUT
   drawLogoBadge(ctx, logo, left, badge.top, badge.size)
 
@@ -72,8 +73,9 @@ function drawHeader(ctx: Ctx, dateLabel: string, logo: CanvasImageSource | null)
   const dateLine = `${dateLabel}  •  ${DAILY_TEXT.results}`
   fit(dateLine, 600, [42, 38, 34], right - textX)
   ctx.fillText(dateLine, textX, header.dateBaseline)
-  fit(DAILY_TEXT.subtitle, 500, [34, 32, 30, 28], right - textX)
-  ctx.fillText(DAILY_TEXT.subtitle, textX, header.subtitleBaseline)
+  const subtitle = DAILY_TEXT.subtitle[scope]
+  fit(subtitle, 500, [34, 32, 30, 28], right - textX)
+  ctx.fillText(subtitle, textX, header.subtitleBaseline)
 
   ctx.fillStyle = theme.white
   fit(DAILY_TEXT.title, 900, [76, 72, 68, 64, 60, 56], right - left)
@@ -276,10 +278,12 @@ export function drawDailyStory(
   dateLabel: string,
   logo: CanvasImageSource | null,
   texts: StoryTexts = DEFAULT_STORY_TEXTS,
+  /** Özetin hangi öneriler üzerinden hesaplandığı; görselin alt başlığında yazar */
+  scope: StatsScope = 'all',
 ): void {
   const { overall, rows, footerGap } = DAILY_LAYOUT
   drawBackground(ctx)
-  drawHeader(ctx, dateLabel, logo)
+  drawHeader(ctx, dateLabel, logo, scope)
   drawOverall(ctx, summary.overall)
 
   const footer = layoutFooter(ctx, texts)
@@ -297,5 +301,9 @@ export function drawDailyStory(
 export const dailyStoryFileName = (date: string): string => `gollazim-gunluk-${date}.png`
 
 /** Günlük başarı görselini PNG olarak üretir. */
-export const createDailyStoryPng = (summary: DailySummary, dateLabel: string, texts?: StoryTexts): Promise<Blob> =>
-  renderStoryPng((ctx, logo) => drawDailyStory(ctx, summary, dateLabel, logo, texts))
+export const createDailyStoryPng = (
+  summary: DailySummary,
+  dateLabel: string,
+  texts?: StoryTexts,
+  scope?: StatsScope,
+): Promise<Blob> => renderStoryPng((ctx, logo) => drawDailyStory(ctx, summary, dateLabel, logo, texts, scope))

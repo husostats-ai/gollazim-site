@@ -1,7 +1,10 @@
 import { getCategory, MAX_MATCHES_PER_CATEGORY, supportsCautious } from '../config/categories'
 import type { CategoryAnalysis } from '../services/analysis/types'
+import type { SharedPick } from '../types'
 import { consensusApprovedIds, selectAll, toggleSelection } from '../services/story/selection'
+import { activeShared, findActiveShared } from '../services/story/shared'
 import { useApp } from '../state/AppContext'
+import SharedBadge from './SharedBadge'
 import { EmptyAnalysis, UnavailableNote } from './AnalysisNotice'
 import MatchCard from './MatchCard'
 import StoryButton from './StoryButton'
@@ -9,14 +12,20 @@ import StoryButton from './StoryButton'
 const TOOL_BUTTON =
   'rounded-lg border border-navy-500 px-2.5 py-1.5 font-bold hover:bg-navy-600 disabled:cursor-not-allowed disabled:opacity-40'
 
+const withRecord = (record: SharedPick | undefined, onRemove: () => void) => (record ? { record, onRemove } : undefined)
+
 /** Bir kategorinin tam listesi: eşiği geçen en güçlü maçlar, kart olarak. */
 export default function CategoryList({ analysis }: { analysis: CategoryAnalysis }) {
-  const { matches, sortMode, storySelections, setStorySelection, aiVerdicts } = useApp()
+  const { matches, sortMode, storySelections, setStorySelection, aiVerdicts, sharedPicks, removeShared, selectedDate } = useApp()
   const category = getCategory(analysis.categoryId)
   const { predictions, qualifiedCount, threshold } = analysis
   const selectedIds = storySelections[category.id] ?? []
   const approvedIds = consensusApprovedIds(predictions, aiVerdicts)
   const select = (ids: string[]) => setStorySelection(category.id, ids)
+  const sharedFor = (matchId: string) => (selectedDate ? findActiveShared(sharedPicks, selectedDate, category.id, matchId) : undefined)
+  // Paylaşılmış ama artık listede olmayan maçlar da görülebilsin ve çıkarılabilsin.
+  const listed = new Set(predictions.map((p) => p.match.id))
+  const orphans = activeShared(sharedPicks).filter((r) => r.categoryId === category.id && r.date === selectedDate && !listed.has(r.matchId))
 
   return (
     <div>
@@ -74,8 +83,27 @@ export default function CategoryList({ analysis }: { analysis: CategoryAnalysis 
                 checked: selectedIds.includes(p.match.id),
                 onToggle: () => select(toggleSelection(selectedIds, p.match.id)),
               }}
+              shared={withRecord(sharedFor(p.match.id), () => void removeShared(category.id, p.match.id))}
             />
           ))}
+        </div>
+      )}
+      {orphans.length > 0 && (
+        <div className="mt-3 rounded-xl border border-line bg-navy-800 p-3" data-testid="shared-orphans">
+          <p className="text-xs text-muted">Paylaşılmış ama şu an bu listede olmayan maçlar:</p>
+          <ul className="mt-2 space-y-2">
+            {orphans.map((record) => {
+              const match = matches.find((m) => m.id === record.matchId)
+              return (
+                <li key={record.id} className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="min-w-0 text-sm font-semibold break-words">
+                    {match ? `${match.home} – ${match.away}` : 'Maç kaydı silinmiş'}
+                  </span>
+                  <SharedBadge record={record} onRemove={() => void removeShared(category.id, record.matchId)} />
+                </li>
+              )
+            })}
+          </ul>
         </div>
       )}
       <UnavailableNote analysis={analysis} />

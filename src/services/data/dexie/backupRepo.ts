@@ -3,10 +3,11 @@ import { db } from './db'
 import { settingsRepo } from './settingsRepo'
 import { isCategoryId } from '../../../config/categories'
 import { normalizeSelections } from '../../story/selection'
+import { normalizeShared } from '../../story/shared'
 
 export const backupRepo: BackupRepo = {
   async exportAll() {
-    const [uploads, matches, results, picks, thresholds, aiVerdicts, aiPrompts, storyTexts, marketConflictLimit, storySelections] =
+    const [uploads, matches, results, picks, thresholds, aiVerdicts, aiPrompts, storyTexts, marketConflictLimit, storySelections, sharedPicks] =
       await Promise.all([
       db.uploads.toArray(),
       db.matches.toArray(),
@@ -18,6 +19,7 @@ export const backupRepo: BackupRepo = {
       settingsRepo.getStoryTexts(),
       settingsRepo.getMarketConflictLimit(),
       db.storySelections.toArray(),
+      db.sharedPicks.toArray(),
     ])
     return {
       app: 'gollazim',
@@ -33,11 +35,12 @@ export const backupRepo: BackupRepo = {
       storyTexts,
       marketConflictLimit,
       storySelections,
+      sharedPicks,
     }
   },
 
   async importAll(backup) {
-    const tables = [db.uploads, db.matches, db.results, db.picks, db.settings, db.aiVerdicts, db.aiPrompts, db.storySelections]
+    const tables = [db.uploads, db.matches, db.results, db.picks, db.settings, db.aiVerdicts, db.aiPrompts, db.storySelections, db.sharedPicks]
     await db.transaction('rw', tables, async () => {
       await Promise.all([
         db.uploads.clear(),
@@ -48,6 +51,7 @@ export const backupRepo: BackupRepo = {
         db.aiVerdicts.clear(),
         db.aiPrompts.clear(),
         db.storySelections.clear(),
+        db.sharedPicks.clear(),
       ])
       await db.uploads.bulkPut(backup.uploads)
       await db.matches.bulkPut(backup.matches)
@@ -62,6 +66,7 @@ export const backupRepo: BackupRepo = {
       await db.aiPrompts.bulkPut(backup.aiPrompts ?? [])
       // Seçimi olmayan eski yedeklerde hiçbir maç seçili gelmez.
       await db.storySelections.bulkPut(normalizeSelections(backup.storySelections, isCategoryId))
+      await db.sharedPicks.bulkPut(normalizeShared(backup.sharedPicks, isCategoryId))
     })
   },
 }

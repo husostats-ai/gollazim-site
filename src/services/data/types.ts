@@ -8,6 +8,7 @@ import type {
   Match,
   MatchResult,
   Pick,
+  SharedPick,
   StorySelection,
   Thresholds,
   Upload,
@@ -67,6 +68,15 @@ export interface StorySelectionsRepo {
   listByDate(date: string): Promise<StorySelection[]>
   /** Gün + kategorinin seçimini verilen listeyle değiştirir; boş liste kaydı siler */
   set(date: string, categoryId: CategoryId, matchIds: string[]): Promise<void>
+}
+
+export interface SharedRepo {
+  /** Çıkarılmış kayıtlar dahil */
+  listAll(): Promise<SharedPick[]>
+  listByDate(date: string): Promise<SharedPick[]>
+  addMany(records: SharedPick[]): Promise<void>
+  /** Kaydı silmez; çıkarıldı olarak işaretler */
+  markRemoved(id: string, removedAt: string): Promise<void>
 }
 
 export interface SettingsRepo {
