@@ -29,7 +29,10 @@ export default function ReliabilityBadge({ reliability, compact }: { reliability
   return (
     <span
       title={TITLE[level]}
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap ${TONE[level]}`}
+      // Uzun biçim çok dar ekranda (320 px) kartı taşırmasın diye satır atlayabilir.
+      className={`inline-flex max-w-full items-center gap-x-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+        compact ? 'whitespace-nowrap' : 'flex-wrap'
+      } ${TONE[level]}`}
     >
       {!compact && !isMarket && <span className="font-normal opacity-80">Veri güvenilirliği:</span>}
       {compact && level === 'unmeasured' ? 'Güv. ölçülemedi' : RELIABILITY_LABELS[level]}

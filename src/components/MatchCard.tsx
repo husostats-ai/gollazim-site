@@ -15,9 +15,11 @@ interface Props {
   prediction: Prediction
   rank: number
   sortMode: SortMode
+  /** Verilirse kartta "Görsele ekle" kutusu görünür; yalnızca Story görselini etkiler */
+  storySelection?: { checked: boolean; onToggle: () => void }
 }
 
-export default function MatchCard({ prediction, rank, sortMode }: Props) {
+export default function MatchCard({ prediction, rank, sortMode, storySelection }: Props) {
   const { match, percent, stars, reliability, cautiousPercent, basis, categoryId, secondPercent, secondLabel, notes, market } =
     prediction
   const category = getCategory(categoryId)
@@ -34,6 +36,19 @@ export default function MatchCard({ prediction, rank, sortMode }: Props) {
         </span>
         {match.time && <span className="font-semibold text-white">{match.time}</span>}
         {match.league && <span className="min-w-0 truncate">{match.league}</span>}
+        {storySelection && (
+          // Negatif kenar boşluğu dokunma alanını kartın yüksekliğini değiştirmeden büyütür.
+          <label className="-my-2.5 ml-auto flex shrink-0 cursor-pointer items-center gap-1.5 py-2.5 pl-2 font-semibold whitespace-nowrap text-white">
+            <input
+              type="checkbox"
+              checked={storySelection.checked}
+              onChange={storySelection.onToggle}
+              data-testid="story-select"
+              className="h-5 w-5 shrink-0 accent-brand"
+            />
+            Görsele ekle
+          </label>
+        )}
       </div>
 
       <div className="flex items-start justify-between gap-3">

@@ -148,6 +148,8 @@ export const getCategory = (id: CategoryId): CategoryDef => {
   return found
 }
 
+export const isCategoryId = (id: string): id is CategoryId => CATEGORIES.some((c) => c.id === id)
+
 export const getCategoryBySlug = (slug: string): CategoryDef | undefined =>
   CATEGORIES.find((c) => c.slug === slug)
 

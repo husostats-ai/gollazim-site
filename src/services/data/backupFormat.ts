@@ -13,7 +13,7 @@ export const isBackupFile = (data: unknown): data is BackupFile => {
     ['uploads', 'matches', 'results', 'picks'].every((k) => Array.isArray(d[k])) &&
     typeof d.thresholds === 'object' &&
     d.thresholds !== null &&
-    ['aiVerdicts', 'aiPrompts'].every((k) => d[k] === undefined || Array.isArray(d[k])) &&
+    ['aiVerdicts', 'aiPrompts', 'storySelections'].every((k) => d[k] === undefined || Array.isArray(d[k])) &&
     (d.storyTexts === undefined || (typeof d.storyTexts === 'object' && d.storyTexts !== null)) &&
     (d.marketConflictLimit === undefined || typeof d.marketConflictLimit === 'number')
   )

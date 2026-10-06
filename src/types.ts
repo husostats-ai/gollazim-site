@@ -110,6 +110,15 @@ export interface AiPromptBatch {
   matchIds: string[]
 }
 
+/** Bir gün + kategori için Story görseline girmesi seçilen maçlar. Yalnızca görsel içindir. */
+export interface StorySelection {
+  /** date + categoryId */
+  id: string
+  date: string
+  categoryId: CategoryId
+  matchIds: string[]
+}
+
 export type Thresholds = Record<CategoryId, number>
 
 export interface BackupFile {
@@ -128,4 +137,6 @@ export interface BackupFile {
   storyTexts?: StoryTexts
   /** Piyasa çelişkisi sınırı (puan); eski yedeklerde bulunmaz */
   marketConflictLimit?: number
+  /** Story görseli maç seçimleri; eski yedeklerde bulunmaz */
+  storySelections?: StorySelection[]
 }

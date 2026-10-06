@@ -1,10 +1,12 @@
 import type { BackupRepo } from '../types'
 import { db } from './db'
 import { settingsRepo } from './settingsRepo'
+import { isCategoryId } from '../../../config/categories'
+import { normalizeSelections } from '../../story/selection'
 
 export const backupRepo: BackupRepo = {
   async exportAll() {
-    const [uploads, matches, results, picks, thresholds, aiVerdicts, aiPrompts, storyTexts, marketConflictLimit] =
+    const [uploads, matches, results, picks, thresholds, aiVerdicts, aiPrompts, storyTexts, marketConflictLimit, storySelections] =
       await Promise.all([
       db.uploads.toArray(),
       db.matches.toArray(),
@@ -15,6 +17,7 @@ export const backupRepo: BackupRepo = {
       db.aiPrompts.toArray(),
       settingsRepo.getStoryTexts(),
       settingsRepo.getMarketConflictLimit(),
+      db.storySelections.toArray(),
     ])
     return {
       app: 'gollazim',
@@ -29,11 +32,12 @@ export const backupRepo: BackupRepo = {
       aiPrompts,
       storyTexts,
       marketConflictLimit,
+      storySelections,
     }
   },
 
   async importAll(backup) {
-    const tables = [db.uploads, db.matches, db.results, db.picks, db.settings, db.aiVerdicts, db.aiPrompts]
+    const tables = [db.uploads, db.matches, db.results, db.picks, db.settings, db.aiVerdicts, db.aiPrompts, db.storySelections]
     await db.transaction('rw', tables, async () => {
       await Promise.all([
         db.uploads.clear(),
@@ -43,6 +47,7 @@ export const backupRepo: BackupRepo = {
         db.settings.clear(),
         db.aiVerdicts.clear(),
         db.aiPrompts.clear(),
+        db.storySelections.clear(),
       ])
       await db.uploads.bulkPut(backup.uploads)
       await db.matches.bulkPut(backup.matches)
@@ -55,6 +60,8 @@ export const backupRepo: BackupRepo = {
       // Yapay zekâ kayıtları olmayan eski yedekler de geçerlidir.
       await db.aiVerdicts.bulkPut(backup.aiVerdicts ?? [])
       await db.aiPrompts.bulkPut(backup.aiPrompts ?? [])
+      // Seçimi olmayan eski yedeklerde hiçbir maç seçili gelmez.
+      await db.storySelections.bulkPut(normalizeSelections(backup.storySelections, isCategoryId))
     })
   },
 }

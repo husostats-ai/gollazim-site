@@ -1,9 +1,10 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { defaultThresholds, type CategoryId } from '../config/categories'
 import { analyzeDay, type DayAnalysis } from '../services/analysis/engine'
 import { DEFAULT_MARKET_CONFLICT_LIMIT } from '../services/analysis/market'
 import type { SortMode } from '../services/analysis/types'
-import { aiRepo, matchesRepo, picksRepo, resultsRepo, settingsRepo } from '../services/data'
+import { aiRepo, matchesRepo, picksRepo, resultsRepo, settingsRepo, storySelectionsRepo } from '../services/data'
+import { selectionsForDate, type DaySelections } from '../services/story/selection'
 import type { AiVerdict, Match, MatchResult, Pick, Thresholds } from '../types'
 import { todayInAppZone } from '../utils/date'
 
@@ -29,6 +30,9 @@ interface AppState {
   /** Hazır yüzde ile piyasa yüzdesi arasındaki fark en az bu kadar puansa "piyasa çelişkisi" */
   marketConflictLimit: number
   saveMarketConflictLimit: (limit: number) => Promise<void>
+  /** Seçili günde Story görseline girmesi işaretlenen maçlar, kategoriye göre; yalnızca görsel içindir */
+  storySelections: DaySelections
+  setStorySelection: (categoryId: CategoryId, matchIds: string[]) => void
   sortMode: SortMode
   setSortMode: (mode: SortMode) => void
   analysis: DayAnalysis
@@ -64,6 +68,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [results, setResults] = useState<Record<string, MatchResult>>({})
   const [picks, setPicks] = useState<Pick[]>([])
   const [aiVerdicts, setAiVerdicts] = useState<AiVerdict[]>([])
+  const [storySelections, setStorySelections] = useState<DaySelections>({})
+  // Seçim yazmaları sırayla yapılır ki art arda işaretlemelerde son durum kalsın.
+  const selectionWrites = useRef<Promise<void>>(Promise.resolve())
   const [thresholds, setThresholds] = useState<Thresholds>(defaultThresholds)
   const [marketConflictLimit, setMarketConflictLimit] = useState(DEFAULT_MARKET_CONFLICT_LIMIT)
   const [sortMode, setSortModeState] = useState<SortMode>(readSortMode)
@@ -81,10 +88,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (cancelled) return
       const date = selectedDate && nextDates.includes(selectedDate) ? selectedDate : pickDefaultDate(nextDates, today)
       const nextMatches = date ? await matchesRepo.listByDate(date) : []
-      const [nextResults, nextPicks, nextVerdicts] = await Promise.all([
+      const [nextResults, nextPicks, nextVerdicts, nextSelections] = await Promise.all([
         resultsRepo.listByMatchIds(nextMatches.map((m) => m.id)),
         date ? picksRepo.listByDate(date) : [],
         date ? aiRepo.listVerdictsByDate(date) : [],
+        date ? selectionWrites.current.then(() => storySelectionsRepo.listByDate(date)) : [],
       ])
       if (cancelled) return
       setDates(nextDates)
@@ -95,6 +103,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setResults(Object.fromEntries(nextResults.map((r) => [r.matchId, r])))
       setPicks(nextPicks)
       setAiVerdicts(nextVerdicts)
+      setStorySelections(date ? selectionsForDate(nextSelections, date) : {})
       setLoading(false)
     })()
     return () => {
@@ -113,6 +122,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setMarketConflictLimit(limit)
     await settingsRepo.setMarketConflictLimit(limit)
   }, [])
+
+  const setStorySelection = useCallback(
+    (categoryId: CategoryId, matchIds: string[]) => {
+      if (!selectedDate) return
+      const date = selectedDate
+      setStorySelections((current) => ({ ...current, [categoryId]: matchIds }))
+      selectionWrites.current = selectionWrites.current
+        .then(() => storySelectionsRepo.set(date, categoryId, matchIds))
+        // Kayıt başarısız olursa seçim bu oturumda geçerli kalır.
+        .catch(() => undefined)
+    },
+    [selectedDate],
+  )
 
   const setSortMode = useCallback((mode: SortMode) => {
     setSortModeState(mode)
@@ -148,6 +170,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveThresholds,
     marketConflictLimit,
     saveMarketConflictLimit,
+    storySelections,
+    setStorySelection,
     sortMode,
     setSortMode,
     analysis,

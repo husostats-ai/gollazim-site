@@ -1,12 +1,11 @@
 import { AI_PROVIDERS, decisionLabel } from '../../config/ai'
+import { isConsensus } from '../../services/ai/consensus'
 import { useApp } from '../../state/AppContext'
 import type { AiVerdict } from '../../types'
 
 const chip = 'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] whitespace-nowrap'
 
-/** İki yapay zekâ da karar verdiyse ve kararlar aynıysa true */
-export const isConsensus = (verdicts: AiVerdict[]): boolean =>
-  verdicts.length === AI_PROVIDERS.length && verdicts.every((v) => v.decision === verdicts[0].decision)
+export { isConsensus }
 
 /** Maçın kayıtlı yapay zekâ kararları; her karar hangi yapay zekâdan geldiğiyle etiketlidir. */
 export default function AiVerdictBadges({ matchId }: { matchId: string }) {

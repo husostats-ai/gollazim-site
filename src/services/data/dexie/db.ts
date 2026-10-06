@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie'
 import { getCategory } from '../../../config/categories'
-import type { AiPromptBatch, AiVerdict, Match, MatchResult, Pick, Upload } from '../../../types'
+import type { AiPromptBatch, AiVerdict, Match, MatchResult, Pick, StorySelection, Upload } from '../../../types'
 import { assessReliability } from '../../analysis/reliability'
 
 export interface SettingRow {
@@ -16,6 +16,7 @@ export const db = new Dexie('gollazim') as Dexie & {
   settings: EntityTable<SettingRow, 'key'>
   aiVerdicts: EntityTable<AiVerdict, 'id'>
   aiPrompts: EntityTable<AiPromptBatch, 'id'>
+  storySelections: EntityTable<StorySelection, 'id'>
 }
 
 db.version(1).stores({
@@ -46,4 +47,9 @@ db.version(2).upgrade(async (tx) => {
 db.version(3).stores({
   aiVerdicts: 'id, matchId, date, provider',
   aiPrompts: 'id, date',
+})
+
+// v4: Story görseline girecek maçların gün + kategori bazında seçimi. Mevcut tablolara dokunmaz.
+db.version(4).stores({
+  storySelections: 'id, date',
 })

@@ -1,6 +1,17 @@
 import type { AiProvider } from '../../config/ai'
 import type { StoryTexts } from '../../config/storyTexts'
-import type { AiPromptBatch, AiVerdict, BackupFile, Match, MatchResult, Pick, Thresholds, Upload } from '../../types'
+import type { CategoryId } from '../../config/categories'
+import type {
+  AiPromptBatch,
+  AiVerdict,
+  BackupFile,
+  Match,
+  MatchResult,
+  Pick,
+  StorySelection,
+  Thresholds,
+  Upload,
+} from '../../types'
 
 // Uygulamanın geri kalanı sadece bu arayüzleri bilir. Supabase'e geçiş:
 // bu arayüzleri uygulayan yeni dosyalar yazıp index.ts'te değiştirmek.
@@ -49,6 +60,13 @@ export interface AiRepo {
   removeVerdict(id: string): Promise<void>
   getPromptBatch(date: string, provider: AiProvider): Promise<AiPromptBatch | undefined>
   savePromptBatch(batch: AiPromptBatch): Promise<void>
+}
+
+export interface StorySelectionsRepo {
+  listAll(): Promise<StorySelection[]>
+  listByDate(date: string): Promise<StorySelection[]>
+  /** Gün + kategorinin seçimini verilen listeyle değiştirir; boş liste kaydı siler */
+  set(date: string, categoryId: CategoryId, matchIds: string[]): Promise<void>
 }
 
 export interface SettingsRepo {

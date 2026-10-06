@@ -1,30 +1,33 @@
 import { useEffect, useState } from 'react'
 import { getCategory } from '../config/categories'
-import { analyzeCategory } from '../services/analysis/engine'
 import type { CategoryAnalysis } from '../services/analysis/types'
 import { createStoryPng, storyFromAnalysis } from '../services/image/storyGenerator'
 import { STORY } from '../services/image/storyLayout'
+import { resolveSelection } from '../services/story/selection'
 import { useApp } from '../state/AppContext'
 import { formatLongDate } from '../utils/format'
 
+export const SELECT_FIRST = 'Önce görsele girecek maçları seç'
+
 /** Görsel üretilememesinin nedeni; üretilebiliyorsa null */
-const disabledReason = (analysis: CategoryAnalysis, totalMatches: number): string | null => {
-  if (analysis.predictions.length > 0) return null
+const disabledReason = (analysis: CategoryAnalysis, totalMatches: number, selectedCount: number): string | null => {
+  if (analysis.predictions.length > 0) return selectedCount > 0 ? null : SELECT_FIRST
   if (totalMatches === 0) return 'Bu tarih için maç verisi yok.'
   if (analysis.evaluatedCount === 0) return 'Gerekli istatistik CSV’de bulunamadı.'
   return `Eşiği (%${analysis.threshold}) geçen maç yok.`
 }
 
 export default function StoryButton({ categoryId }: { categoryId: CategoryAnalysis['categoryId'] }) {
-  const { matches, thresholds, selectedDate } = useApp()
+  const { matches, analysis: dayAnalysis, storySelections, selectedDate } = useApp()
   const [preview, setPreview] = useState<{ url: string; fileName: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const category = getCategory(categoryId)
-  // Görseldeki sıra her zaman yüzdeye göredir; temkinli sıra görseli etkilemez.
-  const analysis = analyzeCategory(matches, categoryId, thresholds[categoryId], 'percent')
-  const reason = disabledReason(analysis, matches.length)
+  const analysis = dayAnalysis[categoryId]
+  // Görsele yalnızca işaretlenen maçlar girer. Sıra her zaman yüzdeye göredir; temkinli sıra görseli etkilemez.
+  const { selected, missing } = resolveSelection(analysis.predictions, storySelections[categoryId])
+  const reason = disabledReason(analysis, matches.length, selected.length)
 
   useEffect(() => () => void (preview && URL.revokeObjectURL(preview.url)), [preview])
 
@@ -33,7 +36,7 @@ export default function StoryButton({ categoryId }: { categoryId: CategoryAnalys
     setBusy(true)
     setError(null)
     try {
-      const blob = await createStoryPng(storyFromAnalysis(analysis, formatLongDate(selectedDate)))
+      const blob = await createStoryPng(storyFromAnalysis({ ...analysis, predictions: selected }, formatLongDate(selectedDate)))
       setPreview({ url: URL.createObjectURL(blob), fileName: `gollazim-${category.slug}-${selectedDate}.png` })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Görsel oluşturulamadı.')
@@ -45,9 +48,19 @@ export default function StoryButton({ categoryId }: { categoryId: CategoryAnalys
   return (
     <>
       <span className="inline-flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
+        {missing > 0 && (
+          <span className="text-[11px] text-warn" data-testid="story-missing">
+            {missing} seçili maç artık listede değil
+          </span>
+        )}
         {(reason || error) && (
           <span className="text-[11px] text-muted" data-testid="story-reason">
             {error ?? reason}
+          </span>
+        )}
+        {selected.length > 0 && (
+          <span className="text-[11px] font-bold whitespace-nowrap" data-testid="story-count">
+            {selected.length} maç seçili
           </span>
         )}
         <button
