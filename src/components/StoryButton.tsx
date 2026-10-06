@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getCategory } from '../config/categories'
 import type { CategoryAnalysis } from '../services/analysis/types'
+import { settingsRepo } from '../services/data'
 import { createStoryPng, storyFromAnalysis } from '../services/image/storyGenerator'
 import { STORY } from '../services/image/storyLayout'
 import { resolveSelection } from '../services/story/selection'
@@ -47,9 +48,11 @@ export default function StoryButton({ categoryId }: { categoryId: CategoryAnalys
     setBusy(true)
     setError(null)
     try {
+      // Alt bloktaki Telegram / Instagram / uyarı metinleri Admin ayarlarından okunur.
+      const texts = await settingsRepo.getStoryTexts()
       // Önizleme hiçbir kayıt oluşturmaz; paylaşıldı kaydı yalnızca indirme anında açılır.
       const story = await previewStory(
-        { render: () => createStoryPng(storyFromAnalysis({ ...analysis, predictions: selected }, formatLongDate(selectedDate))) },
+        { render: () => createStoryPng(storyFromAnalysis({ ...analysis, predictions: selected }, formatLongDate(selectedDate)), texts) },
         selected.map((p) => p.match),
       )
       setSaved(null)

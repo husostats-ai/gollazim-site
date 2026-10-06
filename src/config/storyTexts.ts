@@ -1,5 +1,5 @@
-// Günlük başarı görselinin altındaki, Admin panelinden düzenlenebilen metinler.
-// Boş bırakılan metnin satırı görselde hiç çizilmez.
+// Story görsellerinin alt bloğunda ve açıklama metinlerinde kullanılan, Admin
+// panelinden düzenlenebilen metinler. Boş bırakılan metnin satırı hiç yazılmaz.
 
 export interface StoryTexts {
   /** Telegram bağlantısı */
@@ -8,18 +8,22 @@ export interface StoryTexts {
   instagram: string
   /** En alttaki küçük uyarı */
   disclaimer: string
+  /** Instagram açıklamasının sonuna eklenen hashtagler; varsayılan boş */
+  hashtags: string
 }
 
 export const DEFAULT_STORY_TEXTS: StoryTexts = {
   telegram: 'https://t.me/gollazimanaliz',
   instagram: '@gollazim',
   disclaimer: 'Bu bir istatistik taramasıdır; bahis tavsiyesi değildir ve sonuç garantisi vermez. 18+',
+  hashtags: '',
 }
 
 export const STORY_TEXT_FIELDS: { key: keyof StoryTexts; label: string; maxLength: number }[] = [
   { key: 'telegram', label: 'Telegram bağlantısı', maxLength: 80 },
   { key: 'instagram', label: 'Instagram kullanıcı adı', maxLength: 40 },
   { key: 'disclaimer', label: 'Uyarı metni', maxLength: 160 },
+  { key: 'hashtags', label: 'Hashtagler (Instagram açıklamasının sonuna eklenir)', maxLength: 300 },
 ]
 
 /**

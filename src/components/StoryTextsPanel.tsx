@@ -39,10 +39,11 @@ export default function StoryTextsPanel() {
     <section className="min-w-0 rounded-2xl border border-line bg-navy-700 p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 className="font-extrabold tracking-wide">AYARLAR: GÜNLÜK GÖRSEL METİNLERİ</h2>
+          <h2 className="font-extrabold tracking-wide">AYARLAR: GÖRSEL VE AÇIKLAMA METİNLERİ</h2>
           <p className="mt-1 text-sm text-muted">
-            İstatistik sayfasındaki günlük görselin altında yer alır. Değişiklik yazdığınız anda kaydedilir. Boş
-            bırakılan satır görselde hiç çizilmez.
+            Story görsellerinin (kategori, sonuç ve günlük görsel) alt bloğunda ve açıklama metinlerinde kullanılır.
+            Değişiklik yazdığınız anda kaydedilir. Boş bırakılan satır hiç yazılmaz; uyarı boşsa kategori görsellerinde
+            “Veri destekli sinyal, garanti değil.” yazar.
           </p>
         </div>
         <button

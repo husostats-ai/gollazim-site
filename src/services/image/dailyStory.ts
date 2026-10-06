@@ -5,7 +5,8 @@ import { wholePercent, type DailyRow, type DailySummary } from '../stats/dailySu
 import type { Tally } from '../stats/statsEngine'
 import type { StatsScope } from '../story/shared'
 import { drawBackground, drawLogoBadge, font, renderStoryPng, roundRect, type Ctx } from './storyGenerator'
-import { ellipsize, pickFontSize, wrapText } from './storyLayout'
+import { drawFooter, footerHeight, layoutFooter, type FooterStyle } from './storyFooter'
+import { ellipsize, pickFontSize } from './storyLayout'
 
 /** Instagram arayüzünün kapattığı üst ve alt şeritlerin dışında kalan alan */
 export const DAILY_SAFE_AREA = { top: 250, bottom: 1670 } as const
@@ -184,87 +185,13 @@ function drawRow(ctx: Ctx, row: DailyRow, top: number, height: number) {
   }
 }
 
-type FooterItem =
-  | { kind: 'text'; lines: string[]; size: number; weight: number; lineHeight: number; gapBefore: number }
-  | { kind: 'rule'; gapBefore: number }
-  | { kind: 'link'; label: string; value: string; size: number; lineHeight: number; gapBefore: number }
-
-/** Alt bloğun satırlarını ölçer; boş bırakılan metinlerin satırı hiç oluşmaz. */
-function layoutFooter(ctx: Ctx, texts: StoryTexts): FooterItem[] {
-  const width = DAILY_LAYOUT.right - DAILY_LAYOUT.left
-  const measure = (text: string) => ctx.measureText(text).width
-
-  ctx.font = font(500, 28)
-  const items: FooterItem[] = [
-    { kind: 'text', lines: wrapText(DAILY_TEXT.note, width, measure), size: 28, weight: 500, lineHeight: 38, gapBefore: 0 },
-  ]
-  // Ayırıcı çizgi yalnızca altında bir şey varsa çizilir.
-  if ([texts.telegram, texts.instagram, texts.disclaimer].some((t) => t.trim() !== '')) items.push({ kind: 'rule', gapBefore: 16 })
-
-  const links = [
-    { label: DAILY_TEXT.telegram, value: texts.telegram.trim() },
-    { label: DAILY_TEXT.instagram, value: texts.instagram.trim() },
-  ].filter((link) => link.value !== '')
-  links.forEach((link, i) => {
-    // Uzun bağlantı önce küçülür; en küçük boyutta da sığmazsa sonundan kırpılır.
-    const size = pickFontSize([38, 36, 34, 32, 30, 28, 26], (s) => {
-      ctx.font = font(800, s)
-      const labelWidth = measure(`${link.label} `)
-      ctx.font = font(600, s)
-      return labelWidth + measure(link.value) <= width
-    })
-    items.push({ kind: 'link', ...link, size, lineHeight: 52, gapBefore: i === 0 ? 10 : 0 })
-  })
-
-  const disclaimer = texts.disclaimer.trim()
-  if (disclaimer !== '') {
-    const size = pickFontSize([26, 24, 22], (s) => {
-      ctx.font = font(500, s)
-      return measure(disclaimer) <= width
-    })
-    ctx.font = font(500, size)
-    items.push({ kind: 'text', lines: wrapText(disclaimer, width, measure), size, weight: 500, lineHeight: size + 8, gapBefore: 12 })
-  }
-  return items
-}
-
-const footerItemHeight = (item: FooterItem): number =>
-  item.gapBefore + (item.kind === 'rule' ? 2 : item.kind === 'link' ? item.lineHeight : item.lines.length * item.lineHeight)
-
-/** Harflerin taban çizgisinin altına inen kuyruğu (ş, ğ, y) için satır altında bırakılan pay */
-const DESCENT = 0.28
-
-function drawFooter(ctx: Ctx, items: FooterItem[], top: number) {
-  const { left, right } = DAILY_LAYOUT
-  const measure = (text: string) => ctx.measureText(text).width
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'alphabetic'
-  let y = top
-  for (const item of items) {
-    y += item.gapBefore
-    if (item.kind === 'rule') {
-      ctx.fillStyle = theme.navy600
-      ctx.fillRect(left, y, right - left, 2)
-      y += 2
-    } else if (item.kind === 'link') {
-      const baseline = y + item.lineHeight - Math.round(item.size * DESCENT) - 4
-      ctx.font = font(800, item.size)
-      ctx.fillStyle = theme.brand
-      ctx.fillText(item.label, left, baseline)
-      const valueX = left + measure(`${item.label} `)
-      ctx.font = font(600, item.size)
-      ctx.fillStyle = theme.white
-      ctx.fillText(ellipsize(item.value, right - valueX, measure), valueX, baseline)
-      y += item.lineHeight
-    } else {
-      ctx.font = font(item.weight, item.size)
-      ctx.fillStyle = theme.muted
-      for (const line of item.lines) {
-        ctx.fillText(ellipsize(line, right - left, measure), left, y + item.lineHeight - Math.round(item.size * DESCENT) - 2)
-        y += item.lineHeight
-      }
-    }
-  }
+const FOOTER_STYLE: FooterStyle = {
+  left: DAILY_LAYOUT.left,
+  right: DAILY_LAYOUT.right,
+  note: DAILY_TEXT.note,
+  linkSizes: [38, 36, 34, 32, 30, 28, 26],
+  linkLineHeight: 52,
+  disclaimerSizes: [26, 24, 22],
 }
 
 /**
@@ -286,8 +213,8 @@ export function drawDailyStory(
   drawHeader(ctx, dateLabel, logo, scope)
   drawOverall(ctx, summary.overall)
 
-  const footer = layoutFooter(ctx, texts)
-  const footerTop = DAILY_SAFE_AREA.bottom - footer.reduce((sum, item) => sum + footerItemHeight(item), 0)
+  const footer = layoutFooter(ctx, texts, FOOTER_STYLE)
+  const footerTop = DAILY_SAFE_AREA.bottom - footerHeight(footer)
 
   const rowsTop = overall.top + overall.height + rows.gap
   const count = summary.rows.length
@@ -295,7 +222,7 @@ export function drawDailyStory(
   const rowHeight = Math.max(rows.minHeight, Math.min(rows.maxHeight, Math.floor((available - rows.gap * (count - 1)) / count)))
   summary.rows.forEach((row, i) => drawRow(ctx, row, rowsTop + i * (rowHeight + rows.gap), rowHeight))
 
-  drawFooter(ctx, footer, footerTop)
+  drawFooter(ctx, footer, footerTop, FOOTER_STYLE)
 }
 
 export const dailyStoryFileName = (date: string): string => `gollazim-gunluk-${date}.png`

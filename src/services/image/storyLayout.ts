@@ -3,38 +3,168 @@
 
 export const STORY = { width: 1080, height: 1920 } as const
 
-/** Maç listesinin çizildiği dikey alan; üstü ve altı Instagram arayüzü için boş bırakılır */
-export const LIST_AREA = { top: 560, bottom: 1610, left: 60, right: 1020 } as const
+export const TEAM_SEPARATOR = ' – '
 
-export interface RowLayout {
-  /** İki satırlı geniş düzen mi, tek satırlı sıkışık düzen mi */
-  roomy: boolean
+/** Instagram arayüzünün kapattığı üst ve alt şeritlerin dışında kalan alan; tüm içerik bunun içinde kalır */
+export const SAFE_AREA = { top: 250, bottom: 1670, left: 60, right: 1020 } as const
+
+/** Üst blok: az maçta büyük, çok maçta yer açmak için küçük */
+export type HeaderMode = 'large' | 'compact'
+
+export const headerModeFor = (count: number): HeaderMode => (count <= 5 ? 'large' : 'compact')
+
+/** Üst bloğun ölçüleri (piksel). Metinlerde baseline satırın taban çizgisidir. */
+export const HEADER = {
+  large: {
+    badge: { top: 252, size: 200 },
+    textGap: 34,
+    lead: { size: 46, baseline: 298 },
+    title: { sizes: [84, 76, 68, 60, 54, 48, 44, 40, 36], baseline: 386 },
+    tail: { size: 46, baseline: 446 },
+    /** Tek satırda bu boyutun altına inen uzun başlık "&" işaretinden ikiye bölünür */
+    splitBelow: 54,
+    split: { sizes: [52, 48, 44, 40], baselines: [352, 406], tailBaseline: 458 },
+    sub: [
+      { sizes: [34, 32, 30, 28], baseline: 512 },
+      { sizes: [30, 28, 26], baseline: 558 },
+    ],
+    bottom: 586,
+  },
+  compact: {
+    badge: { top: 252, size: 150 },
+    textGap: 28,
+    lead: { size: 34, baseline: 284 },
+    title: { sizes: [62, 56, 50, 46, 42, 38, 34, 30], baseline: 346 },
+    tail: { size: 34, baseline: 392 },
+    splitBelow: 40,
+    split: { sizes: [38, 34, 30], baselines: [322, 360], tailBaseline: 398 },
+    sub: [
+      { sizes: [30, 28, 26, 24], baseline: 442 },
+      { sizes: [26, 24, 22], baseline: 480 },
+    ],
+    bottom: 504,
+  },
+} as const
+
+/** Kartlar ile alt blok arasındaki en az boşluk */
+export const FOOTER_GAP = 22
+
+/** Satır arası oranları: yazı boyutunun katı */
+const FULL_LEADING = 1.16
+const DENSE_LEADING = 1.12
+const META_LEADING = 1.35
+/** Geniş düzende kartın üst ve alt iç boşluğu */
+const FULL_PADDING = 12
+
+export interface RowPlan {
+  /** full: takımlar + altında saat/lig satırı; dense: saat ve takımlar tek sırada, lig yok */
+  mode: 'full' | 'dense'
   rowHeight: number
   gap: number
-  /** İlk satırın üst kenarı; liste başlığın hemen altından başlar */
+  /** İlk kartın üst kenarı; kartlar alanı doldurmuyorsa blok dikeyde ortalanır */
   top: number
+  /** Takım adı için hedef yazı boyutu; tüm kartlarda aynı boyut kullanılır */
+  teamSize: number
+  /** Uzun adlar için inilebilecek en küçük ortak boyut */
+  teamMinSize: number
+  /** Saat / lig satırı */
+  metaSize: number
+  percentSize: number
 }
 
-/** Geniş düzende yazı boyutlarının tasarlandığı satır yüksekliği */
-export const STANDARD_ROW_HEIGHT = 150
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
-/** Bu yükseklikten itibaren takım adları iki satıra (ev / deplasman) yazılır */
-export const TALL_ROW_HEIGHT = 180
+/** Az maçta kart sınırsız büyümesin; kalan boşluk kartların üstüne ve altına eşit dağılır */
+const maxRowHeight = (count: number): number => (count === 1 ? 420 : count === 2 ? 340 : count === 3 ? 270 : 230)
 
-/** Az maçta kartlar büyür ki görselin altı boş kalmasın */
-const maxRowHeight = (count: number): number => (count === 1 ? 220 : count === 2 ? 200 : count === 3 ? 180 : STANDARD_ROW_HEIGHT)
-const ROOMY_MIN_HEIGHT = 96
+/** Bu yükseklikten itibaren kartta saat/lig satırı için yer vardır */
+export const FULL_MODE_MIN_HEIGHT = 110
 
-/** Satır yüksekliğini maç sayısına göre ayarlar; liste hiçbir zaman alanın dışına taşmaz. */
-export function layoutRows(count: number): RowLayout {
-  const available = LIST_AREA.bottom - LIST_AREA.top
+/**
+ * Kart yüksekliğini ve yazı boyutlarını maç sayısına göre belirler: az maçta
+ * kartlar büyük ve ferah, çok maçta sıkışık. Kartlar hiçbir zaman [top, bottom] dışına taşmaz.
+ */
+export function planRows(count: number, top: number, bottom: number): RowPlan {
   const n = Math.max(1, count)
-  const roomyGap = 14
-  const roomyHeight = Math.min(maxRowHeight(n), Math.floor((available - roomyGap * (n - 1)) / n))
-  const roomy = roomyHeight >= ROOMY_MIN_HEIGHT
-  const gap = roomy ? roomyGap : 8
-  const rowHeight = roomy ? roomyHeight : Math.floor((available - gap * (n - 1)) / n)
-  return { roomy, rowHeight, gap, top: LIST_AREA.top }
+  const available = bottom - top
+  const gap = n <= 6 ? 16 : n <= 10 ? 12 : 8
+  const rowHeight = Math.min(maxRowHeight(n), Math.floor((available - gap * (n - 1)) / n))
+  const block = rowHeight * n + gap * (n - 1)
+  const start = top + Math.floor((available - block) / 2)
+  const h = rowHeight
+  if (h >= FULL_MODE_MIN_HEIGHT) {
+    return {
+      mode: 'full',
+      rowHeight,
+      gap,
+      top: start,
+      teamSize: clamp(Math.round(h * 0.27), h >= 150 ? 40 : 30, 68),
+      // Büyük kartta 40 px'in altına yalnızca tek bir takım adı 40 px'te satıra sığmıyorsa inilir.
+      teamMinSize: h >= 150 ? 30 : 26,
+      metaSize: clamp(Math.round(h * 0.15), 24, 36),
+      percentSize: clamp(Math.round(h * 0.42), 64, 128),
+    }
+  }
+  return densePlan({ rowHeight, gap, top: start })
+}
+
+/** Sıkışık düzen: saat ve takımlar tek sırada, lig satırı yok */
+function densePlan(base: Pick<RowPlan, 'rowHeight' | 'gap' | 'top'>): RowPlan {
+  const h = base.rowHeight
+  return {
+    ...base,
+    mode: 'dense',
+    teamSize: clamp(Math.round(h * 0.36), 24, 34),
+    teamMinSize: 22,
+    metaSize: h >= 72 ? 24 : 22,
+    percentSize: clamp(Math.round(h * 0.56), 36, 60),
+  }
+}
+
+/**
+ * Geniş düzende uzun takım adları iki satıra bölünüp alt satırla birlikte karta
+ * sığmıyorsa (7–9 maç) görsel sıkışık düzene çevrilir: lig satırı düşer, adlar kesilmez.
+ */
+export const asDense = (plan: RowPlan): RowPlan => densePlan(plan)
+
+/** Bu yazı boyutunda iki satırlık (ev / deplasman) takım adı karta sığar mı */
+export function twoLinesFit(plan: RowPlan, size: number): boolean {
+  return plan.mode === 'full'
+    ? 2 * size * FULL_LEADING + plan.metaSize * META_LEADING + 2 * FULL_PADDING <= plan.rowHeight
+    : 2 * size * DENSE_LEADING + 8 <= plan.rowHeight
+}
+
+export const LEADING = { full: FULL_LEADING, dense: DENSE_LEADING, meta: META_LEADING } as const
+
+export interface TeamFit {
+  /** Hiçbir ortak boyutta adlar kesilmeden sığmadı; çizimde uzun adlar sonundan kırpılır */
+  overflow: boolean
+  /** Görseldeki tüm kartlarda kullanılan takım adı boyutu */
+  size: number
+  /** Her maç için: "Ev – Deplasman" tek satıra sığmadığı için iki satıra bölünecek mi */
+  split: boolean[]
+}
+
+/**
+ * Takım adları küçültülmek yerine iki satıra bölünür ve tüm kartlarda aynı boyut
+ * kullanılır. Hedef boyuttan başlanır; ancak tek bir takım adı satıra sığmıyorsa ya da
+ * iki satır karta sığmıyorsa boyut, bütün kartlar için birlikte küçülür.
+ */
+export function fitTeamNames(
+  plan: RowPlan,
+  rows: { home: string; away: string }[],
+  width: number,
+  measureAt: (text: string, size: number) => number,
+): TeamFit {
+  const splitsAt = (size: number) => rows.map((r) => measureAt(r.home + TEAM_SEPARATOR + r.away, size) > width)
+  for (let size = plan.teamSize; size >= plan.teamMinSize; size -= 2) {
+    const split = splitsAt(size)
+    const namesFit = rows.every((r, i) => !split[i] || (measureAt(r.home, size) <= width && measureAt(r.away, size) <= width))
+    if (namesFit && (!split.some(Boolean) || twoLinesFit(plan, size))) return { size, split, overflow: false }
+  }
+  // En küçük boyutta da sığmayan ad çizimde sonundan kırpılır; iki satır sığmıyorsa tek satırda kalır.
+  const size = plan.teamMinSize
+  return { size, split: twoLinesFit(plan, size) ? splitsAt(size) : rows.map(() => false), overflow: true }
 }
 
 export type Measure = (text: string) => number
@@ -48,8 +178,6 @@ export function ellipsize(text: string, maxWidth: number, measure: Measure): str
   while (chars.length > 1 && measure(chars.join('').trimEnd() + ELLIPSIS) > maxWidth) chars.pop()
   return chars.join('').trimEnd() + ELLIPSIS
 }
-
-export const TEAM_SEPARATOR = ' – '
 
 /**
  * "Ev – Deplasman" metnini genişliğe sığdırır. Sığmıyorsa iki takım adı ayrı

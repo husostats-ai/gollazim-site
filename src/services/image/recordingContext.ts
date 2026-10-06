@@ -10,6 +10,8 @@ export interface DrawnText {
   /** Yazı boyutu (px) */
   size: number
   align: string
+  /** alphabetic: y taban çizgisidir; middle: y satırın dikey ortasıdır */
+  baseline: string
   width: number
 }
 
@@ -21,7 +23,7 @@ const fontSize = (fontValue: unknown): number => parseFloat(/(\d+(?:\.\d+)?)px/.
 export function recordingContext(): { ctx: CanvasRenderingContext2D; calls: Call[]; texts: DrawnText[] } {
   const calls: Call[] = []
   const texts: DrawnText[] = []
-  const state: Record<string, unknown> = { font: '10px sans-serif', textAlign: 'start' }
+  const state: Record<string, unknown> = { font: '10px sans-serif', textAlign: 'start', textBaseline: 'alphabetic' }
   const gradient = (kind: string, args: unknown[]) => {
     const id = `${kind}(${args.join(',')})`
     return { addColorStop: (offset: number, color: string) => calls.push(['addColorStop', id, offset, color]), toJSON: () => id }
@@ -37,7 +39,7 @@ export function recordingContext(): { ctx: CanvasRenderingContext2D; calls: Call
         if (prop === 'fillText') {
           const [text, x, y] = args as [string, number, number]
           const size = fontSize(target.font)
-          texts.push({ text, x, y, size, align: String(target.textAlign), width: fakeTextWidth(text, size) })
+          texts.push({ text, x, y, size, align: String(target.textAlign), baseline: String(target.textBaseline), width: fakeTextWidth(text, size) })
         }
       }
     },

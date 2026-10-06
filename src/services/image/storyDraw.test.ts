@@ -27,9 +27,9 @@ const record = (data: StoryData, logo: CanvasImageSource | null = null) => {
 describe('drawStory çizim kaydı', () => {
   // 1 maç: yüksek kart; 4: geniş düzen; 15: sıkışık düzen. Başlıklar tek satır, küçülen ve ikiye bölünen adları kapsar.
   const cases: [string, StoryData][] = [
-    ['1 maç, kısa başlık', { categoryLabel: '2.5 ÜST', dateLabel: '6 Ekim 2026 Salı', rows: rows(1) }],
-    ['4 maç, uzun başlık', { categoryLabel: 'İLK YARI 0.5 ÜST', dateLabel: '6 Ekim 2026 Salı', rows: rows(4) }],
-    ['15 maç, bölünen başlık', { categoryLabel: 'DEPLASMAN KAZANIR & 2.5 ÜST', dateLabel: '6 Ekim 2026 Salı', rows: rows(15) }],
+    ['1 maç, kısa başlık', { categoryLabel: '2.5 ÜST', description: 'Maçta 3 veya daha fazla gol', dateLabel: '6 Ekim 2026 Salı', rows: rows(1) }],
+    ['4 maç, uzun başlık', { categoryLabel: 'İLK YARI 0.5 ÜST', description: 'İlk yarıda en az 1 gol', dateLabel: '6 Ekim 2026 Salı', rows: rows(4) }],
+    ['15 maç, bölünen başlık', { categoryLabel: 'DEPLASMAN KAZANIR & 2.5 ÜST', description: 'Deplasman kazanır ve maçta 3 veya daha fazla gol', dateLabel: '6 Ekim 2026 Salı', rows: rows(15) }],
   ]
   it.each(cases)('%s', (_, data) => {
     expect(record(data)).toMatchSnapshot()
@@ -37,6 +37,6 @@ describe('drawStory çizim kaydı', () => {
 
   it('logo varsa rozete kırpılarak çizilir', () => {
     const logo = { toJSON: () => 'logo' } as unknown as CanvasImageSource
-    expect(record({ categoryLabel: 'KG VAR', dateLabel: '6 Ekim 2026 Salı', rows: [] }, logo)).toMatchSnapshot()
+    expect(record({ categoryLabel: 'KG VAR', description: 'İki takım da en az 1 gol atar', dateLabel: '6 Ekim 2026 Salı', rows: [] }, logo)).toMatchSnapshot()
   })
 })

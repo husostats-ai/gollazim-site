@@ -10,6 +10,7 @@ import {
   latestDecidedDate,
 } from '../../services/stats/dailySummary'
 import { useApp } from '../../state/AppContext'
+import CategoryResultPanel from './CategoryResultPanel'
 import { activeShared, SCOPE_LABELS, sharedPicksOnly, sharedWithoutPick, type StatsScope } from '../../services/story/shared'
 import type { Pick, SharedPick } from '../../types'
 import { formatDay, formatPlainDate } from '../../utils/format'
@@ -201,6 +202,8 @@ export default function DailyStoryPanel({ picks, shared }: { picks: Pick[]; shar
           </p>
         </div>
       )}
+
+      <CategoryResultPanel date={date} picks={picks} shared={shared} />
     </div>
   )
 }
