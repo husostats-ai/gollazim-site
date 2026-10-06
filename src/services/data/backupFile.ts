@@ -1,6 +1,6 @@
 import type { BackupFile } from '../../types'
 import { isBackupFile } from './backupFormat'
-import { backupRepo } from './index'
+import { backupRepo, settingsRepo } from './index'
 
 export async function downloadBackup(): Promise<void> {
   const backup = await backupRepo.exportAll()
@@ -11,6 +11,8 @@ export async function downloadBackup(): Promise<void> {
   a.download = `gollazim-yedek-${backup.exportedAt.slice(0, 10)}.json`
   a.click()
   URL.revokeObjectURL(url)
+  // Hatırlatıcı için: son yedek zamanı yalnızca bu tarayıcıda tutulur, yedek dosyasına girmez.
+  await settingsRepo.setLastBackupAt(backup.exportedAt)
 }
 
 /** Dosyayı doğrular ve mevcut verinin yerine yazar; geçersizse hata fırlatır. */

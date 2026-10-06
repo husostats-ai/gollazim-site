@@ -18,3 +18,24 @@ export const isBackupFile = (data: unknown): data is BackupFile => {
     (d.marketConflictLimit === undefined || typeof d.marketConflictLimit === 'number')
   )
 }
+
+/** Yedek dosyasına giren alanlar. Tarayıcıya özgü kayıtlar (ör. son yedek zamanı) burada yoktur. */
+export type BackupContent = Omit<BackupFile, 'app' | 'version' | 'exportedAt'>
+
+/** Yedek dosyasının içeriğini kurar; yalnızca BackupContent alanları yazılır. */
+export const assembleBackup = (content: BackupContent, now: Date): BackupFile => ({
+  app: 'gollazim',
+  version: 1,
+  exportedAt: now.toISOString(),
+  uploads: content.uploads,
+  matches: content.matches,
+  results: content.results,
+  picks: content.picks,
+  thresholds: content.thresholds,
+  aiVerdicts: content.aiVerdicts,
+  aiPrompts: content.aiPrompts,
+  storyTexts: content.storyTexts,
+  marketConflictLimit: content.marketConflictLimit,
+  storySelections: content.storySelections,
+  sharedPicks: content.sharedPicks,
+})

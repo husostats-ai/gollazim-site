@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { EmptyAnalysis } from '../components/AnalysisNotice'
+import BackupReminder from '../components/BackupReminder'
+import DailyChecklist from '../components/DailyChecklist'
 import DayToolbar from '../components/DayToolbar'
 import EmptyState from '../components/EmptyState'
 import NoData from '../components/NoData'
@@ -9,6 +11,7 @@ import PredictionRow from '../components/PredictionRow'
 import { categoriesInGroup, GROUPS, HOME_PREVIEW_COUNT, standaloneCategories } from '../config/categories'
 import { comparePredictions } from '../services/analysis/engine'
 import { useApp } from '../state/AppContext'
+import { useDailyStatus } from '../state/useDailyStatus'
 
 function Section({ title, to, children }: { title: string; to: string; children: ReactNode }) {
   return (
@@ -26,10 +29,17 @@ function Section({ title, to, children }: { title: string; to: string; children:
 
 export default function HomePage() {
   const { analysis, matches, dates, sortMode, loading } = useApp()
+  const daily = useDailyStatus()
 
   return (
     <>
       <PageTitle title="GÜNÜN ANALİZLERİ" />
+      {!loading && (
+        <>
+          <DailyChecklist status={daily} />
+          <BackupReminder status={daily} />
+        </>
+      )}
       {loading ? null : dates.length === 0 ? (
         <NoData />
       ) : (

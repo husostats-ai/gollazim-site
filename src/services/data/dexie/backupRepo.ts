@@ -1,6 +1,7 @@
 import type { BackupRepo } from '../types'
 import { db } from './db'
-import { settingsRepo } from './settingsRepo'
+import { LAST_BACKUP_KEY, settingsRepo } from './settingsRepo'
+import { assembleBackup } from '../backupFormat'
 import { isCategoryId } from '../../../config/categories'
 import { normalizeSelections } from '../../story/selection'
 import { normalizeShared } from '../../story/shared'
@@ -21,27 +22,14 @@ export const backupRepo: BackupRepo = {
       db.storySelections.toArray(),
       db.sharedPicks.toArray(),
     ])
-    return {
-      app: 'gollazim',
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      uploads,
-      matches,
-      results,
-      picks,
-      thresholds,
-      aiVerdicts,
-      aiPrompts,
-      storyTexts,
-      marketConflictLimit,
-      storySelections,
-      sharedPicks,
-    }
+    return assembleBackup({ uploads, matches, results, picks, thresholds, aiVerdicts, aiPrompts, storyTexts, marketConflictLimit, storySelections, sharedPicks }, new Date())
   },
 
   async importAll(backup) {
     const tables = [db.uploads, db.matches, db.results, db.picks, db.settings, db.aiVerdicts, db.aiPrompts, db.storySelections, db.sharedPicks]
     await db.transaction('rw', tables, async () => {
+      // Son yedek zamanı bu tarayıcıya aittir: yedekten gelmez, içe aktarma da onu silmez.
+      const lastBackup = await db.settings.get(LAST_BACKUP_KEY)
       await Promise.all([
         db.uploads.clear(),
         db.matches.clear(),
@@ -57,6 +45,7 @@ export const backupRepo: BackupRepo = {
       await db.matches.bulkPut(backup.matches)
       await db.results.bulkPut(backup.results)
       await db.picks.bulkPut(backup.picks)
+      if (lastBackup) await db.settings.put(lastBackup)
       await settingsRepo.setThresholds(backup.thresholds)
       // Eski yedeklerde görsel metinleri yoktur; o zaman varsayılanlara dönülür.
       if (backup.storyTexts) await settingsRepo.setStoryTexts(backup.storyTexts)

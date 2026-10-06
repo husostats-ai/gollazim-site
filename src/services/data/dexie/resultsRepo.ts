@@ -3,6 +3,8 @@ import type { ResultsRepo } from '../types'
 import { db } from './db'
 
 export const resultsRepo: ResultsRepo = {
+  listAll: () => db.results.toArray(),
+
   get: (matchId) => db.results.get(matchId),
 
   async listByMatchIds(matchIds) {

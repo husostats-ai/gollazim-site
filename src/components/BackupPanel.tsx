@@ -25,6 +25,7 @@ export default function BackupPanel() {
   const onExport = () =>
     run(async () => {
       await downloadBackup()
+      await refresh()
       return 'Yedek dosyası indirildi.'
     })
 

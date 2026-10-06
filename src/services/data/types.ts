@@ -39,6 +39,7 @@ export interface MatchesRepo {
 }
 
 export interface ResultsRepo {
+  listAll(): Promise<MatchResult[]>
   get(matchId: string): Promise<MatchResult | undefined>
   listByMatchIds(matchIds: string[]): Promise<MatchResult[]>
   save(result: MatchResult): Promise<void>
@@ -88,6 +89,9 @@ export interface SettingsRepo {
   /** Piyasa çelişkisi sınırı (puan); kayıt yoksa varsayılan */
   getMarketConflictLimit(): Promise<number>
   setMarketConflictLimit(limit: number): Promise<void>
+  /** Bu tarayıcıda son JSON yedeğinin alındığı an (ISO); hiç alınmadıysa null. Yedek dosyasına girmez. */
+  getLastBackupAt(): Promise<string | null>
+  setLastBackupAt(at: string): Promise<void>
 }
 
 export interface BackupRepo {
