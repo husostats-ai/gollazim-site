@@ -2,6 +2,7 @@ import { getCategory, type CategoryId } from '../../config/categories'
 import type { Match } from '../../types'
 import { formatNumber } from '../../utils/format'
 import { stat } from './stat'
+import { usableXg, XG_MISSING_TEXT } from './xgAvailability'
 
 export interface SummaryItem {
   label: string
@@ -25,7 +26,9 @@ export function statSummary(match: Match, categoryId: CategoryId): SummaryItem[]
     const homeXg = stat(match, 'homeXg')
     const awayXg = stat(match, 'awayXg')
     if (homeXg !== null && awayXg !== null) {
-      items.push({ label: 'xG', value: `${formatNumber(homeXg)} – ${formatNumber(awayXg)}` })
+      // Eksik xG kaynakta 0 olarak gelir; hesaplar onu kullanmaz, kartta da "0 – 0" yazılmaz.
+      const xg = usableXg(match)
+      items.push({ label: 'xG', value: xg ? `${formatNumber(xg.home)} – ${formatNumber(xg.away)}` : XG_MISSING_TEXT })
     }
     if (categoryId === 'over25btts') {
       add('2.5 Üst', stat(match, 'over25Pct'), '%')
