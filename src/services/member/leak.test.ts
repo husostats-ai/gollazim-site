@@ -153,7 +153,9 @@ describe('yayın paketi: ham veri sızıntısı', () => {
       itemV1: ['match', 'percent', 'model', 'conflict', 'stars', 'reliability', 'outcome', 'detail'],
       other: ['categoryId', 'percent', 'reliability'],
       statsRoot: ['all', 'shared'],
-      stats: ['overall', 'matches', 'byCategory', 'byReliability', 'daily', 'weekly', 'monthly', 'stars'],
+      stats: ['main', 'overall', 'matches', 'byCategory', 'byReliability', 'daily', 'weekly', 'monthly', 'stars'],
+      statsV2: ['overall', 'matches', 'byCategory', 'byReliability', 'daily', 'weekly', 'monthly', 'stars'],
+      main: ['categories', 'overall', 'matches'],
       statsMatches: ['total', 'decided'],
       bucket: ['key', 'tally'],
       tally: ['won', 'lost', 'void', 'pending', 'decided', 'total', 'rate', 'lowSample'],
@@ -232,7 +234,7 @@ describe('yayın paketi: şema denetimi fazladan ya da eksik alanı reddeder', (
     expect(broken((p) => void ((firstItem(p) as { conflict: unknown }).conflict = 'piyasa'))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days[0].lists[0].items[0].conflict = 'hesap'))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days[0].lists.find((l) => l.categoryId === 'homeWin15')!.items[0].conflict = 'model'))).toThrow(MemberPayloadError)
-    expect(broken((p) => void ((p as { v: number }).v = 3))).toThrow(MemberPayloadError)
+    expect(broken((p) => void ((p as { v: number }).v = 4))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days = []))).toThrow(MemberPayloadError)
     expect(broken((p) => void p.days[0].lists.reverse())).toThrow(MemberPayloadError)
   })
@@ -264,7 +266,7 @@ describe('yayın paketi: "aynı maçın diğer önerileri" yalnızca paketteki �
           entries += item.others!.length
         }
     expect(entries).toBeGreaterThan(100)
-    expect(payload.v).toBe(2)
+    expect(payload.v).toBe(3)
   })
 
   it('pakete girmeyen (ilk 15 dışında kalan) öneri bu satıra da girmez', () => {
@@ -297,6 +299,7 @@ describe('yayın paketi: "aynı maçın diğer önerileri" yalnızca paketteki �
   it('sürüm 1 paket (bu alan olmadan) hâlâ kabul edilir; sürümler karıştırılamaz', () => {
     const v1 = copy()
     ;(v1 as { v: number }).v = 1
+    for (const scope of ['all', 'shared'] as const) delete v1.statistics[scope].main
     for (const day of v1.days) for (const list of day.lists) for (const item of list.items) delete item.others
     expect(() => assertMemberPayload(v1)).not.toThrow()
     // Sürüm 1 pakette bu alan bulunamaz; sürüm 2 pakette bulunmak zorundadır.
@@ -304,6 +307,44 @@ describe('yayın paketi: "aynı maçın diğer önerileri" yalnızca paketteki �
     const v2 = JSON.parse(JSON.stringify(v1)) as MemberPayload
     ;(v2 as { v: number }).v = 2
     expect(() => assertMemberPayload(v2)).toThrow(MemberPayloadError)
+  })
+})
+
+describe('yayın paketi: ana kategorilerin toplu başarısı (sürüm 3)', () => {
+  const copy = (): MemberPayload => JSON.parse(text) as MemberPayload
+  const rejects = (mutate: (p: MemberPayload) => void) => () => {
+    const p = copy()
+    mutate(p)
+    assertMemberPayload(p)
+  }
+  type Loose = Record<string, unknown>
+
+  it('alan yalnızca kategori kimlikleri ve sayım içerir; fazladan alan, bilinmeyen ya da yinelenen kategori reddedilir', () => {
+    for (const scope of ['all', 'shared'] as const) {
+      const main = payload.statistics[scope].main!
+      expect(Object.keys(main)).toEqual(['categories', 'overall', 'matches'])
+      expect(main.categories).toEqual(['over25', 'btts', 'ht05'])
+    }
+    expect(rejects((p) => void ((p.statistics.all.main as unknown as Loose).odds = 1.737))).toThrow(MemberPayloadError)
+    expect(rejects((p) => void ((p.statistics.all.main!.overall as unknown as Loose).avgGoals = 2.61))).toThrow(MemberPayloadError)
+    expect(rejects((p) => void ((p.statistics.all.main!.categories as string[])[0] = 'Odds_BTTS_Yes'))).toThrow(MemberPayloadError)
+    expect(rejects((p) => void p.statistics.all.main!.categories.push('over25'))).toThrow(MemberPayloadError)
+    expect(rejects((p) => void (p.statistics.all.main!.categories = []))).toThrow(MemberPayloadError)
+    expect(rejects((p) => void ((p.statistics.shared as unknown as Loose).main = null))).toThrow(MemberPayloadError)
+    expect(rejects((p) => void delete p.statistics.shared.main)).toThrow(MemberPayloadError)
+    expect(rejects(() => undefined)).not.toThrow()
+  })
+
+  it('sürüm 2 paket (bu alan olmadan) hâlâ kabul edilir; sürümler karıştırılamaz', () => {
+    const v2 = copy()
+    ;(v2 as { v: number }).v = 2
+    for (const scope of ['all', 'shared'] as const) delete v2.statistics[scope].main
+    expect(() => assertMemberPayload(v2)).not.toThrow()
+    // Sürüm 2 pakette bu alan bulunamaz; sürüm 3 pakette bulunmak zorundadır.
+    expect(rejects((p) => void ((p as { v: number }).v = 2))).toThrow(MemberPayloadError)
+    const v3 = JSON.parse(JSON.stringify(v2)) as MemberPayload
+    ;(v3 as { v: number }).v = 3
+    expect(() => assertMemberPayload(v3)).toThrow(MemberPayloadError)
   })
 })
 

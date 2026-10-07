@@ -226,6 +226,21 @@ try {
   await go(page, '/istatistik')
   await page.waitForSelector(sel('overall-rate'), { timeout: 15000 })
   step('istatistik sayfası dolu', true, await text(page, 'overall-rate'))
+  // En üstteki kart yalnızca ana kategorileri, altındaki satır tüm kategorileri gösterir (iki ölçüde de).
+  const topCard = async () => ({ card: await text(page, 'main-card'), main: Number(await text(page, 'main-decided')), all: Number(await text(page, 'overall-decided')), line: await text(page, 'overall-line') })
+  const topAll = await topCard()
+  step('istatistik: "ANA KATEGORİLER BAŞARISI" kartı üç kategoriyi sayıyor', topAll.card.startsWith('ANA KATEGORİLER BAŞARISI2.5 ÜST · KG VAR · İLK YARI 0.5 ÜST') && topAll.main > 0 && topAll.main < topAll.all, `${await text(page, 'main-rate')} · ${topAll.main} öneri`)
+  step('istatistik: "Tüm kategoriler" satırı eski genel değeri gösteriyor', /^Tüm kategoriler: %[\d,]+ · \d+ öneri · \d+ benzersiz maç$/.test(topAll.line), topAll.line)
+  await tap(page, 'stats-scope-shared')
+  await sleep(200)
+  const topShared = await topCard()
+  step('istatistik: Paylaşılan ölçüsünde iki değer de değişiyor', topShared.main <= topAll.main && topShared.all < topAll.all && topShared.main <= topShared.all, `${await text(page, 'main-rate')} · ${topShared.main} öneri — ${topShared.line}`)
+  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 })
+  await shot(page, 'main-card', 'admin-istatistik-ana-kategoriler-paylasilan')
+  await tap(page, 'stats-scope-all')
+  await sleep(200)
+  await shot(page, 'main-card', 'admin-istatistik-ana-kategoriler')
+  await page.setViewport({ width: 1280, height: 900 })
   await smoke(page, 'yedek yüklü')
 
   // B) ÜYE YÖNETİMİ

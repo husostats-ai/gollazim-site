@@ -18,6 +18,7 @@ import { buildAiStats } from '../services/ai/aiStats'
 import { aiRepo, matchesRepo, picksRepo, resultsRepo, sharedRepo } from '../services/data'
 import { buildStarStats, recomputedNote } from '../services/stats/starStats'
 import { SCOPE_LABELS, sharedPicksOnly, type StatsScope } from '../services/story/shared'
+import { buildMainStats } from '../services/stats/mainStats'
 import { backfillMarket, buildMarketStats } from '../services/stats/marketStats'
 import { buildStats, LOW_SAMPLE_LIMIT, type Bucket } from '../services/stats/statsEngine'
 import { useApp } from '../state/AppContext'
@@ -36,9 +37,9 @@ const dayMonth = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'shor
 const shortMonth = new Intl.DateTimeFormat('tr-TR', { month: 'short', year: '2-digit', timeZone: 'UTC' })
 const utc = (date: string) => new Date(`${date}T00:00:00Z`)
 
-function Card({ title, note, children }: { title: string; note?: string; children: ReactNode }) {
+function Card({ title, note, testId, children }: { title: string; note?: string; testId?: string; children: ReactNode }) {
   return (
-    <section className="min-w-0 rounded-2xl border border-line bg-navy-700 p-4">
+    <section className="min-w-0 rounded-2xl border border-line bg-navy-700 p-4" data-testid={testId}>
       <h2 className="font-extrabold tracking-wide">{title}</h2>
       {note && <p className="mt-1 text-xs text-muted">{note}</p>}
       <div className="mt-4">{children}</div>
@@ -95,6 +96,8 @@ export default function StatsPage() {
   )
   const scopedPicks = useMemo(() => (scope === 'shared' ? sharedPicksOnly(picks ?? [], shared) : (picks ?? [])), [scope, picks, shared])
   const starStats = useMemo(() => buildStarStats(scopedPicks), [scopedPicks])
+  /** En üstteki kart: yalnızca sabit ana kategoriler (config/mainCategories), seçili ölçüde */
+  const main = useMemo(() => buildMainStats(scopedPicks), [scopedPicks])
   const aiStats = useMemo(() => buildAiStats(picks ?? [], verdicts), [picks, verdicts])
   const marketStats = useMemo(
     () => buildMarketStats(backfillMarket(picks ?? [], legacyMatches, marketConflictLimit)),
@@ -156,37 +159,42 @@ export default function StatsPage() {
             </div>
             <p className="min-w-0 text-xs text-muted" data-testid="stats-scope-note">
               {scope === 'shared'
-                ? `${SCOPE_LABELS.shared}: genel başarı, kategori, güvenilirlik ve zaman tabloları yalnızca Story görselinde paylaşılan dondurulmuş önerileri sayar. Kalibrasyon, model/piyasa ve yapay zekâ kartları her zaman tüm önerileri kullanır.`
+                ? `${SCOPE_LABELS.shared}: ana kategoriler, tüm kategoriler, kategori, güvenilirlik ve zaman tabloları yalnızca Story görselinde paylaşılan dondurulmuş önerileri sayar. Kalibrasyon, model/piyasa ve yapay zekâ kartları her zaman tüm önerileri kullanır.`
                 : `${SCOPE_LABELS.all}: tüm dondurulmuş öneriler sayılır.`}
             </p>
           </div>
 
-          <Card title="GENEL BAŞARI">
+          <Card title="ANA KATEGORİLER BAŞARISI" testId="main-card" note={main.categories.map((id) => getCategory(id).label).join(' · ')}>
             <div className="flex flex-wrap items-end gap-x-4 gap-y-1">
-              <p className="text-5xl leading-none font-black sm:text-6xl" data-testid="overall-rate">
-                {formatRate(overall.rate)}
+              <p className="text-5xl leading-none font-black sm:text-6xl" data-testid="main-rate">
+                {formatRate(main.overall.rate)}
               </p>
               <p className="flex flex-wrap items-center gap-1.5 pb-1 text-sm text-muted">
-                · {overall.decided} öneri · <span data-testid="unique-matches">{stats.matches.decided}</span> benzersiz
-                maç
-                {overall.decided > 0 && overall.lowSample && <LowSampleBadge />}
+                · <span data-testid="main-decided">{main.overall.decided}</span> öneri ·{' '}
+                <span data-testid="main-matches">{main.matches.decided}</span> benzersiz maç
+                {main.overall.decided > 0 && main.overall.lowSample && <LowSampleBadge />}
               </p>
             </div>
-            {overall.decided > 0 && overall.lowSample && (
+            {main.overall.decided > 0 && main.overall.lowSample && (
               <p className="mt-2 text-xs text-warn">
                 {LOW_SAMPLE_LIMIT}'den az sonuçlanmış öneri var; bu oran henüz güvenilir bir gösterge değil.
               </p>
             )}
             <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <Figure label="Kazanan" value={overall.won} />
-              <Figure label="Kaybeden" value={overall.lost} />
-              <Figure label="Değerlendirilemedi" value={overall.void} />
-              <Figure label="Bekliyor" value={overall.pending} />
+              <Figure label="Kazanan" value={main.overall.won} />
+              <Figure label="Kaybeden" value={main.overall.lost} />
+              <Figure label="Değerlendirilemedi" value={main.overall.void} />
+              <Figure label="Bekliyor" value={main.overall.pending} />
             </div>
             <p className="mt-2 text-xs text-muted">
-              Toplam {overall.total} dondurulmuş öneri, {stats.matches.total} benzersiz maç. Aynı maç birden çok
-              kategoride önerilebildiği için öneri sayısı maç sayısından büyüktür. “Değerlendirilemedi” ve “bekliyor”
-              başarı oranına girmez.
+              Bu üç kategoride toplam {main.overall.total} dondurulmuş öneri, {main.matches.total} benzersiz maç. Aynı
+              maç birden çok kategoride önerilebildiği için öneri sayısı maç sayısından büyüktür. “Değerlendirilemedi”
+              ve “bekliyor” başarı oranına girmez.
+            </p>
+            <p className="mt-3 border-t border-line pt-2 text-xs text-muted" data-testid="overall-line">
+              Tüm kategoriler: <span data-testid="overall-rate">{formatRate(overall.rate)}</span> ·{' '}
+              <span data-testid="overall-decided">{overall.decided}</span> öneri ·{' '}
+              <span data-testid="unique-matches">{stats.matches.decided}</span> benzersiz maç
             </p>
           </Card>
 
