@@ -63,6 +63,8 @@ try {
   await page.setViewport({ width: 390, height: 844 })
   await page.goto(`${local}/#/uye`, { waitUntil: 'networkidle0' })
   await page.waitForSelector(sel('member-username'))
+  // Yasal uyarı penceresi: giriş formu ancak kabulden sonra kullanılabilir.
+  if (await page.$(sel('member-legal'))) await page.$eval(sel('member-legal-accept'), (el) => el.click())
   await page.type(sel('member-username'), login.username)
   await page.type(sel('member-password'), login.password)
   const started = Date.now()

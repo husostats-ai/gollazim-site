@@ -119,8 +119,14 @@ async function cardShot(page, id, name) {
   await (await page.$(sel(id))).screenshot({ path: join(shots, `${name}-390.png`) })
   report.ekranlar.push({ dosya: `${name}-390.png`, genislik: 390, tasma: 'yok' })
 }
-async function signIn(page, username, password) {
+/** Giriş ekranındaki yasal uyarı penceresi açıksa "kabul ediyorum" düğmesine basar */
+async function acceptLegal(page) {
   await page.waitForSelector(sel('member-username'))
+  if (await page.$(sel('member-legal'))) await page.$eval(sel('member-legal-accept'), (el) => el.click())
+  await page.waitForFunction(() => !document.querySelector('[data-testid="member-legal"]') && !document.querySelector('[data-testid="member-username"]').disabled)
+}
+async function signIn(page, username, password) {
+  await acceptLegal(page)
   await page.$eval(sel('member-username'), (el) => (el.value = ''))
   await page.type(sel('member-username'), username)
   await page.type(sel('member-password'), password)
@@ -145,6 +151,106 @@ try {
   step('simge ve logo yükleniyor', assets.join() === '200,200', assets.join())
   const links = await page.$$eval('a', (as) => as.map((a) => a.getAttribute('href')))
   step('giriş ekranında gezinme bağlantısı yok', links.length === 0, JSON.stringify(links))
+
+  // 1a) Yasal uyarı penceresi: kabul edilene kadar form etkisiz, hiçbir istek gitmez, hiçbir şey saklanmaz
+  const legalState = () =>
+    page.evaluate(() => {
+      const dialog = document.querySelector('[data-testid="member-legal"]')
+      return {
+        open: dialog !== null,
+        role: dialog?.getAttribute('role'),
+        modal: dialog?.getAttribute('aria-modal'),
+        focusInside: dialog?.contains(document.activeElement) ?? false,
+        focused: document.activeElement?.getAttribute('data-testid') ?? document.activeElement?.tagName,
+        declined: document.querySelector('[data-testid="member-legal-declined"]')?.textContent ?? null,
+        scrollLocked: getComputedStyle(document.documentElement).overflow === 'hidden',
+        username: document.querySelector('[data-testid="member-username"]').value,
+        password: document.querySelector('[data-testid="member-password"]').value,
+        disabled: [...document.querySelectorAll('[data-testid="member-login-content"] input, [data-testid="member-login-content"] button')].every((el) => el.disabled),
+        inert: document.querySelector('[data-testid="member-login-content"]').inert,
+        busy: document.querySelector('[data-testid="member-progress"]') !== null,
+        text: dialog?.innerText ?? '',
+        buttons: [...(dialog?.querySelectorAll('button') ?? [])].map((b) => Math.round(b.getBoundingClientRect().height)),
+        fits: dialog ? dialog.getBoundingClientRect().left >= 0 && dialog.getBoundingClientRect().right <= window.innerWidth && dialog.getBoundingClientRect().top >= 0 && dialog.getBoundingClientRect().bottom <= window.innerHeight : false,
+      }
+    })
+  const storageEmpty = async () => {
+    const s = await session(page)
+    return Object.keys(s.session).length === 0 && Object.keys(s.local).length === 0 && s.cookie === '' && (await page.evaluate(async () => (await indexedDB.databases()).length)) === 0
+  }
+  const requestsBeforeLegal = requests.length
+  let legal = await legalState()
+  step('yasal uyarı penceresi açık: role="dialog", aria-modal, odak kabul düğmesinde', legal.open && legal.role === 'dialog' && legal.modal === 'true' && legal.focused === 'member-legal-accept', `odak: ${legal.focused}`)
+  step('pencere metni: başlık, dört paragraf, iki düğme', legal.text.startsWith('⚠️ Yasal Uyarı') && legal.text.includes('Burada yazanlar bahis tavsiyesi değildir ve bahse yönlendirmez.') && legal.text.includes('Bu sayfayı yalnızca 18 yaşından büyükler kullanabilir.') && legal.text.includes('18 yaşından büyüğüm, kabul ediyorum') && legal.text.trimEnd().endsWith('Kabul etmiyorum'))
+  const legalLeak = FORBIDDEN.exec(legal.text.toLocaleLowerCase('tr'))
+  step('pencere metninde yasak terim yok', legalLeak === null, legalLeak?.[0] ?? '')
+  step('pencere açıkken form etkisiz (inert, bütün alanlar pasif) ve arka plan kaydırılamıyor', legal.inert && legal.disabled && legal.scrollLocked)
+  for (const width of [390, 320]) {
+    await page.setViewport({ width, height: width === 320 ? 568 : 844, deviceScaleFactor: 2 })
+    await sleep(150)
+    const size = await overflow(page)
+    const at = await legalState()
+    await page.screenshot({ path: join(shots, `yasal-uyari-${width}.png`) })
+    report.ekranlar.push({ dosya: `yasal-uyari-${width}.png`, genislik: width, tasma: size.scroll > size.inner ? `${size.scroll} > ${size.inner}` : 'yok' })
+    step(`yasal uyarı ${width} px: taşma yok, pencere ekrana sığıyor, düğmeler en az 44 px`, size.scroll <= size.inner && at.fits && at.buttons.length === 2 && at.buttons.every((h) => h >= 44), `düğme yükseklikleri ${at.buttons.join(', ')} px`)
+  }
+  // Kısa ekranda metin pencerenin içinde kayar; düğmeler görünür kalır.
+  await page.setViewport({ width: 320, height: 380, deviceScaleFactor: 2 })
+  await sleep(150)
+  const short = await page.evaluate(() => {
+    const body = document.querySelector('[data-testid="member-legal-body"]')
+    const accept = document.querySelector('[data-testid="member-legal-accept"]').getBoundingClientRect()
+    const decline = document.querySelector('[data-testid="member-legal-decline"]').getBoundingClientRect()
+    body.scrollTop = 9999
+    return { scrollable: body.scrollHeight > body.clientHeight, scrolled: body.scrollTop > 0, visible: accept.top >= 0 && decline.bottom <= window.innerHeight, page: document.documentElement.scrollWidth <= window.innerWidth }
+  })
+  step('kısa ekranda (320×380) metin pencere içinde kayıyor, düğmeler ekranda', short.scrollable && short.scrolled && short.visible && short.page, JSON.stringify(short))
+  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 })
+  await sleep(150)
+  // Klavye: yazı ve Enter forma ulaşmaz, Esc kapatmaz, Tab pencerenin içinde döner
+  await page.keyboard.press('Escape')
+  await page.keyboard.type('deneme')
+  const order = []
+  for (let i = 0; i < 5; i++) {
+    await page.keyboard.press('Tab')
+    order.push((await legalState()).focused)
+  }
+  await page.keyboard.down('Shift')
+  await page.keyboard.press('Tab')
+  await page.keyboard.up('Shift')
+  order.push((await legalState()).focused)
+  legal = await legalState()
+  step('Esc pencereyi kapatmıyor; Tab ve Shift+Tab odağı pencerenin içinde döndürüyor', legal.open && order.every((id) => id === 'member-legal-accept' || id === 'member-legal-decline') && new Set(order).size === 2, order.join(' → '))
+  // Fareyle forma tıklama ve doğrudan gönderme denemesi de etkisizdir
+  await page.mouse.click(195, 300)
+  await page.evaluate(() => {
+    document.querySelector('[data-testid="member-username"]').focus()
+    document.querySelector('[data-testid="member-submit"]').click()
+    document.querySelector('[data-testid="member-login"]').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+  })
+  // Odak "Kabul etmiyorum" düğmesindeyken yazı ve Enter: Enter formu göndermez, yalnızca o düğmeyi çalıştırır.
+  await page.$eval(sel('member-legal-decline'), (el) => el.focus())
+  await page.keyboard.type('deneme')
+  await page.keyboard.press('Enter')
+  await sleep(600)
+  legal = await legalState()
+  step('kabul edilmeden yazı, Enter, tıklama ve gönderme forma ulaşmıyor: alanlar boş, giriş başlamadı', legal.open && legal.username === '' && legal.password === '' && !legal.busy && legal.focusInside, `odak: ${legal.focused}`)
+  step('"Kabul etmiyorum" pencereyi kapatmıyor; "Devam etmek için onay gerekir." yazıyor', legal.open && legal.declined === 'Devam etmek için onay gerekir.' && legal.inert, legal.declined ?? 'uyarı yok')
+  await shot(page, 'yasal-uyari-red', 320)
+  const duringLegal = requests.slice(requestsBeforeLegal)
+  step('kabul edilmeden hiçbir ağ isteği gitmedi (paket dahil)', duringLegal.length === 0 && !requests.some((u) => u.includes('/gollazim-yayin/')), `${duringLegal.length} istek`)
+  step('pencere açıkken depolama boş', await storageEmpty())
+  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 })
+  await page.$eval(sel('member-legal-accept'), (el) => el.click())
+  await sleep(200)
+  const accepted = await page.evaluate(() => ({ open: document.querySelector('[data-testid="member-legal"]') !== null, inert: document.querySelector('[data-testid="member-login-content"]').inert, focused: document.activeElement?.getAttribute('data-testid'), disabled: document.querySelector('[data-testid="member-username"]').disabled, overflow: document.documentElement.style.overflow }))
+  step('kabul edilince pencere kapanıyor, form açılıyor, odak kullanıcı adında, kaydırma geri geliyor', !accepted.open && !accepted.inert && !accepted.disabled && accepted.focused === 'member-username' && accepted.overflow === '', JSON.stringify(accepted))
+  step('onay hiçbir yere yazılmadı: depolama hâlâ boş, istek yok', (await storageEmpty()) && requests.length === requestsBeforeLegal)
+  await page.reload({ waitUntil: 'networkidle0' })
+  await page.waitForSelector(sel('member-login'))
+  step('sayfa yenilenince pencere yeniden çıkıyor', (await legalState()).open)
+  await acceptLegal(page)
+
   const attrs = await page.$eval(sel('member-password'), (el) => [el.type, el.autocomplete, el.getAttribute('autocapitalize'), el.getAttribute('autocorrect'), el.spellcheck].join(','))
   step('şifre alanı öznitelikleri', attrs === 'password,current-password,none,off,false', attrs)
   await page.click(sel('member-password-toggle'))
@@ -366,7 +472,7 @@ try {
   // 8) Sayfa yenileme: oturum sürer
   await page.reload({ waitUntil: 'networkidle0' })
   await page.waitForSelector(sel('member-cards'))
-  step('sayfa yenilenince oturum sürüyor', (await page.$(sel('member-login'))) === null)
+  step('sayfa yenilenince oturum sürüyor; yasal uyarı penceresi çıkmıyor', (await page.$(sel('member-login'))) === null && (await page.$(sel('member-legal'))) === null)
 
   // 9) Eski paket uyarısı
   packageFile = 'paket-eski.json'
@@ -383,7 +489,7 @@ try {
   await second.setViewport({ width: 390, height: 844 })
   await second.goto(`${site}${T.home}`, { waitUntil: 'networkidle0' })
   await second.waitForSelector(sel('member-login'))
-  step('sekme kapatılıp yeni sekme açılınca giriş istiyor', Object.keys((await session(second)).session).length === 0)
+  step('sekme kapatılıp yeni sekme açılınca giriş istiyor; yasal uyarı penceresi yeniden çıkıyor', Object.keys((await session(second)).session).length === 0 && (await second.$(sel('member-legal'))) !== null)
 
   // 11) Çıkış
   await signIn(second, login.username, login.password)
