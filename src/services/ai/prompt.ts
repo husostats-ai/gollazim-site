@@ -5,6 +5,7 @@ import { RELIABILITY_LABELS, SAMPLE_HINT, sampleText } from '../analysis/reliabi
 import { goalModelPercent, MODEL_CONFLICT_LIMIT } from '../analysis/goalModel'
 import { MARKET_CATEGORY_IDS, MARKET_CONFLICT_LABEL, marketPercent } from '../analysis/market'
 import { stat } from '../analysis/stat'
+import { usableXg } from '../analysis/xgAvailability'
 import type { Prediction } from '../analysis/types'
 import type { AiMatchItem } from './collect'
 
@@ -60,12 +61,14 @@ function marketLine(item: AiMatchItem): string | null {
 export function matchBlock(item: AiMatchItem, number: number): string {
   const { match } = item
   const odds = [stat(match, 'oddsHome'), stat(match, 'oddsDraw'), stat(match, 'oddsAway')]
+  const xg = usableXg(match)
   const stats = [
     `Gol ortalaması: ${num(stat(match, 'avgGoals'))}`,
     `Korner ortalaması: ${num(stat(match, 'avgCorners'))}`,
     `Kart ortalaması: ${num(stat(match, 'avgCards'))}`,
     `Maç başı puan (PPG): ${pair(stat(match, 'homePpg'), stat(match, 'awayPpg'))}`,
-    `Maç öncesi xG: ${pair(stat(match, 'homeXg'), stat(match, 'awayXg'))}`,
+    // Eksik xG kaynakta 0 olarak gelir ve hesaplarda kullanılmaz; isteme de "0" diye yazılmaz.
+    `Maç öncesi xG: ${xg ? pair(xg.home, xg.away) : MISSING}`,
     `1X2 oranları: ${odds.every((o) => o === null) ? MISSING : odds.map(num).join(' / ')}`,
   ]
   const model = GOAL_MODEL_LINES.map(([id, label]) => {
