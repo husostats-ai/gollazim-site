@@ -2,7 +2,7 @@ import { getCategory, type CategoryId } from '../../config/categories'
 import type { Match } from '../../types'
 import { formatNumber } from '../../utils/format'
 import { stat } from './stat'
-import { STAT_MISSING_TEXT, usableAvgGoals, usableXg } from './statAvailability'
+import { STAT_MISSING_TEXT, usableAvgCards, usableAvgCorners, usableAvgGoals, usableXg } from './statAvailability'
 
 export interface SummaryItem {
   label: string
@@ -18,9 +18,13 @@ export function statSummary(match: Match, categoryId: CategoryId): SummaryItem[]
   const group = getCategory(categoryId).group
 
   if (group === 'corners') {
-    add('Korner ort.', stat(match, 'avgCorners'))
+    // Eksik korner / kart ortalaması kaynakta 0 (kartta bazen negatif) gelir; "veri yok" yazılır.
+    // Kolon hiç yoksa satır eskisi gibi hiç yazılmaz.
+    if (stat(match, 'avgCorners') !== null && usableAvgCorners(match) === null) items.push({ label: 'Korner ort.', value: STAT_MISSING_TEXT })
+    else add('Korner ort.', stat(match, 'avgCorners'))
   } else if (group === 'cards') {
-    add('Kart ort.', stat(match, 'avgCards'))
+    if (stat(match, 'avgCards') !== null && usableAvgCards(match) === null) items.push({ label: 'Kart ort.', value: STAT_MISSING_TEXT })
+    else add('Kart ort.', stat(match, 'avgCards'))
   } else {
     // Eksik gol ortalaması kaynakta 0 olarak gelir; hesaplar onu kullanmaz, kartta da "0" yazılmaz.
     // Kolon hiç yoksa satır eskisi gibi hiç yazılmaz.

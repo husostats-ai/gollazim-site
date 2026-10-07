@@ -11,7 +11,7 @@ import { buildSideGoalsModel } from './sideGoals/sideGoals'
 import { statSummary } from './summary'
 import { makeMatch } from './testUtils'
 import { expectedTotalGoals } from './goalModel'
-import { STAT_MISSING_TEXT, usableAvgGoals, usableXg } from './statAvailability'
+import { STAT_MISSING_TEXT, usableAvgCards, usableAvgCorners, usableAvgGoals, usableXg } from './statAvailability'
 
 // Eksik xG'nin GÖSTERİMİ: kaynakta "0" olarak gelen xG kartta ve yapay zekâ isteminde
 // "veri yok" yazılır. Hesaplar değişmez; dolu xG'li maçların metni de değişmez.
@@ -235,5 +235,119 @@ describe('hesaplar değişmedi: eksik gol ortalaması eskisi gibi dışlanır, 0
     expect(scoreForecast(withAvg(0, 'm'))).toEqual(scoreForecast(withAvg(undefined, 'm')))
     // xG de gol ortalaması da yokken model yüzdesi hiç üretilmez (0 girseydi %0 çıkardı).
     expect(goalModelPercent(withAvg(0, 'm'), 'over25')).toBeNull()
+  })
+})
+
+// ───────── Kart ve korner ortalaması ─────────
+
+const withStats = (stats: Record<string, StatValue | undefined>, id = 'm'): Match => {
+  const merged: Record<string, StatValue> = { ...BASE, homeXg: 1.6, awayXg: 1.1 }
+  for (const [key, value] of Object.entries(stats)) {
+    if (value === undefined) delete merged[key]
+    else merged[key] = value
+  }
+  return makeMatch(merged, { id, home: 'Ev Takımı', away: 'Dep Takımı', time: '20:00', league: 'Testland · Deneme Ligi' })
+}
+const VALUE_CASES: [string, StatValue | undefined, boolean][] = [
+  ['dolu', 4.2, true],
+  ['çok küçük ama pozitif', 0.21, true],
+  ['0', 0, false],
+  ['negatif', -1.26, false],
+  ['-2', -2, false],
+  ['kolon yok', undefined, false],
+  ['boş değer', null, false],
+]
+const field = (block: string, label: string): string => new RegExp(`${label}: [^;]*`).exec(block)![0].trim()
+
+describe('usableAvgCards: gösterimdeki kural kart hesabındaki kuralla birebir aynıdır', () => {
+  it.each(VALUE_CASES)('%s', (_, avgCards, usable) => {
+    const match = withStats({ avgCards })
+    expect(usableAvgCards(match) !== null).toBe(usable)
+    // Kart listeleri: ortalama kullanılabilirse yüzde üretilir, değilse maç dışlanır.
+    expect(CALCULATORS.cards35.calculate(match).ok).toBe(usable)
+    expect(CALCULATORS.cards45.calculate(match).ok).toBe(usable)
+  })
+})
+
+describe('usableAvgCorners: yalnızca gösterim (korner listeleri bu alanı kullanmaz)', () => {
+  it.each(VALUE_CASES)('%s', (_, avgCorners, usable) => {
+    expect(usableAvgCorners(withStats({ avgCorners })) !== null).toBe(usable)
+  })
+
+  it('korner ortalaması ne olursa olsun korner listelerinin yüzdesi aynıdır', () => {
+    for (const id of ['corners85', 'corners95', 'corners105'] as const) {
+      const results = [9.5, 0, -1, undefined].map((avgCorners) => CALCULATORS[id].calculate(withStats({ avgCorners, corners85Pct: 80, corners95Pct: 75, corners105Pct: 72 })))
+      expect(new Set(results.map((r) => JSON.stringify(r))).size, id).toBe(1)
+    }
+  })
+})
+
+describe('admin kartı: kart ve korner ortalaması', () => {
+  const item = (match: Match, categoryId: 'cards35' | 'corners85', label: string) => statSummary(match, categoryId).find((i) => i.label === label)
+
+  it('dolu değerler eskisi gibi yazılır', () => {
+    expect(statSummary(withStats({}), 'cards35')).toEqual([{ label: 'Kart ort.', value: '4,2' }])
+    expect(statSummary(withStats({}), 'corners85')).toEqual([{ label: 'Korner ort.', value: '9,5' }])
+    expect(item(withStats({ avgCards: 0.21 }), 'cards35', 'Kart ort.')).toEqual({ label: 'Kart ort.', value: '0,21' })
+  })
+
+  it('0 ya da negatif ortalama "veri yok" yazılır', () => {
+    for (const value of [0, -0.5, -1.26, -2]) {
+      expect(item(withStats({ avgCards: value }), 'cards35', 'Kart ort.'), `kart ${value}`).toEqual({ label: 'Kart ort.', value: 'veri yok' })
+      expect(item(withStats({ avgCorners: value }), 'corners85', 'Korner ort.'), `korner ${value}`).toEqual({ label: 'Korner ort.', value: 'veri yok' })
+    }
+  })
+
+  it('kolon hiç yoksa satır eskisi gibi hiç yazılmaz', () => {
+    expect(statSummary(withStats({ avgCards: undefined }), 'cards35')).toEqual([])
+    expect(statSummary(withStats({ avgCorners: null }), 'corners85')).toEqual([])
+  })
+})
+
+describe('yapay zekâ istemi: kart ve korner ortalaması', () => {
+  it('dolu değerlerin satırı eskisiyle birebir aynıdır', () => {
+    const block = blockOf(withStats({}))
+    expect(field(block, 'Korner ortalaması')).toBe('Korner ortalaması: 9,5')
+    expect(field(block, 'Kart ortalaması')).toBe('Kart ortalaması: 4,2')
+    expect(block.split('\n').find((l) => l.startsWith('İstatistik:'))).toBe(
+      'İstatistik: Gol ortalaması: 3,75 ; Korner ortalaması: 9,5 ; Kart ortalaması: 4,2 ; Maç başı puan (PPG): ev 1,8 / deplasman 1,1 ; Maç öncesi xG: ev 1,6 / deplasman 1,1 ; 1X2 oranları: 1,5 / 4,2 / 6,5',
+    )
+  })
+
+  it('0 ya da negatif ortalama "veri yok" yazılır; negatif sayı isteme girmez', () => {
+    for (const value of [0, -0.5, -1.26, -2]) {
+      const block = blockOf(withStats({ avgCards: value, avgCorners: value }))
+      expect(field(block, 'Kart ortalaması'), String(value)).toBe('Kart ortalaması: veri yok')
+      expect(field(block, 'Korner ortalaması'), String(value)).toBe('Korner ortalaması: veri yok')
+      expect(block.split('\n').find((l) => l.startsWith('İstatistik:'))).not.toMatch(/ortalaması: (0|-)/)
+    }
+  })
+
+  it('0 olarak gelen ortalama, hiç gelmemiş ortalamayla birebir aynı bloğu verir', () => {
+    expect(blockOf(withStats({ avgCards: 0 }, 'a'))).toBe(blockOf(withStats({ avgCards: undefined }, 'a')))
+    expect(blockOf(withStats({ avgCards: -1.43 }, 'a'))).toBe(blockOf(withStats({ avgCards: undefined }, 'a')))
+    expect(blockOf(withStats({ avgCorners: 0 }, 'a'))).toBe(blockOf(withStats({ avgCorners: undefined }, 'a')))
+  })
+
+  it('maç başı puan (PPG) satırına dokunulmaz: 0 gerçek bir değer olabilir', () => {
+    expect(field(blockOf(withStats({ homePpg: 0, awayPpg: 2.33 })), 'Maç başı puan \\(PPG\\)')).toBe('Maç başı puan (PPG): ev 0 / deplasman 2,33')
+    expect(field(blockOf(withStats({ homePpg: 0, awayPpg: 0 })), 'Maç başı puan \\(PPG\\)')).toBe('Maç başı puan (PPG): ev 0 / deplasman 0')
+  })
+
+  it('yalnızca ilgili alan değişir: diğer istatistikler ve öneriler aynı kalır', () => {
+    const mask = (block: string) => block.replace(/Kart ortalaması: [^;]*;/, 'Kart ortalaması: X ;').replace(/Korner ortalaması: [^;]*;/, 'Korner ortalaması: X ;')
+    // Korner ortalaması hiçbir hesaba girmez: 0 olması bloğun geri kalanını değiştirmez.
+    expect(mask(blockOf(withStats({ avgCorners: 0 })))).toBe(mask(blockOf(withStats({}))))
+    // Kart ortalaması 0 olunca maç kart listelerinden düşer (hesabın zaten yaptığı şey); istatistik satırının geri kalanı aynıdır.
+    const stats = (block: string) => mask(block).split('\n').find((l) => l.startsWith('İstatistik:'))
+    expect(stats(blockOf(withStats({ avgCards: 0 })))).toBe(stats(blockOf(withStats({}))))
+  })
+})
+
+describe('hesaplar değişmedi: kart ve korner ortalaması', () => {
+  it('0 / negatif kart ortalaması ile kart ortalamasız maç aynı listeleri, yüzdeleri ve yıldızları verir', () => {
+    const strip = (match: Match) => Object.values(analyzeDay([match], defaultThresholds(), 'percent')).map((a) => a.predictions.map(({ match: _, ...p }) => p))
+    for (const value of [0, -1.26]) expect(strip(withStats({ avgCards: value })), String(value)).toEqual(strip(withStats({ avgCards: undefined })))
+    expect(strip(withStats({ avgCorners: 0 }))).toEqual(strip(withStats({})))
   })
 })
