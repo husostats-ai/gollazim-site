@@ -2,6 +2,7 @@ import Dexie, { type EntityTable } from 'dexie'
 import { getCategory } from '../../../config/categories'
 import type { AiPromptBatch, AiVerdict, LeagueTable, TeamAlias, Match, MatchResult, Pick, SharedPick, StorySelection, Upload } from '../../../types'
 import { assessReliability } from '../../analysis/reliability'
+import type { MemberRecord, PublicationRecord } from '../../memberAdmin/types'
 
 export interface SettingRow {
   key: string
@@ -20,6 +21,9 @@ export const db = new Dexie('gollazim') as Dexie & {
   sharedPicks: EntityTable<SharedPick, 'id'>
   leagueTables: EntityTable<LeagueTable, 'id'>
   teamAliases: EntityTable<TeamAlias, 'id'>
+  members: EntityTable<MemberRecord, 'username'>
+  memberMeta: EntityTable<SettingRow, 'key'>
+  publications: EntityTable<PublicationRecord, 'n'>
 }
 
 db.version(1).stores({
@@ -66,4 +70,12 @@ db.version(5).stores({
 db.version(6).stores({
   leagueTables: 'id',
   teamAliases: 'id, league',
+})
+
+// v7: üye sayfasının admin kayıtları (üyeler, üye ayarları, yayın geçmişi). Mevcut tablolara
+// dokunmaz. Bu tablolar normal yedeğe girmez ve normal yedeğin geri yüklenmesinde silinmez.
+db.version(7).stores({
+  members: 'username',
+  memberMeta: 'key',
+  publications: 'n',
 })

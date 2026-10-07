@@ -139,6 +139,11 @@ Chrome 107 ve üzerinde denenmiştir.
 - **Şifreleme** `src/services/member/crypto.ts`: AES-256-GCM, PBKDF2-SHA256 (en az 600.000 iterasyon). Şifreler yalnızca üretilir (kullanıcı seçemez); şifre hiçbir yerde saklanmaz, sekmenin `sessionStorage`'ında yalnızca türetilmiş anahtar tutulur ve 12 saat işlem yapılmazsa oturum kapanır.
 - **Sınır:** üye sayfası (`src/member/`) veri deposunu, analiz motorunu ve uygulama durumunu içe aktaramaz (`boundary.test.ts`); ayrı bir parça olarak derlenir.
 - **Paket adresi:** `VITE_UYE_PAKET_URL` (bkz. `.env.example`).
+- **Admin tarafı** (Admin sayfası, "ÜYE SAYFASI" bölümleri; kod `src/services/memberAdmin/` ve `src/components/member/`):
+  - *Üyeler:* kullanıcı adını siz verirsiniz, şifreyi uygulama üretir ve **bir kez** gösterir. Şifre hiçbir yere kaydedilmez; yalnızca türetilmiş anahtarlar saklanır. Çıkarma ve şifre yenileme **bir sonraki yayında** etkili olur.
+  - *Yayınla:* seçilen gün + önceki gün için paketi kurar, o günlerin ham verisine karşı sızıntı denetiminden geçirir, aktif üyeler için şifreler ve `paket.json` olarak indirir. Denetim tek bir bulgu verirse dosya indirilmez.
+  - *Üye anahtar yedeği:* üye listesi ve anahtarlar normal veri yedeğine **girmez** ve normal yedeği geri yüklemek onları silmez. Kendi parolanızla şifrelenmiş ayrı bir dosyadır (`gollazim-uye-anahtar-….json`). Bu yedek ve tarayıcı verisi birlikte kaybolursa tüm şifreler yeniden dağıtılır.
+  - Şifre içeren dağıtım listesi (`gollazim-uye-dagitim-….csv`), anahtar yedeği ve `paket.json` `.gitignore`'dadır; repoya ya da `public/` altına konmaz.
 
 Yerelde denemek için (çıktılar `samples/uye/` altına yazılır, repoya girmez):
 
@@ -146,6 +151,7 @@ Yerelde denemek için (çıktılar `samples/uye/` altına yazılır, repoya girm
 UYE_ORNEK=samples/uye UYE_BACKUP=samples/gollazim-yedek-YYYY-AA-GG.json npm run uye:ornek   # şifreli örnek paket + test kullanıcısı (giris.json)
 npm run dev                                                                                # http://localhost:5173/#/uye
 npm run build && npm run uye:e2e                                                           # derlenmiş siteyi Chrome'da uçtan uca dener
+npm run build && UYE_BACKUP=samples/….json UYE_CSV=samples/….csv npm run uye:admin-e2e          # Admin: üye yönetimi, yayın, anahtar yedeği + tüm sayfalar için duman testi
 ```
 
 Uçtan uca deneme için ayrıca `paket-2.json`, `paket-cikarilmis.json` ve `paket-eski.json` gerekir (`UYE_N`, `UYE_DOSYA`, `UYE_CIKAR`, `UYE_AT` ile üretilir; ayrıntı `src/services/member/sample.test.ts` başında). Tarayıcı sürücüsünün kurulumu aşağıdaki bölümdedir.

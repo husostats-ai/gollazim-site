@@ -17,3 +17,5 @@ gollazim-yedek-*.json
 gollazim-yayin-*.json
 gollazim-uye-*.json
 paket.json
+gollazim-uye-*
+dagitim*

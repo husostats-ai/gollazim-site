@@ -294,7 +294,7 @@ describe('yeni yayın', () => {
     expect(signedIn(controller.getState()).refreshError).toBeNull()
   }, SLOW)
 
-  it('sayfa açılışında erişimi kalkmış oturum kapanır; ağ sorununda giriş ekranında hata görünür', async () => {
+  it('sayfa açılışında erişimi kalkmış oturum kapanır; ağ sorununda "Yeniden dene" ile sürer', async () => {
     const store = memoryStore()
     saveSession(store, keys, START)
     const revoked = setup(revokedEnvelope, store)
@@ -304,10 +304,30 @@ describe('yeni yayın', () => {
     saveSession(store, keys, START)
     const offline = setup('offline', store)
     await offline.controller.start()
-    expect(signedOut(offline.controller.getState()).error).toBe('network')
-    // Geçici sorunda kayıt silinmez: sayfa yenilenince oturum sürer.
+    expect(signedOut(offline.controller.getState())).toEqual({ status: 'signedOut', busy: false, error: 'network', notice: null, resumable: true })
+    // Geçici sorunda kayıt silinmez: "Yeniden dene" oturumu şifre sorulmadan sürdürür.
+    const deriveBits = vi.spyOn(globalThis.crypto.subtle, 'deriveBits')
+    await offline.controller.retry()
+    expect(signedOut(offline.controller.getState())).toMatchObject({ error: 'network', resumable: true })
+    offline.world.reply = envelope
+    await offline.controller.retry()
+    expect(signedIn(offline.controller.getState()).payload).toEqual(payload)
+    expect(deriveBits).not.toHaveBeenCalled()
+    // Sayfa yenilenince de oturum sürer.
     const back = setup(envelope, store)
     await back.controller.start()
     expect(back.controller.getState().status).toBe('signedIn')
+  })
+
+  it('kayıtlı oturum yokken "Yeniden dene" sunulmaz; giriş hatası yeniden denemeyle silinir', async () => {
+    const { controller, world } = setup('offline')
+    await controller.login('deneme', password)
+    const failed = signedOut(controller.getState())
+    expect(failed.error).toBe('network')
+    expect(failed.resumable).toBeUndefined()
+    const before = world.requests.length
+    await controller.retry()
+    expect(signedOut(controller.getState())).toEqual({ status: 'signedOut', busy: false, error: null, notice: null })
+    expect(world.requests).toHaveLength(before)
   })
 })

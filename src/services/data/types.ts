@@ -15,6 +15,7 @@ import type {
   Thresholds,
   Upload,
 } from '../../types'
+import type { MemberMeta, MemberRecord, MemberSnapshot, PublicationRecord } from '../memberAdmin/types'
 
 // Uygulamanın geri kalanı sadece bu arayüzleri bilir. Supabase'e geçiş:
 // bu arayüzleri uygulayan yeni dosyalar yazıp index.ts'te değiştirmek.
@@ -111,4 +112,22 @@ export interface BackupRepo {
   exportAll(): Promise<BackupFile>
   /** Mevcut tüm veriyi yedekteki veriyle değiştirir */
   importAll(backup: BackupFile): Promise<void>
+}
+
+/**
+ * Üye sayfasının admin kayıtları. Normal yedeğe (BackupRepo) girmez ve normal yedeğin
+ * geri yüklenmesinden etkilenmez; kendi şifreli yedeği vardır.
+ */
+export interface MemberAdminRepo {
+  listMembers(): Promise<MemberRecord[]>
+  /** Kayıtları ekler; aynı kullanıcı adı varsa üzerine yazar */
+  putMembers(records: MemberRecord[]): Promise<void>
+  /** Kayıt yoksa varsayılanlar */
+  getMeta(): Promise<MemberMeta>
+  patchMeta(patch: Partial<MemberMeta>): Promise<void>
+  /** Yeniden eskiye */
+  listPublications(): Promise<PublicationRecord[]>
+  addPublication(record: PublicationRecord): Promise<void>
+  /** Üye anahtar yedeğinden: üye kayıtlarının tamamını yedektekiyle değiştirir */
+  restore(snapshot: MemberSnapshot, restoredAt: string): Promise<void>
 }

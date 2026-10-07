@@ -3,6 +3,9 @@ import BackupReminder from '../components/BackupReminder'
 import LeagueTablePanel from '../components/LeagueTablePanel'
 import MarketLimitPanel from '../components/MarketLimitPanel'
 import MatchEditPanel from '../components/MatchEditPanel'
+import MemberAdminSection from '../components/member/MemberAdminSection'
+import MemberKeyReminder from '../components/member/MemberKeyReminder'
+import MemberTextsPanel from '../components/member/MemberTextsPanel'
 import PageTitle from '../components/PageTitle'
 import StoryPanel from '../components/StoryPanel'
 import StoryTextsPanel from '../components/StoryTextsPanel'
@@ -16,6 +19,7 @@ export default function AdminPage() {
     <>
       <PageTitle title="ADMİN" />
       <BackupReminder status={daily} />
+      <MemberKeyReminder />
       <div className="grid grid-cols-1 gap-4">
         <UploadPanel />
         <ThresholdPanel />
@@ -24,7 +28,9 @@ export default function AdminPage() {
         <LeagueTablePanel />
         <StoryPanel />
         <StoryTextsPanel />
+        <MemberTextsPanel />
         <BackupPanel />
+        <MemberAdminSection />
       </div>
     </>
   )

@@ -117,6 +117,13 @@ describe('giriş ekranı', () => {
     expect(login()).not.toContain('member-progress')
   })
 
+  it('"Yeniden dene" düğmesi yalnızca sürdürülebilir oturumda ve hata varken görünür', () => {
+    expect(login({ error: 'network', onRetry: noop })).toContain('data-testid="member-retry"')
+    expect(textOf(login({ error: 'network', onRetry: noop }))).toContain('Yeniden dene')
+    expect(login({ error: 'network' })).not.toContain('member-retry')
+    expect(login({ onRetry: noop })).not.toContain('member-retry')
+  })
+
   it('oturum kapanma nedeni gösterilir', () => {
     expect(textOf(login({ notice: 'expired' }))).toContain(MEMBER_NOTICE_TEXTS.expired)
     expect(textOf(login({ notice: 'revoked' }))).toContain(MEMBER_NOTICE_TEXTS.revoked)

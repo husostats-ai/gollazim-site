@@ -17,7 +17,14 @@ export type SignOutReason = 'expired' | 'revoked'
 
 export type MemberState =
   | { status: 'starting' }
-  | { status: 'signedOut'; busy: boolean; error: MemberErrorKind | null; notice: SignOutReason | null }
+  | {
+      status: 'signedOut'
+      busy: boolean
+      error: MemberErrorKind | null
+      notice: SignOutReason | null
+      /** Kayıtlı oturum duruyor: "Yeniden dene" ile şifre sorulmadan sürdürülebilir */
+      resumable?: true
+    }
   | { status: 'signedIn'; payload: MemberPayload; refreshError: MemberErrorKind | null }
 
 export interface ControllerOptions {
@@ -33,6 +40,8 @@ export interface MemberController {
   subscribe(listener: () => void): () => void
   /** Sayfa açılışı: kayıtlı oturum varsa şifre sormadan sürdürür */
   start(): Promise<void>
+  /** Açılışta yayın alınamadıysa kayıtlı oturumla yeniden dener */
+  retry(): Promise<void>
   login(username: string, password: string): Promise<void>
   logout(): void
   /** Yeni yayın var mı diye bakar; varsa türetilmiş anahtarla (PBKDF2'siz) açar */
@@ -73,6 +82,25 @@ export function createMemberController(options: ControllerOptions): MemberContro
     set({ status: 'signedOut', busy: false, error, notice })
   }
 
+  /** Kayıtlı oturum varsa yayını türetilmiş anahtarla açar */
+  const resume = async () => {
+    const saved = loadSession(store, now(), idleMs)
+    if (!saved) return set({ status: 'signedOut', busy: false, error: null, notice: null })
+    if (state.status === 'signedOut') set({ status: 'signedOut', busy: true, error: null, notice: null })
+    try {
+      const payload = await openWithKeys(await fetchEnvelope(url, fetchImpl, now()), saved)
+      keys = saved
+      set({ status: 'signedIn', payload, refreshError: null })
+    } catch (error) {
+      // Erişim kalkmışsa oturum kapanır. Ağ ya da paket sorununda kayıt silinmez: giriş
+      // ekranında hata ve "Yeniden dene" görünür; oturum şifre sorulmadan sürdürülebilir.
+      if (error instanceof MemberAccessError) {
+        keys = saved
+        drop('revoked')
+      } else set({ status: 'signedOut', busy: false, error: errorKind(error), notice: null, resumable: true })
+    }
+  }
+
   return {
     getState: () => state,
 
@@ -85,20 +113,12 @@ export function createMemberController(options: ControllerOptions): MemberContro
       // Geliştirmede bileşen iki kez bağlanır; açılış bir kez yapılır.
       if (started) return
       started = true
-      const saved = loadSession(store, now(), idleMs)
-      if (!saved) return set({ status: 'signedOut', busy: false, error: null, notice: null })
-      try {
-        const payload = await openWithKeys(await fetchEnvelope(url, fetchImpl, now()), saved)
-        keys = saved
-        set({ status: 'signedIn', payload, refreshError: null })
-      } catch (error) {
-        // Erişim kalkmışsa oturum kapanır. Ağ ya da paket sorununda kayıt silinmez: giriş
-        // ekranında hata görünür, sayfa yenilenince oturum şifre sorulmadan sürer.
-        if (error instanceof MemberAccessError) {
-          keys = saved
-          drop('revoked')
-        } else set({ status: 'signedOut', busy: false, error: errorKind(error), notice: null })
-      }
+      await resume()
+    },
+
+    async retry() {
+      if (state.status !== 'signedOut' || state.busy) return
+      await resume()
     },
 
     async login(username, password) {

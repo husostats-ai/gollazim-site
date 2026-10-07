@@ -5,6 +5,7 @@ import BackupReminder from '../components/BackupReminder'
 import DailyChecklist from '../components/DailyChecklist'
 import DayToolbar from '../components/DayToolbar'
 import EmptyState from '../components/EmptyState'
+import MemberKeyReminder from '../components/member/MemberKeyReminder'
 import NoData from '../components/NoData'
 import PageTitle from '../components/PageTitle'
 import PredictionRow from '../components/PredictionRow'
@@ -38,6 +39,7 @@ export default function HomePage() {
         <>
           <DailyChecklist status={daily} />
           <BackupReminder status={daily} />
+          <MemberKeyReminder linkToAdmin />
         </>
       )}
       {loading ? null : dates.length === 0 ? (

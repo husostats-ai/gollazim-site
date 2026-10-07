@@ -70,7 +70,7 @@ export default function MemberApp() {
   if (state.status === 'signedOut')
     return (
       <MemberFrame>
-        <MemberLogin busy={state.busy} error={state.error} notice={state.notice} onLogin={(username, password) => void controller.login(username, password)} />
+        <MemberLogin busy={state.busy} error={state.error} notice={state.notice} onLogin={(username, password) => void controller.login(username, password)} onRetry={state.resumable ? () => void controller.retry() : undefined} />
       </MemberFrame>
     )
 

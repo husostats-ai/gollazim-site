@@ -8,13 +8,15 @@ interface Props {
   error: MemberErrorKind | null
   notice: SignOutReason | null
   onLogin: (username: string, password: string) => void
+  /** Verilirse hata metninin altında "Yeniden dene" düğmesi çıkar (kayıtlı oturumu şifresiz sürdürür) */
+  onRetry?: () => void
 }
 
 const INPUT =
   'mt-1 w-full min-w-0 rounded-xl border border-navy-500 bg-navy-800 px-3 py-2.5 text-base text-white outline-none focus:border-brand disabled:opacity-60'
 
 /** Üye girişi. Şifre yalnızca bu bileşenin belleğinde durur; hiçbir yere kaydedilmez. */
-export default function MemberLogin({ busy, error, notice, onLogin }: Props) {
+export default function MemberLogin({ busy, error, notice, onLogin, onRetry }: Props) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [visible, setVisible] = useState(false)
@@ -84,6 +86,11 @@ export default function MemberLogin({ busy, error, notice, onLogin }: Props) {
           <p role="alert" className="mt-3 text-sm font-semibold text-loss-text" data-testid="member-error" data-error={error}>
             {MEMBER_ERROR_TEXTS[error]}
           </p>
+        )}
+        {error && onRetry && (
+          <button type="button" onClick={onRetry} disabled={busy} data-testid="member-retry" className="mt-2 rounded-xl border border-navy-500 px-3.5 py-2 text-sm font-bold text-white hover:bg-navy-600 disabled:opacity-60">
+            Yeniden dene
+          </button>
         )}
 
         <button
