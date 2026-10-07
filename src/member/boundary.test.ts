@@ -54,6 +54,7 @@ const ALLOWED = [
   'src/member/MemberShell.tsx',
   'src/member/MemberStatsPage.tsx',
   'src/member/howToRead.ts',
+  'src/member/main.tsx',
   'src/member/view.ts',
   // Üye servisleri (paket kurucu payload.ts burada YOK: o admin tarafıdır ve analiz motorunu kullanır)
   'src/services/member/controller.ts',
@@ -77,7 +78,8 @@ const ALLOWED = [
 ].sort()
 
 describe('üye sayfasının içe aktarma sınırı', () => {
-  const files = reachable(['src/member/MemberApp.tsx'])
+  // İki giriş: ayrı üye sitesinin girişi (main.tsx) ve admin sitesindeki üye rotasının yüklediği MemberApp.
+  const files = reachable(['src/member/main.tsx', 'src/member/MemberApp.tsx'])
 
   it('ulaşılan dosyalar tam olarak izinli listedir', () => {
     expect(files).toEqual(ALLOWED)
@@ -103,6 +105,18 @@ describe('üye sayfasının içe aktarma sınırı', () => {
     expect(runtimeImports('src/services/member/sessionFlag.ts')).toEqual([])
     // Uygulamanın geri kalanı üye sayfası koduna bağlı değildir.
     expect(reachable(['src/AdminRoot.tsx']).filter((f) => f.startsWith('src/member/'))).toEqual([])
+  })
+
+  it('ayrı üye sitesinin girişi yalnızca üye uygulamasını ve stili yükler', () => {
+    const entry = readFileSync('src/member/main.tsx', 'utf8')
+    expect(runtimeImports('src/member/main.tsx').filter((s) => s.startsWith('.')).sort()).toEqual(['../index.css', './MemberApp'])
+    // Admin parçası, oturum yönlendirmesi ya da tembel yükleme yok; uygulama kökte çalışır.
+    expect(entry).not.toMatch(/AdminRoot|sessionFlag|lazy\(/)
+    expect(entry).toContain('<MemberApp basePath="" />')
+    expect(entry).toContain('<Route path="/uye/*" element={<Navigate to="/" replace />} />')
+    expect(readFileSync('uye.html', 'utf8')).toContain('src="/src/member/main.tsx"')
+    // Üye sitesinin ulaştığı dosyalar, admin sitesindeki üye rotasınınkilerle aynıdır (giriş dışında).
+    expect(reachable(['src/member/main.tsx']).filter((f) => f !== 'src/member/main.tsx')).toEqual(reachable(['src/member/MemberApp.tsx']))
   })
 
   it('denetim boş değil: analiz motoru gerçekten yasak dosyalara ulaşır', () => {

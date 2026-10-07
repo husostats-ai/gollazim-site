@@ -61,7 +61,7 @@ describe.runIf(tracked)('depo temizliği (izlenen dosyalar)', () => {
 
   it('.gitignore veri ve gizli dosyaları dışlıyor', () => {
     const ignore = readFileSync('.gitignore', 'utf8').split('\n')
-    for (const line of ['.env', '.env.*', 'samples/', '*.csv', 'gollazim-yedek-*.json', 'gollazim-yayin-*.json', 'gollazim-uye-*.json', 'paket.json', 'dist']) expect(ignore, `.gitignore: ${line}`).toContain(line)
+    for (const line of ['.env', '.env.*', 'samples/', '*.csv', 'gollazim-yedek-*.json', 'gollazim-yayin-*.json', 'gollazim-uye-*.json', 'paket.json', 'dist', 'dist-uye']) expect(ignore, `.gitignore: ${line}`).toContain(line)
   })
 })
 

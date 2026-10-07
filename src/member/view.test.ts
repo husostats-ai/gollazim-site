@@ -145,6 +145,18 @@ describe('üye düzeni', () => {
     expect(text).not.toContain(DEFAULT_MEMBER_TEXTS.account)
   })
 
+  it('rota tabanı: ayrı üye sitesinde sekmeler kökte, eski adreste "/uye" altında', () => {
+    const links = (markup: string) => [...markup.matchAll(/<a [^>]*href="([^"]+)"/g)].map((m) => m[1])
+    const at = (basePath: string | undefined, path: string) =>
+      renderToStaticMarkup(createElement(MemoryRouter, { initialEntries: [path] }, createElement(MemberShell, { payload, now: NOW, today: DAY, refreshError: null, onLogout: noop, ...(basePath !== undefined && { basePath }), children: analysis() })))
+    expect(links(at('', '/'))).toEqual(['/', '/istatistik'])
+    expect(links(at('/uye', '/uye'))).toEqual(['/uye', '/uye/istatistik'])
+    expect(links(at(undefined, '/uye'))).toEqual(['/uye', '/uye/istatistik'])
+    // Etkin sekme doğru işaretlenir.
+    expect(/<a [^>]*aria-current="page"[^>]*href="\/"|<a [^>]*href="\/"[^>]*aria-current="page"/.test(at('', '/'))).toBe(true)
+    expect(/href="\/istatistik"[^>]*aria-current="page"|aria-current="page"[^>]*href="\/istatistik"/.test(at('', '/istatistik'))).toBe(true)
+  })
+
   it('yalnızca iki sekme ve Çıkış vardır; admin gezinmesi yoktur', () => {
     const markup = shell(analysis())
     expect([...markup.matchAll(/<a [^>]*href="([^"]+)"/g)].map((m) => m[1])).toEqual(['/uye', '/uye/istatistik'])

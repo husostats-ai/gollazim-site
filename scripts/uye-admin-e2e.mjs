@@ -23,6 +23,7 @@ if (!process.env.UYE_BACKUP || !existsSync(backupFile) || !process.env.UYE_CSV |
   process.exit(1)
 }
 const dist = resolve('dist')
+const memberDist = resolve('dist-uye')
 /** İndirilenlerin tutulduğu geçici klasör; deneme bitince silinir */
 const outDir = mkdtempSync(join(tmpdir(), 'gollazim-admin-e2e-'))
 const shots = join(sampleDir, 'ekran')
@@ -39,6 +40,10 @@ const server = createServer((req, res) => {
   else if (path.startsWith('/gollazim-site/')) {
     file = normalize(join(dist, path.slice('/gollazim-site/'.length) || 'index.html'))
     if (!file.startsWith(dist)) file = null
+  } else if (path.startsWith('/gollazim-uye/')) {
+    // Ayrı üye sitesi (varsa): Admin'in "Yayınla" ekranı sürüm bilgisini buradan okur.
+    file = normalize(join(memberDist, path.slice('/gollazim-uye/'.length) || 'index.html'))
+    if (!file.startsWith(memberDist)) file = null
   }
   if (!file || !existsSync(file)) {
     res.writeHead(404, { 'content-type': 'text/plain' })
@@ -228,6 +233,11 @@ try {
   await page.waitForSelector(sel('member-admin-members'))
   step('boşken: üye yok, yayın uyarısı var, hatırlatıcı yok', (await page.$(sel('member-list-empty'))) !== null && (await page.$(sel('publish-no-members'))) !== null && (await page.$(sel('member-key-reminder'))) === null)
   await shot(page, 'member-admin-publish', 'admin-yayinla-uye-yok')
+  // Ayrı üye sitesinin sürümü: aynı alan adındaki surum.json okunur ve bu sürümle karşılaştırılır.
+  await page.waitForSelector(sel('publish-site-version'), { timeout: 10000 })
+  const siteVersion = { level: await page.$eval(sel('publish-site-version'), (el) => el.dataset.level), text: await text(page, 'publish-site-version') }
+  const localVersion = existsSync(join(memberDist, 'surum.json')) ? JSON.parse(readFileSync(join(memberDist, 'surum.json'), 'utf8')) : null
+  step('Yayınla ekranı üye sitesinin sürümünü gösteriyor', localVersion ? siteVersion.level === 'ok' && siteVersion.text === `Üye sitesi güncel (${localVersion.commit}).` : siteVersion.level === 'unknown', `${siteVersion.level}: ${siteVersion.text}`)
 
   await setValue(page, 'member-add-username', 'şule')
   const formatProblem = await text(page, 'member-add-problem')

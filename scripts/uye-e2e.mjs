@@ -1,16 +1,22 @@
-// Geliştirme aracı: üye sayfasını DERLENMİŞ hâliyle, gerçek tarayıcıda uçtan uca dener.
+// Geliştirme aracı: üye uygulamasını DERLENMİŞ hâliyle, gerçek tarayıcıda uçtan uca dener.
 //
-//   npm run build && UYE_BACKUP=samples/gollazim-yedek-….json npm run uye:e2e
+//   npm run build && npm run build:uye && UYE_BACKUP=samples/gollazim-yedek-….json npm run uye:e2e
 //
-// Yayındaki düzeni taklit eden küçük bir yerel sunucu açar: site /gollazim-site/ altında,
-// şifreli paket aynı alan adında /gollazim-yayin/paket.json adresinde. Tarayıcı her
-// çalıştırmada yeni, geçici bir profille açılır; kullanıcının tarayıcı verisine dokunulmaz.
+// İki hedef aynı paketlerle sırayla denenir (UYE_HEDEF=eski | yeni | ikisi; varsayılan ikisi):
+//   eski: admin sitesindeki üye rotası      /gollazim-site/#/uye   (dist/)
+//   yeni: ayrı üye sitesi, kök rota         /gollazim-uye/#/       (dist-uye/)
+// Yayındaki düzeni taklit eden küçük bir yerel sunucu açar: iki site ve şifreli paket
+// (/gollazim-yayin/paket.json) aynı alan adındadır. Her hedef yeni, geçici bir tarayıcı
+// profiliyle açılır; kullanıcının tarayıcı verisine dokunulmaz. İki hedef birlikte denenince
+// ekran görüntüleri bayt bayt karşılaştırılır (eksik stil sınıfı varsa burada görünür).
 // Şifreli örnek paketler ve sentetik test kullanıcısı her çalıştırmada GEÇİCİ bir klasörde
 // üretilir ve deneme bitince silinir: kalıcı bir giriş dosyası bırakılmaz.
-// Girdi: dist/ ve UYE_BACKUP. Çıktı (kimlik içermez): UYE_ORNEK/ekran/*.png, UYE_ORNEK/e2e-rapor.json
+// Girdi: dist/, dist-uye/ ve UYE_BACKUP. Çıktı (kimlik içermez): UYE_ORNEK/ekran/, UYE_ORNEK/ekran-uye-sitesi/,
+// UYE_ORNEK/e2e-rapor.json ve UYE_ORNEK/uye-sitesi-e2e-rapor.json
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { homedir, tmpdir } from 'node:os'
 import { extname, join, normalize, resolve } from 'node:path'
@@ -32,11 +38,11 @@ generate(sampleDir, { UYE_N: '2', UYE_DOSYA: 'paket-2.json' })
 generate(sampleDir, { UYE_N: '3', UYE_DOSYA: 'paket-cikarilmis.json', UYE_CIKAR: '1' })
 generate(sampleDir, { UYE_N: '4', UYE_DOSYA: 'paket-eski.json', UYE_AT: new Date(Date.now() - 30 * 3_600_000).toISOString() })
 const dist = resolve('dist')
+const memberDist = resolve('dist-uye')
+const backupFile = resolve(process.env.UYE_BACKUP)
 const puppeteerDir = resolve(process.env.PUPPETEER_DIR ?? join(homedir(), 'araclar', 'puppeteer-chrome107'))
 const puppeteer = createRequire(join(puppeteerDir, 'x.js'))('puppeteer-core')
 const login = JSON.parse(readFileSync(join(sampleDir, 'giris.json'), 'utf8'))
-const shots = join(reportDir, 'ekran')
-mkdirSync(shots, { recursive: true })
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.woff2': 'font/woff2', '.txt': 'text/plain', '.json': 'application/json' }
 /** Sunucunun paket adresinde verdiği dosya; null ise 404 */
@@ -46,7 +52,9 @@ const server = createServer((req, res) => {
   let file = null
   if (path === '/gollazim-yayin/paket.json') file = packageFile && join(sampleDir, packageFile)
   else if (path.startsWith('/gollazim-site/')) file = normalize(join(dist, path.slice('/gollazim-site/'.length) || 'index.html'))
-  if (!file || !file.startsWith(path.startsWith('/gollazim-yayin/') ? sampleDir : dist) || !existsSync(file)) {
+  else if (path.startsWith('/gollazim-uye/')) file = normalize(join(memberDist, path.slice('/gollazim-uye/'.length) || 'index.html'))
+  const base = path.startsWith('/gollazim-yayin/') ? sampleDir : path.startsWith('/gollazim-uye/') ? memberDist : dist
+  if (!file || !file.startsWith(base) || !existsSync(file)) {
     res.writeHead(404, { 'content-type': 'text/plain' })
     return res.end('Not Found')
   }
@@ -55,12 +63,32 @@ const server = createServer((req, res) => {
 })
 await new Promise((done) => server.listen(0, '127.0.0.1', done))
 const origin = `http://127.0.0.1:${server.address().port}`
-const site = `${origin}/gollazim-site/`
 
+/** Denenen iki hedef: aynı üye uygulaması, farklı adres ve rota tabanı */
+const TARGETS = {
+  eski: { ad: 'admin sitesindeki üye rotası', prefix: '/gollazim-site/', home: '#/uye', stats: '#/uye/istatistik', shots: 'ekran', rapor: 'e2e-rapor.json', dist },
+  yeni: { ad: 'ayrı üye sitesi', prefix: '/gollazim-uye/', home: '#/', stats: '#/istatistik', shots: 'ekran-uye-sitesi', rapor: 'uye-sitesi-e2e-rapor.json', dist: memberDist },
+}
+const wanted = process.env.UYE_HEDEF ?? 'ikisi'
+const targetNames = wanted === 'ikisi' ? ['eski', 'yeni'] : [wanted]
+for (const name of targetNames) {
+  if (!TARGETS[name]) throw new Error(`UYE_HEDEF tanınmıyor: ${name}`)
+  if (!existsSync(join(TARGETS[name].dist, 'index.html'))) throw new Error(`${name}: derleme çıktısı yok (${TARGETS[name].dist}); önce derleyin.`)
+}
+const sha = (buffer) => createHash('sha256').update(buffer).digest('hex')
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+async function runTarget(T) {
+console.log(`\n===== ${T.ad}: ${T.prefix}${T.home} =====`)
+const site = `${origin}${T.prefix}`
+const shots = join(reportDir, T.shots)
+rmSync(shots, { recursive: true, force: true })
+mkdirSync(shots, { recursive: true })
+packageFile = 'paket.json'
 const profile = mkdtempSync(join(tmpdir(), 'gollazim-uye-'))
 const browser = await puppeteer.launch({ executablePath: process.env.CHROME_PATH ?? '/usr/bin/google-chrome', headless: 'chrome', userDataDir: profile, args: ['--no-sandbox', '--disable-gpu'] })
 
-const report = { tarayici: await browser.version(), adimlar: [], istekler: [], ekranlar: [] }
+const report = { hedef: T.ad, adres: `${T.prefix}${T.home}`, tarayici: await browser.version(), adimlar: [], istekler: [], ekranlar: [] }
 const step = (name, ok, detail = '') => {
   report.adimlar.push({ ad: name, sonuc: ok ? 'TAMAM' : 'HATA', ...(detail && { ayrinti: detail }) })
   console.log(`${ok ? '✓' : '✗'} ${name}${detail ? ` — ${detail}` : ''}`)
@@ -97,12 +125,16 @@ try {
   const page = await browser.newPage()
   watch(page)
   await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 })
-  await page.goto(`${site}#/uye`, { waitUntil: 'networkidle0' })
+  await page.goto(`${site}${T.home}`, { waitUntil: 'networkidle0' })
 
   // 1) Giriş ekranı
   await page.waitForSelector(sel('member-login'))
   const robots = await page.$eval('meta[name="robots"]', (el) => el.content)
   step('giriş ekranı açıldı; noindex etiketi var', robots.includes('noindex'), robots)
+  const head = await page.evaluate(() => ({ title: document.title, icon: document.querySelector('link[rel="icon"]')?.getAttribute('href'), lang: document.documentElement.lang }))
+  step('başlık, simge ve dil admin sitesiyle aynı', head.title === 'GOLLAZIM' && head.icon === './favicon.png' && head.lang === 'tr', JSON.stringify(head))
+  const assets = await page.evaluate(async () => Promise.all(['./favicon.png', './logo-256.png'].map(async (u) => (await fetch(u)).status)))
+  step('simge ve logo yükleniyor', assets.join() === '200,200', assets.join())
   const links = await page.$$eval('a', (as) => as.map((a) => a.getAttribute('href')))
   step('giriş ekranında gezinme bağlantısı yok', links.length === 0, JSON.stringify(links))
   const attrs = await page.$eval(sel('member-password'), (el) => [el.type, el.autocomplete, el.getAttribute('autocapitalize'), el.getAttribute('autocorrect'), el.spellcheck].join(','))
@@ -140,7 +172,7 @@ try {
   step('giriş sonrası uyarı metinleri paketten', (await text(page, 'member-disclaimer')).includes('bahis tavsiyesi değildir'))
   step('güncel pakette "güncel olmayabilir" uyarısı yok', (await page.$(sel('member-stale'))) === null)
   const navLinks = await page.$$eval('a', (as) => as.map((a) => a.getAttribute('href')))
-  step('düzende yalnızca iki sekme var', JSON.stringify(navLinks) === '["#/uye","#/uye/istatistik"]', JSON.stringify(navLinks))
+  step('düzende yalnızca iki sekme var', JSON.stringify(navLinks) === JSON.stringify([T.home, T.stats]), JSON.stringify(navLinks))
 
   // 4) Kartlar, gün ve kategori seçimi
   const cardCount = await page.$$eval(sel('member-card'), (els) => els.length)
@@ -232,10 +264,14 @@ try {
   const chips = await page.$$eval('[data-testid^="member-category-"]', (els) => els.map((el) => el.dataset.testid))
   let overflowing = []
   let leaks = []
+  // Sayfa uzun ve üst menü yapışkan: fare tıklaması menüye denk gelebildiği için burada DOM tıklaması kullanılır.
+  const tap = (id) => page.$eval(sel(id), (el) => el.click())
   for (const day of [0, 1]) {
-    await page.click(sel(`member-day-${day}`))
+    await tap(`member-day-${day}`)
+    await page.waitForFunction((s) => document.querySelector(s)?.getAttribute('aria-selected') === 'true', {}, sel(`member-day-${day}`))
     for (const chip of await page.$$eval('[data-testid^="member-category-"]', (els) => els.map((el) => el.dataset.testid))) {
-      await page.click(sel(chip))
+      await tap(chip)
+      await page.waitForFunction((s) => document.querySelector(s)?.getAttribute('aria-selected') === 'true', {}, sel(chip))
       for (const width of [320, 390]) {
         await page.setViewport({ width, height: 844, deviceScaleFactor: 1 })
         const size = await overflow(page)
@@ -264,7 +300,7 @@ try {
   step('önceki günde sonuç işaretleri görünüyor', outcomes.some((o) => o.startsWith('✓')) && outcomes.some((o) => o.startsWith('✗')), outcomes.join(' | '))
 
   // 5) İstatistik
-  await page.click('a[href="#/uye/istatistik"]')
+  await page.click(`a[href="${T.stats}"]`)
   await page.waitForSelector(sel('member-overall'))
   const all = await text(page, 'member-overall')
   await page.click(sel('member-scope-shared'))
@@ -278,9 +314,22 @@ try {
   step('istatistik 320 px taşma yok', await shot(page, 'istatistik', 320))
 
   // 6) Üye oturumunda admin yolları
+  if (T.prefix === '/gollazim-uye/') {
+    // Ayrı üye sitesinde admin rotası yoktur: bilinmeyen her yol ve eski "#/uye" bağlantıları köke döner.
+    const landed = []
+    for (const hash of ['#/admin', '#/skor-girisi', '#/uye', '#/uye/istatistik', '#/olmayan-sayfa']) {
+      await page.goto(`${site}${hash}`, { waitUntil: 'networkidle0' })
+      await page.waitForSelector(sel('member-frame'))
+      await sleep(150)
+      landed.push(`${hash}→${await page.evaluate(() => location.hash)}`)
+    }
+    step('ayrı üye sitesinde admin yolları ve eski "#/uye" bağlantıları köke yönleniyor', landed.every((l) => l.endsWith('→#/')) && (await page.$(sel('member-cards'))) !== null, landed.join('  '))
+    const adminText = await page.evaluate(() => document.body.innerText)
+    step('ayrı üye sitesinde admin gezinmesi ya da admin sayfası yok', !/ADMİN|SKOR GİRİŞİ|AI ANALİZİ|Veriyi dışa aktar/.test(adminText) && (await page.$('[data-testid="csv-input"]')) === null)
+  }
   await page.goto(`${site}#/admin`, { waitUntil: 'networkidle0' })
   await page.waitForSelector(sel('member-frame'))
-  step('üye oturumunda #/admin üye sayfasına yönleniyor', (await page.evaluate(() => location.hash)).startsWith('#/uye') && !requests.some((u) => /AdminRoot-/.test(u)), await page.evaluate(() => location.hash))
+  step('üye oturumunda #/admin üye sayfasına yönleniyor', (await page.evaluate(() => location.hash)).startsWith(T.home) && !requests.some((u) => /AdminRoot-/.test(u)), await page.evaluate(() => location.hash))
 
   // 7) Yeni yayın: aynı oturumda şifre sorulmadan
   packageFile = 'paket-2.json'
@@ -306,7 +355,7 @@ try {
   const second = await browser.newPage()
   watch(second)
   await second.setViewport({ width: 390, height: 844 })
-  await second.goto(`${site}#/uye`, { waitUntil: 'networkidle0' })
+  await second.goto(`${site}${T.home}`, { waitUntil: 'networkidle0' })
   await second.waitForSelector(sel('member-login'))
   step('sekme kapatılıp yeni sekme açılınca giriş istiyor', Object.keys((await session(second)).session).length === 0)
 
@@ -348,10 +397,63 @@ try {
   report.istekler = Object.entries(counts).map(([yol, adet]) => ({ yol, adet }))
   const packageRequests = requests.filter((u) => u.includes('/gollazim-yayin/'))
   step('paket her seferinde zaman damgasıyla istendi', packageRequests.length > 0 && packageRequests.every((u) => /\/gollazim-yayin\/paket\.json\?t=\d{13}$/.test(u)), `${packageRequests.length} istek`)
-  const dataPaths = [...new Set(paths.filter((p) => !p.startsWith('/gollazim-site/')))]
-  step('site dosyaları dışında yalnızca paket adresine gidildi', JSON.stringify(dataPaths) === '["/gollazim-yayin/paket.json"]', dataPaths.join(' '))
+  const dataPaths = [...new Set(paths.filter((p) => !p.startsWith(T.prefix)))]
+  step(`istekler yalnızca ${T.prefix} ve paket adresine gitti`, JSON.stringify(dataPaths) === '["/gollazim-yayin/paket.json"]', dataPaths.join(' ') + ` · ${new Set(paths).size} ayrı adres`)
   step('uygulamanın geri kalanı (AdminRoot) hiç indirilmedi', !requests.some((u) => /AdminRoot-/.test(u)))
+  const stores = await second.evaluate(async () => ({ db: (await indexedDB.databases()).map((d) => d.name), local: Object.keys(localStorage), cookie: document.cookie }))
+  step('deneme boyunca veritabanı açılmadı, localStorage ve çerez boş', stores.db.length === 0 && stores.local.length === 0 && stores.cookie === '', JSON.stringify(stores))
 
+  if (T.prefix === '/gollazim-uye/') {
+    // 15) Aynı alan adındaki admin verisi: admin sitesinde veri dolu bir profilde üye sitesini kullanmak hiçbir şeyi değiştirmez
+    const dump = (p) =>
+      p.evaluate(
+        () =>
+          new Promise((done) => {
+            const open = indexedDB.open('gollazim')
+            open.onsuccess = async () => {
+              const db = open.result
+              const out = { surum: db.version }
+              for (const name of [...db.objectStoreNames].sort()) {
+                const store = db.transaction(name).objectStore(name)
+                const [keys, values] = await Promise.all([new Promise((r) => (store.getAllKeys().onsuccess = (e) => r(e.target.result))), new Promise((r) => (store.getAll().onsuccess = (e) => r(e.target.result)))])
+                out[name] = JSON.stringify(keys.map((k, i) => [k, values[i]]))
+              }
+              db.close()
+              done({ json: JSON.stringify(out), local: JSON.stringify({ ...localStorage }) })
+            }
+          }),
+      )
+    const adminPage = await browser.newPage()
+    adminPage.on('dialog', (d) => void d.accept())
+    await adminPage.setViewport({ width: 1280, height: 900 })
+    await adminPage.goto(`${origin}/gollazim-site/#/admin`, { waitUntil: 'networkidle0' })
+    await (await adminPage.$('input[type=file][accept="application/json,.json"]:not([data-testid])')).uploadFile(backupFile)
+    await adminPage.waitForFunction(() => document.body.innerText.includes('Yedek yüklendi'), { timeout: 30000 })
+    await adminPage.goto(`${origin}/gollazim-site/#/`, { waitUntil: 'networkidle0' })
+    await sleep(400)
+    const before = await dump(adminPage)
+    // Aynı profilde üye sitesi: giriş, gezinme, istatistik, çıkış
+    packageFile = 'paket.json'
+    const memberPage = await browser.newPage()
+    await memberPage.setViewport({ width: 390, height: 844 })
+    await memberPage.goto(`${site}${T.home}`, { waitUntil: 'networkidle0' })
+    await signIn(memberPage, login.username, login.password)
+    await memberPage.waitForSelector(sel('member-cards'), { timeout: 30000 })
+    await memberPage.click(sel('member-day-1'))
+    await memberPage.click(`a[href="${T.stats}"]`)
+    await memberPage.waitForSelector(sel('member-overall'))
+    const during = await dump(memberPage)
+    await memberPage.click(sel('member-logout'))
+    await memberPage.waitForSelector(sel('member-login'))
+    const after = await dump(adminPage)
+    const tables = Object.keys(JSON.parse(before.json)).length - 1
+    step('admin verisi dolu profilde üye sitesi kullanıldı: veritabanı dökümü önce / sırasında / sonra bayt bayt aynı', before.json === during.json && before.json === after.json && tables === 14, `${tables} tablo · sürüm ${JSON.parse(before.json).surum} · sha256 ${sha(before.json).slice(0, 16)}`)
+    step('admin sitesinin localStorage kayıtları da değişmedi', before.local === during.local && before.local === after.local, before.local)
+    await adminPage.reload({ waitUntil: 'networkidle0' })
+    step('üye sitesinden sonra admin sitesi aynı profilde normal açılıyor', (await adminPage.evaluate(() => document.body.innerText)).includes('GÜNÜN ANALİZLERİ') && (await adminPage.evaluate(() => location.hash)) === '#/')
+  }
+
+  if (T.prefix === '/gollazim-site/') {
   // 15) Uygulamanın geri kalanı: üye oturumu olmayan sekmede eskisi gibi açılır
   const admin = await browser.newPage()
   await admin.setViewport({ width: 1280, height: 900 })
@@ -361,17 +463,41 @@ try {
   step('üye oturumu yokken #/admin eskisi gibi açılıyor; menüde üye sayfası yok', menu.includes('ADMİN') && menu.includes('SKOR GİRİŞİ') && !menu.some((m) => /ÜYE/.test(m)), `${menu.length} menü öğesi`)
   await admin.goto(`${site}#/`, { waitUntil: 'networkidle0' })
   step('ana sayfa açılıyor', (await admin.evaluate(() => document.body.innerText)).includes('GÜNÜN ANALİZLERİ'))
+  }
 } catch (error) {
   failed = true
   step('beklenmeyen hata', false, String(error?.message ?? error))
 } finally {
   await browser.close()
-  server.close()
   rmSync(profile, { recursive: true, force: true })
+}
+failed ||= report.adimlar.some((a) => a.sonuc === 'HATA')
+writeFileSync(join(reportDir, T.rapor), JSON.stringify(report, null, 1) + '\n')
+console.log(`${report.adimlar.filter((a) => a.sonuc === 'TAMAM').length}/${report.adimlar.length} adım tamam · ${report.tarayici} · rapor: ${join(reportDir, T.rapor)}`)
+return { failed, shots, steps: report.adimlar.length }
+}
+
+let anyFailed = false
+const results = {}
+try {
+  for (const name of targetNames) {
+    results[name] = await runTarget(TARGETS[name])
+    anyFailed ||= results[name].failed
+  }
+  // İki hedef aynı paketlerle denendiyse ekran görüntüleri bayt bayt aynı olmalı:
+  // aynı uygulama, aynı stil. Fark, üye derlemesinde eksik stil sınıfı demektir.
+  if (results.eski && results.yeni) {
+    const names = readdirSync(results.eski.shots).filter((f) => f.endsWith('.png')).sort()
+    const other = readdirSync(results.yeni.shots).filter((f) => f.endsWith('.png')).sort()
+    const different = names.filter((f) => !other.includes(f) || sha(readFileSync(join(results.eski.shots, f))) !== sha(readFileSync(join(results.yeni.shots, f))))
+    const ok = different.length === 0 && names.length === other.length && names.length > 0
+    console.log(`\n${ok ? '✓' : '✗'} ekran görüntüsü karşılaştırması (eski rota ↔ ayrı üye sitesi): ${names.length - different.length}/${names.length} görüntü bayt bayt aynı${different.length ? ` · FARKLI: ${different.join(', ')}` : ''}`)
+    writeFileSync(join(reportDir, 'ekran-karsilastirma.json'), JSON.stringify({ toplam: names.length, ayni: names.length - different.length, farkli: different }, null, 1) + '\n')
+    anyFailed ||= !ok
+  }
+} finally {
+  server.close()
   // Test kullanıcısının şifresi ve paketler burada biter.
   rmSync(sampleDir, { recursive: true, force: true })
 }
-failed ||= report.adimlar.some((a) => a.sonuc === 'HATA')
-writeFileSync(join(reportDir, 'e2e-rapor.json'), JSON.stringify(report, null, 1) + '\n')
-console.log(`\n${report.adimlar.filter((a) => a.sonuc === 'TAMAM').length}/${report.adimlar.length} adım tamam · ${report.tarayici} · rapor: ${join(reportDir, 'e2e-rapor.json')}`)
-process.exit(failed ? 1 : 0)
+process.exit(anyFailed ? 1 : 0)
