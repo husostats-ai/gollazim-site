@@ -3,7 +3,7 @@ import type { ReliabilityLevel } from '../services/analysis/types'
 import { MEMBER_CONFLICT_LABELS, MEMBER_OUTCOMES, MEMBER_RELIABILITY_LABELS, MEMBER_STATUS_LABELS, STALE_TABLE_LABEL, standingText } from '../services/member/labels'
 import type { MemberItem, MemberMatch, MemberStanding } from '../services/member/payload'
 import type { PickOutcome } from '../types'
-import { isOverstated } from './view'
+import { categoryLabel as labelOf, isOverstated, percentKind } from './view'
 
 const RELIABILITY_TONE: Record<ReliabilityLevel, string> = {
   high: 'border-win-line bg-win-soft text-win',
@@ -54,6 +54,8 @@ export default function MemberCard({ rank, match, item, categoryLabel, percentLa
   const isModelBased = item.reliability === 'market' || item.reliability === 'market-partial'
   // %100 ama az maça dayanıyorsa yüzde sönük, güvenilirlik rozeti belirgin gösterilir.
   const overstated = isOverstated(item)
+  // Sürüm 1 paketlerde bu alan yoktur.
+  const others = item.others ?? []
   return (
     <article className="flex min-w-0 flex-col gap-3 rounded-2xl border border-line bg-navy-700 p-4" data-testid="member-card" data-overstated={overstated}>
       <div className="flex min-w-0 items-center gap-2 text-xs text-muted">
@@ -112,6 +114,23 @@ export default function MemberCard({ rank, match, item, categoryLabel, percentLa
           </span>
         )}
       </div>
+
+      {others.length > 0 && (
+        // Küçük ve soluk: ana yüzdeyle yarışmaz. Sığmayan öneri alt satıra iner.
+        <p className="text-[11px] leading-relaxed text-muted" data-testid="member-others">
+          <span className="mr-1.5">Aynı maçın diğer önerileri:</span>
+          {others.map((other, index) => {
+            const dim = isOverstated(other)
+            return (
+              <span key={other.categoryId} className="inline-block max-w-full break-words" data-testid="member-other" data-category={other.categoryId} data-overstated={dim}>
+                {index > 0 && <span aria-hidden="true">&nbsp;·&nbsp;</span>}
+                {labelOf(other.categoryId)} <span className={dim ? '' : 'font-semibold text-white'}>%{other.percent}</span>
+                {percentKind(other.categoryId) === 'model' && <span> (model)</span>}
+              </span>
+            )
+          })}
+        </p>
+      )}
 
       {(match.homeStanding || match.awayStanding) && (
         <div className="border-t border-line pt-2.5 text-xs text-muted" data-testid="member-standing">

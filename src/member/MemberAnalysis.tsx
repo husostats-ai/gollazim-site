@@ -2,6 +2,7 @@ import { useState } from 'react'
 import EmptyState from '../components/EmptyState'
 import type { CategoryId } from '../config/categories'
 import type { MemberPayload } from '../services/member/payload'
+import { HOW_TO_READ, HOW_TO_READ_TITLE } from './howToRead'
 import MemberCard from './MemberCard'
 import { categoryChoices, dayChip, dayTitle, listFor, PERCENT_LABELS, PERCENT_NOTE, percentKind, secondPercentLabel } from './view'
 
@@ -68,6 +69,21 @@ export default function MemberAnalysis({ payload, today, initialDay = 0, initial
           <p className="mt-1.5 text-xs text-muted" data-testid="member-percent-note">
             {PERCENT_NOTE}
           </p>
+          <details className="mt-2 rounded-xl border border-line bg-navy-800 text-xs text-muted" data-testid="member-howto">
+            <summary className="cursor-pointer px-3 py-2 font-bold text-brand select-none">{HOW_TO_READ_TITLE}</summary>
+            <div className="space-y-3 px-3 pb-3" data-testid="member-howto-body">
+              {HOW_TO_READ.map((item) => (
+                <section key={item.title}>
+                  <h3 className="font-bold text-white">{item.title}</h3>
+                  {item.paragraphs.map((paragraph) => (
+                    <p key={paragraph} className="mt-1 leading-relaxed break-words">
+                      {paragraph}
+                    </p>
+                  ))}
+                </section>
+              ))}
+            </div>
+          </details>
           <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2" data-testid="member-cards">
             {list.items.map((item, i) => (
               <MemberCard key={`${list.categoryId}:${item.match}`} rank={i + 1} match={day.matches[item.match]} item={item} categoryLabel={choices.find((c) => c.categoryId === list.categoryId)!.label} percentLabel={PERCENT_LABELS[percentKind(list.categoryId)]} secondLabel={secondPercentLabel(list.categoryId)} />

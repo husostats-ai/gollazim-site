@@ -53,6 +53,7 @@ const ALLOWED = [
   'src/member/MemberLogin.tsx',
   'src/member/MemberShell.tsx',
   'src/member/MemberStatsPage.tsx',
+  'src/member/howToRead.ts',
   'src/member/view.ts',
   // Üye servisleri (paket kurucu payload.ts burada YOK: o admin tarafıdır ve analiz motorunu kullanır)
   'src/services/member/controller.ts',

@@ -17,7 +17,10 @@ export const MEMBER_KEYS = {
   match: ['home', 'away', 'league', 'time', 'status', 'score', 'homeStanding', 'awayStanding'],
   standing: ['rank', 'played', 'stale'],
   list: ['categoryId', 'items'],
-  item: ['match', 'percent', 'model', 'conflict', 'stars', 'reliability', 'outcome', 'detail'],
+  item: ['match', 'percent', 'model', 'conflict', 'stars', 'reliability', 'outcome', 'detail', 'others'],
+  /** Sürüm 1 paketlerdeki öneri (others alanı yok) */
+  itemV1: ['match', 'percent', 'model', 'conflict', 'stars', 'reliability', 'outcome', 'detail'],
+  other: ['categoryId', 'percent', 'reliability'],
   statsRoot: ['all', 'shared'],
   stats: ['overall', 'matches', 'byCategory', 'byReliability', 'daily', 'weekly', 'monthly', 'stars'],
   statsMatches: ['total', 'decided'],
@@ -136,7 +139,7 @@ function standing(value: unknown, path: string): void {
   if (typeof s.stale !== 'boolean') fail(`${path}.stale`, 'doğru/yanlış bekleniyor')
 }
 
-function day(value: unknown, path: string): void {
+function day(value: unknown, path: string, version: number): void {
   const d = object(value, path, MEMBER_KEYS.day)
   text(d.date, `${path}.date`, 10, DATE)
   const matches = array(d.matches, `${path}.matches`, CATEGORIES.length * MAX_MATCHES_PER_CATEGORY)
@@ -154,13 +157,16 @@ function day(value: unknown, path: string): void {
   })
   const lists = array(d.lists, `${path}.lists`, CATEGORIES.length)
   if (lists.length !== CATEGORIES.length) fail(`${path}.lists`, 'her kategori için bir liste bekleniyor')
+  /** "liste sırası:maç sırası" -> o listedeki yüzde ve seviye (others alanının çapraz denetimi için) */
+  const placed = new Map<string, { percent: number; reliability: string }>()
+  const claimed: { path: string; list: number; match: number; others: unknown }[] = []
   lists.forEach((entry, i) => {
     const p = `${path}.lists[${i}]`
     const l = object(entry, p, MEMBER_KEYS.list)
     if (l.categoryId !== CATEGORIES[i].id) fail(`${p}.categoryId`, 'kategoriler kayıt defterindeki sırada olmalı')
     array(l.items, `${p}.items`, MAX_MATCHES_PER_CATEGORY).forEach((raw, j) => {
       const q = `${p}.items[${j}]`
-      const item = object(raw, q, MEMBER_KEYS.item)
+      const item = object(raw, q, version === 1 ? MEMBER_KEYS.itemV1 : MEMBER_KEYS.item)
       integer(item.match, `${q}.match`, 0, matches.length - 1)
       integer(item.percent, `${q}.percent`, 0, 100)
       nullable(item.model, (v) => integer(v, `${q}.model`, 0, 100))
@@ -170,21 +176,39 @@ function day(value: unknown, path: string): void {
       oneOf(item.reliability, `${q}.reliability`, MEMBER_RELIABILITY_LEVELS)
       nullable(item.outcome, (v) => oneOf(v, `${q}.outcome`, OUTCOMES))
       nullable(item.detail, (v) => text(v, `${q}.detail`, 20, DETAIL))
+      if (placed.has(`${i}:${item.match}`)) fail(`${q}.match`, 'aynı maç bir listede iki kez yer alamaz')
+      placed.set(`${i}:${item.match}`, { percent: item.percent as number, reliability: item.reliability as string })
+      if (version !== 1) claimed.push({ path: `${q}.others`, list: i, match: item.match as number, others: item.others })
     })
   })
+
+  // others: biçim denetimi ve çapraz denetim. Her giriş, aynı maçın o listede GERÇEKTEN bulunan
+  // önerisinin yüzdesi ve seviyesiyle birebir aynı olmalı; eksik ya da fazla giriş olamaz.
+  for (const claim of claimed) {
+    const others = array(claim.others, claim.path, CATEGORIES.length - 1).map((raw, k) => {
+      const q = `${claim.path}[${k}]`
+      const other = object(raw, q, MEMBER_KEYS.other)
+      return { categoryId: categoryKey(other.categoryId, `${q}.categoryId`), percent: integer(other.percent, `${q}.percent`, 0, 100), reliability: oneOf(other.reliability, `${q}.reliability`, MEMBER_RELIABILITY_LEVELS) }
+    })
+    const expected = CATEGORIES.flatMap((category, index) => {
+      const found = index === claim.list ? undefined : placed.get(`${index}:${claim.match}`)
+      return found ? [{ categoryId: category.id as string, percent: found.percent, reliability: found.reliability }] : []
+    })
+    if (JSON.stringify(others) !== JSON.stringify(expected)) fail(claim.path, 'aynı maçın paketteki diğer önerileriyle birebir aynı olmalı')
+  }
 }
 
 /** Paketi şemaya karşı denetler; uymuyorsa MemberPayloadError fırlatır. */
 export function assertMemberPayload(value: unknown): asserts value is MemberPayload {
   const p = object(value, 'paket', MEMBER_KEYS.payload)
-  if (p.v !== 1) fail('paket.v', 'desteklenmeyen paket sürümü')
+  if (p.v !== 1 && p.v !== 2) fail('paket.v', 'desteklenmeyen paket sürümü')
   integer(p.n, 'paket.n', 1, COUNT_MAX)
   text(p.publishedAt, 'paket.publishedAt', 24, ISO)
   const texts = object(p.texts, 'paket.texts', MEMBER_KEYS.texts)
   for (const { key, maxLength } of MEMBER_TEXT_FIELDS) text(texts[key], `paket.texts.${key}`, maxLength)
   const days = array(p.days, 'paket.days', MAX_DAYS)
   if (days.length === 0) fail('paket.days', 'en az bir gün bekleniyor')
-  days.forEach((d, i) => day(d, `paket.days[${i}]`))
+  days.forEach((d, i) => day(d, `paket.days[${i}]`, p.v as number))
   const root = object(p.statistics, 'paket.statistics', MEMBER_KEYS.statsRoot)
   stats(root.all, 'paket.statistics.all')
   stats(root.shared, 'paket.statistics.shared')
