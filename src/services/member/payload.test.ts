@@ -1,3 +1,4 @@
+import { MAIN_CATEGORY_IDS } from '../../config/mainCategories'
 import { describe, expect, it } from 'vitest'
 import { CATEGORIES, MAX_MATCHES_PER_CATEGORY } from '../../config/categories'
 import { DEFAULT_MEMBER_TEXTS, normalizeMemberTexts } from '../../config/memberTexts'
@@ -127,7 +128,14 @@ describe('buildMemberPayload', () => {
       expect(actual.weekly).toEqual(expected.weekly)
       expect(actual.monthly).toEqual(expected.monthly)
       expect(actual.stars).toEqual(stars)
+      // Ana kategoriler: aynı hesap, yalnızca sabit listedeki kategorilerin önerileriyle.
+      const mainPicks = picks.filter((p) => (MAIN_CATEGORY_IDS as readonly string[]).includes(p.categoryId))
+      const main = buildStats(mainPicks)
+      expect(actual.main).toEqual({ categories: [...MAIN_CATEGORY_IDS], overall: main.overall, matches: main.matches })
     }
+    // Sabit liste gerçekten bir alt kümedir: ana kategoriler tüm önerilerden azdır.
+    expect(payload.statistics.all.main!.overall.total).toBeGreaterThan(0)
+    expect(payload.statistics.all.main!.overall.total).toBeLessThan(payload.statistics.all.overall.total)
     expect(payload.statistics.all.overall.total).toBe(PICKS.length)
     expect(payload.statistics.shared.overall.total).toBe(2)
   })

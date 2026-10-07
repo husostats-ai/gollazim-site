@@ -22,7 +22,7 @@ function buildCommit(): string {
 const STATIC_FILES = ['favicon.png', 'logo-256.png', 'robots.txt']
 
 /** Üye uygulamasının açabildiği en yüksek paket sürümü (src/services/member/payload.ts ile aynı olmalı; testle denetlenir) */
-export const MEMBER_SITE_PAYLOAD_VERSION = 2
+export const MEMBER_SITE_PAYLOAD_VERSION = 3
 
 const memberSite = (commit: string): Plugin => ({
   name: 'gollazim-uye-sitesi',

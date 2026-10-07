@@ -355,6 +355,7 @@ describe('kategori listeleri ve üye kartı', () => {
 
     const v1 = JSON.parse(JSON.stringify(payload)) as MemberPayload
     ;(v1 as { v: number }).v = 1
+    for (const scope of ['all', 'shared'] as const) delete v1.statistics[scope].main
     for (const d of v1.days) for (const l of d.lists) for (const item of l.items) delete item.others
     const markup = html(createElement(MemberAnalysis, { payload: v1, today: DAY, initialCategory: 'over25' }))
     expect(markup).not.toContain('member-others')
@@ -417,14 +418,33 @@ describe('istatistik sayfası', () => {
     for (const scope of ['all', 'shared'] as const) {
       const s = payload.statistics[scope]
       const text = textOf(stats(scope))
-      expect(text).toContain(`· ${s.overall.decided} öneri · ${s.matches.decided} maç`)
-      expect(text).toContain(`Tuttu ${s.overall.won}`)
-      expect(text).toContain(`Tutmadı ${s.overall.lost}`)
+      const main = s.main!
+      // En üstteki kart ana kategorileri, altındaki soluk satır tüm kategorileri gösterir.
+      expect(text).toContain('ANA KATEGORİLER BAŞARISI')
+      expect(text).toContain('2.5 ÜST · KG VAR · İLK YARI 0.5 ÜST')
+      expect(text).not.toContain('GENEL BAŞARI')
+      expect(text).toContain(`· ${main.overall.decided} öneri · ${main.matches.decided} benzersiz maç`)
+      expect(text).toContain(`Tuttu ${main.overall.won} Tutmadı ${main.overall.lost} Değerlendirilemedi`)
+      expect(text).toContain(`Tüm kategoriler: ${formatRate(s.overall.rate)} · ${s.overall.decided} öneri · ${s.matches.decided} benzersiz maç`)
       for (const bucket of s.byCategory) expect(text).toContain(CATEGORIES.find((c) => c.id === bucket.key)!.label)
     }
     // Sayfa hesap yapmaz: gösterilen başarı, paketteki değerin biçimlendirilmiş hâlidir.
-    expect(/data-testid="member-overall"[^>]*>([^<]*)/.exec(stats('all'))![1]).toBe(formatRate(payload.statistics.all.overall.rate))
+    expect(/data-testid="member-overall"[^>]*>([^<]*)/.exec(stats('all'))![1]).toBe(formatRate(payload.statistics.all.main!.overall.rate))
+    expect(payload.statistics.all.main!.overall.rate).not.toBe(payload.statistics.all.overall.rate)
     expect(/data-testid="member-overall"[^>]*>([^<]*)/.exec(stats('shared'))![1]).toBe('%50')
+  })
+
+  it('eski paket (ana kategoriler alanı olmayan) eski "GENEL BAŞARI" kartıyla açılır', () => {
+    const old = JSON.parse(JSON.stringify(payload)) as MemberPayload
+    ;(old as { v: number }).v = 2
+    for (const scope of ['all', 'shared'] as const) delete old.statistics[scope].main
+    const markup = html(createElement(MemberStatsPage, { payload: old }), '/uye/istatistik')
+    const text = textOf(markup)
+    expect(text).toContain('GENEL BAŞARI')
+    expect(text).not.toContain('ANA KATEGORİLER')
+    expect(text).not.toContain('Tüm kategoriler:')
+    expect(/data-testid="member-overall"[^>]*>([^<]*)/.exec(markup)![1]).toBe(formatRate(old.statistics.all.overall.rate))
+    expect(text).toContain(`· ${old.statistics.all.overall.decided} öneri · ${old.statistics.all.matches.decided} benzersiz maç`)
   })
 
   it('Tümü / Paylaşılan geçişi ve dönem seçimi çizilir', () => {

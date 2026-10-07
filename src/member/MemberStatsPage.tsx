@@ -47,9 +47,9 @@ function Rate({ tally }: { tally: MemberTally }) {
   )
 }
 
-function Card({ title, note, children }: { title: string; note?: string; children: ReactNode }) {
+function Card({ title, note, testId, children }: { title: string; note?: string; testId?: string; children: ReactNode }) {
   return (
-    <section className="min-w-0 rounded-2xl border border-line bg-navy-700 p-4">
+    <section className="min-w-0 rounded-2xl border border-line bg-navy-700 p-4" data-testid={testId}>
       <h2 className="font-extrabold tracking-wide">{title}</h2>
       {note && <p className="mt-1 text-xs text-muted">{note}</p>}
       <div className="mt-4">{children}</div>
@@ -127,6 +127,9 @@ export default function MemberStatsPage({ payload, initialScope = 'all', initial
   const [period, setPeriod] = useState<Period>(initialPeriod)
   const stats = payload.statistics[scope]
   const { overall } = stats
+  // En üstteki kart: paket ana kategorileri taşıyorsa onları, taşımıyorsa (eski paket) tüm kategorileri gösterir.
+  const main = stats.main
+  const top = main ?? { overall, matches: stats.matches }
   const activePeriod = PERIODS.find((p) => p.id === period)!
 
   return (
@@ -151,23 +154,28 @@ export default function MemberStatsPage({ payload, initialScope = 'all', initial
         </div>
       ) : (
         <div className="mt-4 grid grid-cols-1 gap-4">
-          <Card title="GENEL BAŞARI">
+          <Card title={main ? 'ANA KATEGORİLER BAŞARISI' : 'GENEL BAŞARI'} testId="member-top-card" note={main ? main.categories.map(categoryLabel).join(' · ') : undefined}>
             <div className="flex flex-wrap items-end gap-x-4 gap-y-1">
               <p className="text-5xl leading-none font-black sm:text-6xl" data-testid="member-overall">
-                {formatRate(overall.rate)}
+                {formatRate(top.overall.rate)}
               </p>
               <p className="flex flex-wrap items-center gap-1.5 pb-1 text-sm text-muted">
-                · {overall.decided} öneri · {stats.matches.decided} maç
-                {overall.decided > 0 && overall.lowSample && <LowSample />}
+                · {top.overall.decided} öneri · {top.matches.decided} benzersiz maç
+                {top.overall.decided > 0 && top.overall.lowSample && <LowSample />}
               </p>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <Figure label="Tuttu" value={overall.won} />
-              <Figure label="Tutmadı" value={overall.lost} />
-              <Figure label="Değerlendirilemedi" value={overall.void} />
-              <Figure label="Bekliyor" value={overall.pending} />
+              <Figure label="Tuttu" value={top.overall.won} />
+              <Figure label="Tutmadı" value={top.overall.lost} />
+              <Figure label="Değerlendirilemedi" value={top.overall.void} />
+              <Figure label="Bekliyor" value={top.overall.pending} />
             </div>
             <p className="mt-2 text-xs text-muted">Aynı maç birden çok kategoride önerilebilir. “Değerlendirilemedi” ve “bekliyor” başarıya girmez.</p>
+            {main && (
+              <p className="mt-3 border-t border-line pt-2 text-xs text-muted" data-testid="member-all-line">
+                Tüm kategoriler: {formatRate(overall.rate)} · {overall.decided} öneri · {stats.matches.decided} benzersiz maç
+              </p>
+            )}
           </Card>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

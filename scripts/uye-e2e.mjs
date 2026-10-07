@@ -111,6 +111,14 @@ async function shot(page, name, width) {
   report.ekranlar.push({ dosya: `${name}-${width}.png`, genislik: width, tasma: size.scroll > size.inner ? `${size.scroll} > ${size.inner}` : 'yok' })
   return size.scroll <= size.inner
 }
+/** Tek bir kartın 390 px genişlikteki görüntüsü (sayfanın en üstünden) */
+async function cardShot(page, id, name) {
+  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 })
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await new Promise((r) => setTimeout(r, 150))
+  await (await page.$(sel(id))).screenshot({ path: join(shots, `${name}-390.png`) })
+  report.ekranlar.push({ dosya: `${name}-390.png`, genislik: 390, tasma: 'yok' })
+}
 async function signIn(page, username, password) {
   await page.waitForSelector(sel('member-username'))
   await page.$eval(sel('member-username'), (el) => (el.value = ''))
@@ -313,9 +321,17 @@ try {
   await page.click(`a[href="${T.stats}"]`)
   await page.waitForSelector(sel('member-overall'))
   const all = await text(page, 'member-overall')
+  const topAll = await page.evaluate(() => document.body.innerText)
+  const allLine = await text(page, 'member-all-line')
+  step('istatistik: en üstte "ANA KATEGORİLER BAŞARISI" ve üç kategori', topAll.includes('ANA KATEGORİLER BAŞARISI') && topAll.includes('2.5 ÜST · KG VAR · İLK YARI 0.5 ÜST') && !topAll.includes('GENEL BAŞARI'))
+  await cardShot(page, 'member-top-card', 'istatistik-ust-kart-tumu')
+  step('istatistik: "Tüm kategoriler" satırı', /^Tüm kategoriler: %[\d,]+ · \d+ öneri · \d+ benzersiz maç$/.test(allLine), allLine)
   await page.click(sel('member-scope-shared'))
   const shared = await text(page, 'member-overall')
   step('istatistik: Tümü / Paylaşılan geçişi', all !== shared, `Tümü ${all} · Paylaşılan ${shared}`)
+  const sharedLine = await text(page, 'member-all-line')
+  await cardShot(page, 'member-top-card', 'istatistik-ust-kart-paylasilan')
+  step('istatistik: Paylaşılan ölçüsünde "Tüm kategoriler" satırı da değişiyor', sharedLine !== allLine, sharedLine)
   await page.click(sel('member-scope-all'))
   for (const period of ['weekly', 'monthly', 'daily']) await page.click(sel(`member-period-${period}`))
   const statLeak = FORBIDDEN.exec(await visibleText(page))

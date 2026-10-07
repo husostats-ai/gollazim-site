@@ -22,7 +22,10 @@ export const MEMBER_KEYS = {
   itemV1: ['match', 'percent', 'model', 'conflict', 'stars', 'reliability', 'outcome', 'detail'],
   other: ['categoryId', 'percent', 'reliability'],
   statsRoot: ['all', 'shared'],
-  stats: ['overall', 'matches', 'byCategory', 'byReliability', 'daily', 'weekly', 'monthly', 'stars'],
+  stats: ['main', 'overall', 'matches', 'byCategory', 'byReliability', 'daily', 'weekly', 'monthly', 'stars'],
+  /** Sürüm 1 ve 2 paketlerdeki istatistik (main alanı yok) */
+  statsV2: ['overall', 'matches', 'byCategory', 'byReliability', 'daily', 'weekly', 'monthly', 'stars'],
+  main: ['categories', 'overall', 'matches'],
   statsMatches: ['total', 'decided'],
   bucket: ['key', 'tally'],
   tally: ['won', 'lost', 'void', 'pending', 'decided', 'total', 'rate', 'lowSample'],
@@ -109,12 +112,23 @@ const categoryKey = (value: unknown, path: string): string => {
   return value
 }
 
-function stats(value: unknown, path: string): void {
-  const s = object(value, path, MEMBER_KEYS.stats)
+function matchCounts(value: unknown, path: string): void {
+  const m = object(value, path, MEMBER_KEYS.statsMatches)
+  integer(m.total, `${path}.total`, 0, COUNT_MAX)
+  integer(m.decided, `${path}.decided`, 0, COUNT_MAX)
+}
+
+function stats(value: unknown, path: string, version: number): void {
+  const s = object(value, path, version >= 3 ? MEMBER_KEYS.stats : MEMBER_KEYS.statsV2)
+  if (version >= 3) {
+    const main = object(s.main, `${path}.main`, MEMBER_KEYS.main)
+    const ids = array(main.categories, `${path}.main.categories`, CATEGORIES.length).map((id, i) => categoryKey(id, `${path}.main.categories[${i}]`))
+    if (ids.length === 0 || new Set(ids).size !== ids.length) fail(`${path}.main.categories`, 'en az bir kategori, her biri bir kez bekleniyor')
+    tally(main.overall, `${path}.main.overall`)
+    matchCounts(main.matches, `${path}.main.matches`)
+  }
   tally(s.overall, `${path}.overall`)
-  const m = object(s.matches, `${path}.matches`, MEMBER_KEYS.statsMatches)
-  integer(m.total, `${path}.matches.total`, 0, COUNT_MAX)
-  integer(m.decided, `${path}.matches.decided`, 0, COUNT_MAX)
+  matchCounts(s.matches, `${path}.matches`)
   buckets(s.byCategory, `${path}.byCategory`, CATEGORIES.length, categoryKey)
   buckets(s.byReliability, `${path}.byReliability`, MEMBER_RELIABILITY_LEVELS.length, (v, p) => oneOf(v, p, MEMBER_RELIABILITY_LEVELS))
   buckets(s.daily, `${path}.daily`, 400, (v, p) => text(v, p, 10, WEEK_OR_DAY))
@@ -201,7 +215,7 @@ function day(value: unknown, path: string, version: number): void {
 /** Paketi şemaya karşı denetler; uymuyorsa MemberPayloadError fırlatır. */
 export function assertMemberPayload(value: unknown): asserts value is MemberPayload {
   const p = object(value, 'paket', MEMBER_KEYS.payload)
-  if (p.v !== 1 && p.v !== 2) fail('paket.v', 'desteklenmeyen paket sürümü')
+  if (p.v !== 1 && p.v !== 2 && p.v !== 3) fail('paket.v', 'desteklenmeyen paket sürümü')
   integer(p.n, 'paket.n', 1, COUNT_MAX)
   text(p.publishedAt, 'paket.publishedAt', 24, ISO)
   const texts = object(p.texts, 'paket.texts', MEMBER_KEYS.texts)
@@ -210,6 +224,6 @@ export function assertMemberPayload(value: unknown): asserts value is MemberPayl
   if (days.length === 0) fail('paket.days', 'en az bir gün bekleniyor')
   days.forEach((d, i) => day(d, `paket.days[${i}]`, p.v as number))
   const root = object(p.statistics, 'paket.statistics', MEMBER_KEYS.statsRoot)
-  stats(root.all, 'paket.statistics.all')
-  stats(root.shared, 'paket.statistics.shared')
+  stats(root.all, 'paket.statistics.all', p.v as number)
+  stats(root.shared, 'paket.statistics.shared', p.v as number)
 }

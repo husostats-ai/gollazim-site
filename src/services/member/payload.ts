@@ -6,6 +6,7 @@ import { analyzeDay } from '../analysis/engine'
 import type { Prediction, ReliabilityLevel } from '../analysis/types'
 import { matchStandings, type StandingInfo } from '../league/standing'
 import { resultDetail } from '../stats/categoryResult'
+import { buildMainStats } from '../stats/mainStats'
 import { buildStarStats } from '../stats/starStats'
 import { buildStats, type Bucket, type Tally } from '../stats/statsEngine'
 import { sharedPicksOnly } from '../story/shared'
@@ -25,9 +26,10 @@ import { assertMemberPayload } from './schema'
 
 /**
  * Paket sürümü. 2: her önerinin yanında aynı maçın diğer listelerdeki önerileri (others) var.
- * Sürüm 1 paketler (others alanı olmayan) üye sayfasında hâlâ açılır.
+ * 3: istatistiklerde ana kategorilerin toplu başarısı (main) var.
+ * Sürüm 1 (others alanı olmayan) ve sürüm 2 (main alanı olmayan) paketler üye sayfasında hâlâ açılır.
  */
-export const MEMBER_PAYLOAD_VERSION = 2
+export const MEMBER_PAYLOAD_VERSION = 3
 
 /** Günlük dökümde pakete giren en fazla gün sayısı (en yeniler) */
 export const MEMBER_DAILY_LIMIT = 90
@@ -49,8 +51,21 @@ export interface MemberBucket {
   tally: MemberTally
 }
 
+export interface MemberMainStats {
+  /** Kapsanan kategoriler, sabit listedeki sırayla */
+  categories: CategoryId[]
+  overall: MemberTally
+  matches: { total: number; decided: number }
+}
+
 /** İstatistik sayfasının önceden hesaplanmış değerleri (bir kapsam için) */
 export interface MemberStats {
+  /**
+   * Ana kategorilerin (admin tarafındaki sabit liste) toplu başarısı; en üstteki kart bunu gösterir.
+   * Sürüm 1 ve 2 paketlerde bu alan yoktur.
+   */
+  main?: MemberMainStats
+  /** Tüm kategoriler */
   overall: MemberTally
   matches: { total: number; decided: number }
   byCategory: MemberBucket[]
@@ -144,7 +159,7 @@ export interface MemberDay {
 }
 
 export interface MemberPayload {
-  v: 1 | typeof MEMBER_PAYLOAD_VERSION
+  v: 1 | 2 | typeof MEMBER_PAYLOAD_VERSION
   /** Yayın numarası */
   n: number
   /** Yayın anı (ISO) */
@@ -196,7 +211,13 @@ const bucketsOf = (buckets: Bucket[]): MemberBucket[] => buckets.map((b) => ({ k
 function statsOf(picks: Pick[]): MemberStats {
   const stats = buildStats(picks)
   const stars = buildStarStats(picks)
+  const main = buildMainStats(picks)
   return {
+    main: {
+      categories: main.categories.map((id) => id),
+      overall: tallyOf(main.overall),
+      matches: { total: main.matches.total, decided: main.matches.decided },
+    },
     overall: tallyOf(stats.overall),
     matches: { total: stats.matches.total, decided: stats.matches.decided },
     byCategory: bucketsOf(stats.byCategory),
