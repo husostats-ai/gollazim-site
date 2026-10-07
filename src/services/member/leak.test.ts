@@ -149,7 +149,9 @@ describe('yayın paketi: ham veri sızıntısı', () => {
       match: ['home', 'away', 'league', 'time', 'status', 'score', 'homeStanding', 'awayStanding'],
       standing: ['rank', 'played', 'stale'],
       list: ['categoryId', 'items'],
-      item: ['match', 'percent', 'model', 'conflict', 'stars', 'reliability', 'outcome', 'detail'],
+      item: ['match', 'percent', 'model', 'conflict', 'stars', 'reliability', 'outcome', 'detail', 'others'],
+      itemV1: ['match', 'percent', 'model', 'conflict', 'stars', 'reliability', 'outcome', 'detail'],
+      other: ['categoryId', 'percent', 'reliability'],
       statsRoot: ['all', 'shared'],
       stats: ['overall', 'matches', 'byCategory', 'byReliability', 'daily', 'weekly', 'monthly', 'stars'],
       statsMatches: ['total', 'decided'],
@@ -222,9 +224,78 @@ describe('yayın paketi: şema denetimi fazladan ya da eksik alanı reddeder', (
     expect(broken((p) => void ((firstItem(p) as { conflict: unknown }).conflict = 'piyasa'))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days[0].lists[0].items[0].conflict = 'hesap'))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days[0].lists.find((l) => l.categoryId === 'homeWin15')!.items[0].conflict = 'model'))).toThrow(MemberPayloadError)
-    expect(broken((p) => void ((p as { v: number }).v = 2))).toThrow(MemberPayloadError)
+    expect(broken((p) => void ((p as { v: number }).v = 3))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days = []))).toThrow(MemberPayloadError)
     expect(broken((p) => void p.days[0].lists.reverse())).toThrow(MemberPayloadError)
+  })
+})
+
+describe('yayın paketi: "aynı maçın diğer önerileri" yalnızca paketteki önerilerden türer', () => {
+  const copy = (): MemberPayload => JSON.parse(text) as MemberPayload
+  const rejects = (change: (p: MemberPayload) => void) => {
+    const p = copy()
+    change(p)
+    return () => assertMemberPayload(p)
+  }
+  /** Birden çok listede yer alan bir öneri */
+  const multi = (p: MemberPayload) => p.days[0].lists.flatMap((l) => l.items).find((i) => (i.others ?? []).length >= 2)!
+
+  it('her giriş, aynı maçın o listede gerçekten bulunan önerisiyle birebir aynıdır', () => {
+    let entries = 0
+    for (const day of payload.days)
+      for (const list of day.lists)
+        for (const item of list.items) {
+          expect(item.others).toBeDefined()
+          const expected = day.lists.flatMap((other) => {
+            const same = other.categoryId === list.categoryId ? undefined : other.items.find((c) => c.match === item.match)
+            return same ? [{ categoryId: other.categoryId, percent: same.percent, reliability: same.reliability }] : []
+          })
+          expect(item.others).toEqual(expected)
+          // Kendi kategorisi tekrar edilmez.
+          expect(item.others!.some((o) => o.categoryId === list.categoryId)).toBe(false)
+          entries += item.others!.length
+        }
+    expect(entries).toBeGreaterThan(100)
+    expect(payload.v).toBe(2)
+  })
+
+  it('pakete girmeyen (ilk 15 dışında kalan) öneri bu satıra da girmez', () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({ ...MATCHES[0], id: `cok-${i}`, home: `Ev ${i}`, away: `Dep ${i}`, stats: { ...MATCHES[0].stats, over25Pct: 80 + i, bttsPct: 99 - i } }))
+    const day = buildMemberPayload(memberInput({ days: [{ date: DAY, matches: many, results: [] }], picks: [], shared: [], leagueTables: [] })).days[0]
+    const over25 = day.lists.find((l) => l.categoryId === 'over25')!
+    const btts = day.lists.find((l) => l.categoryId === 'btts')!
+    // 2.5 Üst'te ilk 15'e giren ama KG Var'da ilk 15'e giremeyen maçlar: "KG VAR" satırı yok.
+    const inBtts = new Set(btts.items.map((i) => i.match))
+    const outside = over25.items.filter((i) => !inBtts.has(i.match))
+    expect(outside.length).toBeGreaterThan(0)
+    for (const item of outside) expect(item.others!.some((o) => o.categoryId === 'btts')).toBe(false)
+    for (const item of over25.items.filter((i) => inBtts.has(i.match))) expect(item.others!.some((o) => o.categoryId === 'btts')).toBe(true)
+  })
+
+  it('şema: uydurma, eksik, fazla, sırasız ya da tutarsız giriş reddedilir', () => {
+    expect(rejects((p) => void (multi(p).others![0].percent += 1))).toThrow(MemberPayloadError)
+    expect(rejects((p) => void (multi(p).others![0].reliability = 'unmeasured'))).toThrow(MemberPayloadError)
+    expect(rejects((p) => void multi(p).others!.pop())).toThrow(MemberPayloadError)
+    expect(rejects((p) => void multi(p).others!.reverse())).toThrow(MemberPayloadError)
+    expect(rejects((p) => void multi(p).others!.push({ categoryId: 'cards45', percent: 99, reliability: 'high' }))).toThrow(MemberPayloadError)
+    expect(rejects((p) => void (p.days[0].lists[0].items[0].others = [{ categoryId: p.days[0].lists[0].categoryId, percent: p.days[0].lists[0].items[0].percent, reliability: p.days[0].lists[0].items[0].reliability }]))).toThrow(MemberPayloadError)
+    expect(rejects((p) => void ((multi(p).others![0] as unknown as Record<string, unknown>).odds = 1.737))).toThrow(MemberPayloadError)
+    expect(rejects((p) => void ((multi(p).others![0] as unknown as Record<string, unknown>).categoryId = 'Odds_BTTS_Yes'))).toThrow(MemberPayloadError)
+    expect(rejects((p) => void ((multi(p) as unknown as Record<string, unknown>).others = null))).toThrow(MemberPayloadError)
+    expect(rejects((p) => void delete multi(p).others)).toThrow(MemberPayloadError)
+    expect(rejects(() => undefined)).not.toThrow()
+  })
+
+  it('sürüm 1 paket (bu alan olmadan) hâlâ kabul edilir; sürümler karıştırılamaz', () => {
+    const v1 = copy()
+    ;(v1 as { v: number }).v = 1
+    for (const day of v1.days) for (const list of day.lists) for (const item of list.items) delete item.others
+    expect(() => assertMemberPayload(v1)).not.toThrow()
+    // Sürüm 1 pakette bu alan bulunamaz; sürüm 2 pakette bulunmak zorundadır.
+    expect(rejects((p) => void ((p as { v: number }).v = 1))).toThrow(MemberPayloadError)
+    const v2 = JSON.parse(JSON.stringify(v1)) as MemberPayload
+    ;(v2 as { v: number }).v = 2
+    expect(() => assertMemberPayload(v2)).toThrow(MemberPayloadError)
   })
 })
 

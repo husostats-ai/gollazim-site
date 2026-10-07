@@ -162,6 +162,54 @@ try {
   const normal = styles.olagan[0]
   step('%100 + Düşük: yüzde daha küçük ve sönük, güvenilirlik rozeti daha büyük ve kalın', !!dim && !!normal && dim.text === '%100' && dim.badge.includes('Düşük') && dim.size < normal.size && dim.color !== normal.color && dim.badgeSize > normal.badgeSize && Number(dim.badgeWeight) > Number(normal.badgeWeight), dim && normal ? `sönük ${dim.size}px ${dim.color} · olağan ${normal.size}px ${normal.color} · rozet ${dim.badgeSize}px/${dim.badgeWeight} ↔ ${normal.badgeSize}px/${normal.badgeWeight} · ${styles.soluk.length} sönük, ${styles.olagan.length} olağan kart` : 'bu kategoride örnek yok')
   step('sönük gösterim yalnızca %100 + Düşük kartlarda', styles.soluk.every((c) => c.text === '%100' && c.badge.includes('Düşük')) && styles.olagan.every((c) => !(c.text === '%100' && c.badge.includes('Düşük'))))
+  // "Aynı maçın diğer önerileri" satırı ve "Nasıl okunur?" kutusu
+  const others = await page.evaluate(() => {
+    const cards = [...document.querySelectorAll('[data-testid="member-card"]')]
+    const rows = cards.map((card) => card.querySelector('[data-testid="member-others"]'))
+    const first = rows.find(Boolean)
+    const big = cards[0].querySelector('[data-testid="member-percent"]')
+    return {
+      cards: cards.length,
+      withRow: rows.filter(Boolean).length,
+      sample: first?.textContent.replace(/\s+/g, ' ').trim() ?? '',
+      rowSize: first ? parseFloat(getComputedStyle(first).fontSize) : 0,
+      rowColor: first ? getComputedStyle(first).color : '',
+      bigSize: parseFloat(getComputedStyle(big).fontSize),
+      // Satırdaki yüzdeler: %100 + Düşük olanlar vurgusuz (soluk), diğerleri yarı kalın ve beyaz
+      percents: [...document.querySelectorAll('[data-testid="member-other"]')].map((el) => {
+        const percent = [...el.querySelectorAll('span')].find((span) => span.textContent.trim().startsWith('%'))
+        return { dim: el.dataset.overstated === 'true', text: percent.textContent.trim(), weight: Number(getComputedStyle(percent).fontWeight), color: getComputedStyle(percent).color }
+      }),
+    }
+  })
+  step('"Aynı maçın diğer önerileri" satırı var; küçük ve soluk', others.withRow > 0 && others.sample.startsWith('Aynı maçın diğer önerileri:') && others.rowSize <= 11 && others.rowSize < others.bigSize / 2, `${others.withRow}/${others.cards} kartta · ${others.rowSize}px ${others.rowColor} · "${others.sample.slice(0, 90)}"`)
+  const dimOthers = others.percents.filter((p) => p.dim)
+  const plainOthers = others.percents.filter((p) => !p.dim)
+  step('satırdaki %100 + Düşük yüzdeler de sönük; diğerleri vurgulu', dimOthers.length > 0 && plainOthers.length > 0 && dimOthers.every((p) => p.text === '%100' && p.weight < 500 && p.color === others.rowColor) && plainOthers.every((p) => p.weight >= 600 && p.color !== others.rowColor), `${dimOthers.length} sönük, ${plainOthers.length} vurgulu`)
+  // Kapalı kutu yalnızca başlık satırı kadar yer tutar.
+  const howto = await page.$eval(sel('member-howto'), (el) => ({ open: el.open, summary: el.querySelector('summary').textContent.trim(), height: el.offsetHeight }))
+  step('"Nasıl okunur?" kutusu kapalı geliyor', !howto.open && howto.height < 60 && howto.summary === 'Nasıl okunur?', `${howto.height} px`)
+  await page.click(`${sel('member-howto')} summary`)
+  const opened = await page.$eval(sel('member-howto'), (el) => ({ open: el.open, height: el.querySelector('[data-testid="member-howto-body"]').offsetHeight, text: el.textContent }))
+  step('"Nasıl okunur?" tıklanınca açılıyor', opened.open && opened.height > 200 && opened.text.includes('Hiçbiri garanti değildir') && opened.text.includes('Geçmiş maçlarda görülme sıklığı'), `${opened.height} px`)
+  const howtoLeak = FORBIDDEN.exec(await visibleText(page))
+  step('açık "Nasıl okunur?" ile sayfada yasak terim yok', howtoLeak === null, howtoLeak?.[0] ?? '')
+  for (const width of [320, 390]) {
+    await page.setViewport({ width, height: 844, deviceScaleFactor: 2 })
+    await new Promise((r) => setTimeout(r, 150))
+    const size = await overflow(page)
+    const inside = await page.evaluate(() => [...document.querySelectorAll('[data-testid="member-howto"], [data-testid="member-others"], [data-testid="member-other"]')].every((el) => { const box = el.getBoundingClientRect(); return box.left >= 0 && box.right <= window.innerWidth + 0.5 }))
+    step(`açık "Nasıl okunur?" ve öneri satırları ${width} px'te taşmıyor`, size.scroll <= size.inner && inside, `${size.scroll} / ${size.inner}`)
+    await page.screenshot({ path: join(shots, `nasil-okunur-acik-${width}.png`), fullPage: true })
+    report.ekranlar.push({ dosya: `nasil-okunur-acik-${width}.png`, genislik: width, tasma: size.scroll > size.inner ? 'VAR' : 'yok' })
+  }
+  await page.click(`${sel('member-howto')} summary`)
+  // Öneri satırlı bir kartın yakın görüntüsü (320 px)
+  await page.setViewport({ width: 320, height: 844, deviceScaleFactor: 2 })
+  await page.evaluate(() => (document.querySelector('header').style.position = 'static'))
+  await (await page.$(sel('member-card'))).screenshot({ path: join(shots, 'kart-diger-oneriler-320.png') })
+  await page.evaluate(() => (document.querySelector('header').style.position = ''))
+  report.ekranlar.push({ dosya: 'kart-diger-oneriler-320.png', genislik: 320, tasma: 'yok' })
   // Yasal uyarı sayfanın en altında, mobil boyutta görünür
   for (const width of [320, 390]) {
     await page.setViewport({ width, height: 844, deviceScaleFactor: 1 })

@@ -23,7 +23,11 @@ import { assertMemberPayload } from './schema'
 // Yeni bir alan eklemek: buradaki tipe ve kurucuya, schema.ts'teki denetime ve
 // sızıntı testindeki izinli anahtar listesine birlikte eklenir; biri eksikse test kırılır.
 
-export const MEMBER_PAYLOAD_VERSION = 1
+/**
+ * Paket sürümü. 2: her önerinin yanında aynı maçın diğer listelerdeki önerileri (others) var.
+ * Sürüm 1 paketler (others alanı olmayan) üye sayfasında hâlâ açılır.
+ */
+export const MEMBER_PAYLOAD_VERSION = 2
 
 /** Günlük dökümde pakete giren en fazla gün sayısı (en yeniler) */
 export const MEMBER_DAILY_LIMIT = 90
@@ -92,6 +96,15 @@ export interface MemberMatch {
   awayStanding: MemberStanding | null
 }
 
+/** Aynı maçın, yayınlanan başka bir listedeki önerisi */
+export interface MemberOther {
+  categoryId: CategoryId
+  /** O listedeki yüzdesi (0-100) */
+  percent: number
+  /** O listedeki güvenilirlik seviyesi */
+  reliability: ReliabilityLevel
+}
+
 export interface MemberItem {
   /** Günün matches dizisindeki sıra numarası */
   match: number
@@ -108,6 +121,12 @@ export interface MemberItem {
   outcome: PickOutcome | null
   /** Sonucun kategoriye özgü ayrıntısı ("İY 1-0", "Korner 11"); yoksa null */
   detail: string | null
+  /**
+   * Aynı maçın bu paketteki diğer listelerde yer alan önerileri, kategori kayıt defterindeki
+   * sırayla; yoksa boş dizi. Yalnızca pakette zaten bulunan önerilerden türetilir.
+   * Sürüm 1 paketlerde bu alan yoktur.
+   */
+  others?: MemberOther[]
 }
 
 export interface MemberList {
@@ -125,7 +144,7 @@ export interface MemberDay {
 }
 
 export interface MemberPayload {
-  v: typeof MEMBER_PAYLOAD_VERSION
+  v: 1 | typeof MEMBER_PAYLOAD_VERSION
   /** Yayın numarası */
   n: number
   /** Yayın anı (ISO) */
@@ -239,6 +258,8 @@ function dayOf(input: MemberPayloadInput, day: MemberDayInput, now: Date): Membe
       reliability: prediction.reliability.level,
       outcome: pick ? pick.outcome : null,
       detail: detail === '' ? null : detail,
+      // Aşağıda, tüm listeler kurulduktan sonra doldurulur.
+      others: [],
     }
   }
 
@@ -246,6 +267,18 @@ function dayOf(input: MemberPayloadInput, day: MemberDayInput, now: Date): Membe
     categoryId: category.id,
     items: analysis[category.id].predictions.slice(0, MAX_MATCHES_PER_CATEGORY).map(itemOf),
   }))
+  // Aynı maçın diğer listelerdeki önerileri: yalnızca yukarıda kurulan (pakete giren) öğelerden.
+  for (const list of lists) {
+    for (const item of list.items) {
+      const others: MemberOther[] = []
+      for (const other of lists) {
+        if (other.categoryId === list.categoryId) continue
+        const same = other.items.find((candidate) => candidate.match === item.match)
+        if (same) others.push({ categoryId: other.categoryId, percent: same.percent, reliability: same.reliability })
+      }
+      item.others = others
+    }
+  }
   return { date: day.date, matches, lists }
 }
 
