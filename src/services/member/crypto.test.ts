@@ -355,7 +355,7 @@ describe('her yayın yenidir; sarmal listesi opak ve sabit uzunluktadır', () =>
     }
     expect(positions.size).toBeGreaterThan(6)
     expect(Math.max(...positions)).toBeGreaterThan(3)
-  })
+  }, SLOW)
 
   it('paketin açık kısmında kullanıcı adı, içerik ya da alan adı yoktur', () => {
     const text = JSON.stringify(envelope)

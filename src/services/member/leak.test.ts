@@ -164,6 +164,11 @@ describe('yayın paketi: ham veri sızıntısı', () => {
 })
 
 describe('yayın paketi: şema denetimi fazladan ya da eksik alanı reddeder', () => {
+  // Her nesneyi tek tek değiştiren bu testler küçük bir paketle çalışır (iki maç); paket yine
+  // her tür nesneyi içerir: maç, lig sırası, liste, öneri, diğer öneriler, istatistik dökümleri.
+  const small = buildMemberPayload(memberInput({ days: [{ date: DAY, matches: dayMatches(DAY).filter((m) => ['Kuzey Yıldızı', 'Doğu Gençlik'].includes(m.home)), results: RESULTS }] }))
+  const smallText = JSON.stringify(small)
+
   /** Paketteki her nesne için: o nesneye uygulanacak değişikliği yapıp kopyayı döner */
   function mutations(mutate: (node: Record<string, unknown>) => void): unknown[] {
     const variants: unknown[] = []
@@ -171,9 +176,9 @@ describe('yayın paketi: şema denetimi fazladan ya da eksik alanı reddeder', (
       if (Array.isArray(value)) return value.reduce<number>((sum, v) => sum + visit(v), 0)
       if (typeof value !== 'object' || value === null) return 0
       return 1 + Object.values(value).reduce<number>((sum, v) => sum + visit(v), 0)
-    })(payload)
+    })(small)
     for (let target = 0; target < count; target++) {
-      const copy = JSON.parse(text) as unknown
+      const copy = JSON.parse(smallText) as unknown
       let seen = 0
       ;(function visit(value: unknown): void {
         if (Array.isArray(value)) return value.forEach(visit)
@@ -196,6 +201,9 @@ describe('yayın paketi: şema denetimi fazladan ya da eksik alanı reddeder', (
       node.sizinti = { Odds_Home_Win: 1.737 }
     })
     expect(variants.length).toBeGreaterThan(200)
+    // Küçük paket her nesne türünü içeriyor.
+    const kinds = collect(small).keys
+    for (const key of ALLOWED_KEYS) expect(kinds.has(key), `küçük pakette yok: ${key}`).toBe(true)
     for (const variant of variants) expect(() => assertMemberPayload(variant)).toThrow(MemberPayloadError)
   })
 
