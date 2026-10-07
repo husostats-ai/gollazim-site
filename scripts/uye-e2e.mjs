@@ -147,7 +147,7 @@ try {
   step('kategori listesi çizildi', cardCount > 0, `${cardCount} kart`)
   const labels = await page.$$eval(sel('member-percent-label'), (els) => [...new Set(els.map((el) => el.textContent.trim()))])
   step('büyük yüzdenin altında sabit etiket var', labels.length === 1 && labels[0] === 'Geçmiş maçlarda görülme sıklığı' && (await page.$$eval(sel('member-percent-label'), (els) => els.length)) === cardCount, labels.join(' | '))
-  step('kartların üstünde açıklama satırı', (await text(page, 'member-percent-note')).startsWith('Yüzdeler geçmiş verilerin özetidir'), await text(page, 'member-percent-note'))
+  step('kartların üstünde açıklama satırı', (await text(page, 'member-percent-note')).startsWith('Yüzdeler geçmiş verilere ve model hesaplarına dayanan özetlerdir;'), await text(page, 'member-percent-note'))
   // %100 + Düşük güvenilirlik: yüzde sönük ve küçük, rozet belirgin (gerçek veride bu kartlar var)
   const styles = await page.evaluate(() => {
     const read = (card) => {

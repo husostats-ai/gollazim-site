@@ -73,7 +73,7 @@ export const PERCENT_LABELS: Record<PercentKind, string> = {
 }
 
 /** Kartların üstündeki sabit açıklama */
-export const PERCENT_NOTE = "Yüzdeler geçmiş verilerin özetidir, sonucun kesin olduğu anlamına gelmez. Güvenilirlik 'Düşük' ise örnek azdır."
+export const PERCENT_NOTE = "Yüzdeler geçmiş verilere ve model hesaplarına dayanan özetlerdir; sonucun kesin olduğu anlamına gelmez. Güvenilirlik 'Düşük' ise örnek azdır."
 
 /** %100 ama az maça dayanan yüzde: kesinlik izlenimi vermesin diye sönük gösterilir */
 export const isOverstated = (item: Pick<MemberItem, 'percent' | 'reliability'>): boolean => item.percent === 100 && item.reliability === 'low'

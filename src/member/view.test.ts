@@ -275,7 +275,7 @@ describe('kategori listeleri ve üye kartı', () => {
   })
 
   it('kartların üstünde sabit açıklama satırı', () => {
-    expect(PERCENT_NOTE).toBe("Yüzdeler geçmiş verilerin özetidir, sonucun kesin olduğu anlamına gelmez. Güvenilirlik 'Düşük' ise örnek azdır.")
+    expect(PERCENT_NOTE).toBe("Yüzdeler geçmiş verilere ve model hesaplarına dayanan özetlerdir; sonucun kesin olduğu anlamına gelmez. Güvenilirlik 'Düşük' ise örnek azdır.")
     const markup = html(analysis(0, 'over25'))
     expect(/data-testid="member-percent-note">([^<]*)/.exec(markup)![1].replace(/&#x27;/g, "'")).toBe(PERCENT_NOTE)
     expect(markup.indexOf('member-percent-note')).toBeLessThan(markup.indexOf('member-cards'))
