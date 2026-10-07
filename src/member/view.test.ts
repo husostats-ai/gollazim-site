@@ -79,15 +79,22 @@ describe('yasal uyarı penceresi', () => {
   const login = (props: Partial<Parameters<typeof MemberLogin>[0]> = {}) => html(createElement(MemberLogin, { busy: false, error: null, notice: null, onLogin: noop, ...props }))
   const dialog = (markup: string) => /<div[^>]*role="dialog"[^>]*>/.exec(markup)
 
-  it('giriş ekranı pencereyle açılır: başlık, dört paragraf ve iki düğme sabit metindir', () => {
+  it('giriş ekranı pencereyle açılır: başlık, üç paragraf, 18 yaş satırı ve iki düğme sabit metindir', () => {
     const markup = login()
     const tag = dialog(markup)![0]
     expect(tag).toContain('aria-modal="true"')
     expect(tag).toContain('aria-labelledby="member-legal-title"')
     const text = textOf(markup)
     expect(text).toContain('⚠️ Yasal Uyarı')
-    expect(LEGAL_NOTICE.paragraphs).toHaveLength(4)
+    expect(LEGAL_NOTICE.paragraphs).toHaveLength(3)
     for (const paragraph of LEGAL_NOTICE.paragraphs) expect(text).toContain(paragraph)
+    // 18 yaş cümlesi kaydırılan gövdede değil, düğmelerin üstündeki sabit satırdadır.
+    expect(LEGAL_NOTICE.age).toBe('Bu sayfayı yalnızca 18 yaşından büyükler kullanabilir.')
+    const body = /data-testid="member-legal-body"[^>]*>(.*?)<\/div>/.exec(markup)![1]
+    expect(body).not.toContain(LEGAL_NOTICE.age)
+    expect(/data-testid="member-legal-age"[^>]*>([^<]*)/.exec(markup)![1]).toBe(LEGAL_NOTICE.age)
+    expect(markup.indexOf('member-legal-body')).toBeLessThan(markup.indexOf('data-testid="member-legal-age"'))
+    expect(markup.indexOf('data-testid="member-legal-age"')).toBeLessThan(markup.indexOf('member-legal-accept'))
     expect(/data-testid="member-legal-accept"[^>]*>([^<]*)/.exec(markup)![1]).toBe('18 yaşından büyüğüm, kabul ediyorum')
     expect(/data-testid="member-legal-decline"[^>]*>([^<]*)/.exec(markup)![1]).toBe('Kabul etmiyorum')
     // "Devam etmek için onay gerekir." yalnızca reddedince çıkar.
@@ -115,7 +122,7 @@ describe('yasal uyarı penceresi', () => {
   })
 
   it('metin yasak terim içermez; pakete ve admin metinlerine girmez', () => {
-    const all = [LEGAL_NOTICE.title, ...LEGAL_NOTICE.paragraphs, LEGAL_NOTICE.accept, LEGAL_NOTICE.decline, LEGAL_NOTICE.declined].join(' ')
+    const all = [LEGAL_NOTICE.title, ...LEGAL_NOTICE.paragraphs, LEGAL_NOTICE.age, LEGAL_NOTICE.accept, LEGAL_NOTICE.decline, LEGAL_NOTICE.declined].join(' ')
     expect(all.toLocaleLowerCase('tr')).not.toMatch(/oran|piyasa|xg|csv|kaynak|footystats|bağlantı|odds|ortalama|https?:|www\./)
     expect(JSON.stringify(payload)).not.toContain('Yasal Uyarı')
     expect(JSON.stringify(DEFAULT_MEMBER_TEXTS)).not.toContain('Yasal Uyarı')
