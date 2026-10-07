@@ -12,3 +12,10 @@ dist
 samples/
 *.csv
 gollazim-yedek-*.json
+
+# Üye sayfası: şifreli yayın paketleri ve üye anahtar yedekleri repoya girmez
+gollazim-yayin-*.json
+gollazim-uye-*.json
+paket.json
+gollazim-uye-*
+dagitim*

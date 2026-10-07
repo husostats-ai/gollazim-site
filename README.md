@@ -130,3 +130,64 @@ Arayüzde ve story görsellerinde [Inter](https://rsms.me/inter/) kullanılır. 
 ## Tarayıcı desteği
 
 Chrome 107 ve üzerinde denenmiştir.
+
+## Üye sayfası (geliştirme aşamasında)
+
+`#/uye` adresinde, kullanıcı adı ve şifreyle açılan salt okunur bir sayfa. Sunucu yoktur: yayınlanan veri, izinli alan listesiyle sıfırdan kurulan bir **yayın paketi** olarak şifrelenir; üye tarayıcısında kullanıcı adı ve şifresiyle çözer. Ana menüde bağlantısı yoktur.
+
+- **Pakete giren alanlar** `src/services/member/payload.ts` içinde tek tek yazılıdır; ham CSV, oranlar, xG, ortalamalar, yapay zekâ kararları ve ayarlar girmez. `schema.ts` izinli olmayan tek bir alanı reddeder; sızıntı testleri (`leak.test.ts`, `src/member/view.test.ts`) paketi ve çizilen sayfayı yasak terimler için tarar.
+- **Şifreleme** `src/services/member/crypto.ts`: AES-256-GCM, PBKDF2-SHA256 (en az 600.000 iterasyon). Şifreler yalnızca üretilir (kullanıcı seçemez); şifre hiçbir yerde saklanmaz, sekmenin `sessionStorage`'ında yalnızca türetilmiş anahtar tutulur ve 12 saat işlem yapılmazsa oturum kapanır.
+- **Sınır:** üye sayfası (`src/member/`) veri deposunu, analiz motorunu ve uygulama durumunu içe aktaramaz (`boundary.test.ts`); ayrı bir parça olarak derlenir.
+- **Paket adresi:** `VITE_UYE_PAKET_URL` (bkz. `.env.example`).
+- **Admin tarafı** (Admin sayfası, "ÜYE SAYFASI" bölümleri; kod `src/services/memberAdmin/` ve `src/components/member/`):
+  - *Üyeler:* kullanıcı adını siz verirsiniz, şifreyi uygulama üretir ve **bir kez** gösterir. Şifre hiçbir yere kaydedilmez; yalnızca türetilmiş anahtarlar saklanır. Çıkarma ve şifre yenileme **bir sonraki yayında** etkili olur.
+  - *Yayınla:* seçilen gün + önceki gün için paketi kurar, o günlerin ham verisine karşı sızıntı denetiminden geçirir, aktif üyeler için şifreler ve `paket.json` olarak indirir. Denetim tek bir bulgu verirse dosya indirilmez.
+  - *Üye anahtar yedeği:* üye listesi ve anahtarlar normal veri yedeğine **girmez** ve normal yedeği geri yüklemek onları silmez. Kendi parolanızla şifrelenmiş ayrı bir dosyadır (`gollazim-uye-anahtar-….json`). Bu yedek ve tarayıcı verisi birlikte kaybolursa tüm şifreler yeniden dağıtılır.
+  - Şifre içeren dağıtım listesi (`gollazim-uye-dagitim-….csv`), anahtar yedeği ve `paket.json` `.gitignore`'dadır; repoya ya da `public/` altına konmaz.
+
+### Yayınlama
+
+Admin sayfasında **Yayınla** ile indirilen `paket.json`, ayrı bir public repo olan [`gollazim-yayin`](https://github.com/husostats-ai/gollazim-yayin) üzerinden sunulur (`https://husostats-ai.github.io/gollazim-yayin/paket.json`; üye sayfasının varsayılan adresi budur). Site reposuna paket konmaz.
+
+```
+npm run yayinla -- ~/İndirilenler/paket.json     # paketi yayınlar
+npm run yayinla -- --kaldir                      # yayındaki paketi kaldırır (üye sayfası "yayın yok" der)
+```
+
+- Komut önce dosyanın **şifreli** bir yayın paketi olduğunu denetler; düz paket, veri yedeği ya da anahtar yedeği verilirse hiçbir şey göndermeden durur.
+- Yayın reposu her seferinde geçmişsiz **tek commit** olarak yeniden kurulur (yalnızca `paket.json` ve `.nojekyll`) ve force-push edilir; ardından dosya yayın adresinden çekilip SHA-256 özeti karşılaştırılır. Pages yeni dosyayı genelde bir dakikanın altında sunar.
+- Yalnızca mevcut `gh` oturumu kullanılır; hiçbir anahtar dosyaya ya da repoya yazılmaz.
+- Eski commit'ler repoda görünmez, ama GitHub onları bir süre SHA ile sunmaya devam edebilir ve paketi indiren herkes kopyasını saklayabilir: "geçmiş tutmaz" bir kolaylıktır, silme garantisi değildir. İçerik şifrelidir.
+- Üye çıkarma ve şifre yenileme, yeni paket **yayınlandığında** etkili olur.
+
+### Yerelde deneme
+
+Çıktılar `samples/uye/` altına yazılır, repoya girmez:
+
+```
+UYE_ORNEK=samples/uye UYE_BACKUP=samples/gollazim-yedek-YYYY-AA-GG.json npm run uye:ornek   # şifreli örnek paket + sentetik test kullanıcısı (giris.json)
+npm run dev                                                                                # http://localhost:5173/#/uye
+```
+
+`giris.json` test kullanıcısının şifresini düz metin olarak içerir; işiniz bitince silin.
+
+Uçtan uca denemeler (derlenmiş site, gerçek tarayıcı, geçici profil). Bunlar kendi sentetik kullanıcılarını ve paketlerini **geçici bir klasörde** üretir ve bitince siler; kalıcı bir giriş dosyası bırakmaz:
+
+```
+npm run build && UYE_BACKUP=samples/….json npm run uye:e2e                                  # üye sayfası
+npm run build && UYE_BACKUP=samples/….json UYE_CSV=samples/….csv npm run uye:admin-e2e      # Admin: üye yönetimi, yayın, anahtar yedeği + tüm sayfalar için duman testi
+```
+
+Veritabanı şeması değiştiğinde `scripts/dexie-yukseltme-testi.mjs` eski sürümün derlemesiyle kurulan veritabanını yeni sürümle açıp tabloları karşılaştırır. `scripts/uye-canli-e2e.mjs` canlı yayın adresini yereldeki üye sayfasıyla dener; **yayın adresine deneme paketi gönderir ve sonunda paketi kaldırır**, gerçek üyeler yayındayken çalıştırılmaz. Tarayıcı sürücüsünün kurulumu aşağıdaki bölümdedir.
+
+## Referans dökümü (geliştirme aracı)
+
+Bir değişikliğin analizi, dondurulmuş önerileri, istatistikleri ve story görsellerini etkilemediğini göstermek için değişiklikten önce ve sonra çalıştırılır; özet dosyaları (`ozetler.sha256`, `png.sha256`) birebir aynı çıkmalıdır. Çıktılar veri içerir ve `samples/ref/` altına yazılır (repoya girmez).
+
+```
+REF_BACKUP=samples/gollazim-yedek-YYYY-AA-GG.json npm run referans       # metin çıktıları
+npm run referans:png                                                    # 12 story PNG (gerçek tarayıcı)
+```
+
+- `REF_OUT` çıktı klasörünü değiştirir (varsayılan `samples/ref`); karşılaştırma için ikinci çalıştırmada başka bir klasör verin.
+- PNG'ler tarayıcıda üretilir. `puppeteer-core` projenin bağımlılığı **değildir**; repo dışına bir kez kurulur: `mkdir -p ~/araclar/puppeteer-chrome107 && cd ~/araclar/puppeteer-chrome107 && npm init -y && npm i puppeteer-core@19.2.2` (Chrome 107 ile çalışan sürüm). Başka bir klasör `PUPPETEER_DIR`, başka bir tarayıcı `CHROME_PATH` ile gösterilir. Tarayıcı her çalıştırmada yeni, geçici bir profille açılır.
