@@ -3,7 +3,7 @@ import EmptyState from '../components/EmptyState'
 import type { CategoryId } from '../config/categories'
 import type { MemberPayload } from '../services/member/payload'
 import MemberCard from './MemberCard'
-import { categoryChoices, dayChip, dayTitle, listFor, secondPercentLabel } from './view'
+import { categoryChoices, dayChip, dayTitle, listFor, PERCENT_LABELS, PERCENT_NOTE, percentKind, secondPercentLabel } from './view'
 
 const CHIP = 'shrink-0 rounded-xl border px-3.5 py-2 text-sm font-bold whitespace-nowrap transition-colors'
 const chipTone = (active: boolean) => (active ? 'border-brand bg-navy-700 text-brand' : 'border-navy-600 text-muted hover:border-navy-500 hover:text-white')
@@ -65,9 +65,12 @@ export default function MemberAnalysis({ payload, today, initialDay = 0, initial
           <p className="mt-3 text-xs text-muted">
             {choices.find((c) => c.categoryId === list.categoryId)!.label} · {list.items.length} öneri · Saatler TSİ
           </p>
+          <p className="mt-1.5 text-xs text-muted" data-testid="member-percent-note">
+            {PERCENT_NOTE}
+          </p>
           <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2" data-testid="member-cards">
             {list.items.map((item, i) => (
-              <MemberCard key={`${list.categoryId}:${item.match}`} rank={i + 1} match={day.matches[item.match]} item={item} categoryLabel={choices.find((c) => c.categoryId === list.categoryId)!.label} secondLabel={secondPercentLabel(list.categoryId)} />
+              <MemberCard key={`${list.categoryId}:${item.match}`} rank={i + 1} match={day.matches[item.match]} item={item} categoryLabel={choices.find((c) => c.categoryId === list.categoryId)!.label} percentLabel={PERCENT_LABELS[percentKind(list.categoryId)]} secondLabel={secondPercentLabel(list.categoryId)} />
             ))}
           </div>
         </>

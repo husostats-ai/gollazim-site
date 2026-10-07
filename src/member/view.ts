@@ -1,5 +1,5 @@
 import { CATEGORIES, GROUPS, type CategoryId } from '../config/categories'
-import type { MemberDay, MemberList } from '../services/member/payload'
+import type { MemberDay, MemberItem, MemberList } from '../services/member/payload'
 import { toAppDateTime } from '../utils/date'
 import { formatDateChip, formatDay, formatPlainDate } from '../utils/format'
 
@@ -51,3 +51,29 @@ export const categoryLabel = (categoryId: string): string => CATEGORIES.find((c)
  * "İkinci hesap" (orada ikinci yüzde aynı olasılığın başka bir yöntemle hesabıdır).
  */
 export const secondPercentLabel = (categoryId: CategoryId): string => (CATEGORIES.find((c) => c.id === categoryId)?.group === 'sidegoals' ? 'İkinci hesap' : 'Model')
+
+/**
+ * Karttaki büyük yüzdenin ne olduğu.
+ * history: iki takımın geçmiş maçlarında olayın görülme sıklığı (ev sahibinin iç saha ve
+ * deplasmanın dış saha maçlarındaki yüzdelerinin ortalaması); gol, yarı ve korner listeleri.
+ * model: geçmiş sıklık değil, bir modelin hesapladığı olasılık (2.5 Üst & KG Var, kart ve
+ * Taraf & Gol listeleri).
+ */
+export type PercentKind = 'history' | 'model'
+
+export function percentKind(categoryId: CategoryId): PercentKind {
+  const group = CATEGORIES.find((c) => c.id === categoryId)?.group
+  return categoryId === 'over25btts' || group === 'cards' || group === 'sidegoals' ? 'model' : 'history'
+}
+
+/** Büyük yüzdenin altındaki sabit etiket (paketten gelmez) */
+export const PERCENT_LABELS: Record<PercentKind, string> = {
+  history: 'Geçmiş maçlarda görülme sıklığı',
+  model: 'Model tahmini',
+}
+
+/** Kartların üstündeki sabit açıklama */
+export const PERCENT_NOTE = "Yüzdeler geçmiş verilerin özetidir, sonucun kesin olduğu anlamına gelmez. Güvenilirlik 'Düşük' ise örnek azdır."
+
+/** %100 ama az maça dayanan yüzde: kesinlik izlenimi vermesin diye sönük gösterilir */
+export const isOverstated = (item: Pick<MemberItem, 'percent' | 'reliability'>): boolean => item.percent === 100 && item.reliability === 'low'
