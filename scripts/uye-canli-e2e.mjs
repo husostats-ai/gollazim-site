@@ -1,18 +1,32 @@
 // Geliştirme aracı: CANLI yayın adresindeki paketi, yereldeki üye sayfasıyla (geliştirme
 // sunucusu) gerçek tarayıcıda dener ve yayın gecikmesini ölçer.
 //
-//   UYE_ORNEK=samples/uye node scripts/uye-canli-e2e.mjs
+//   UYE_BACKUP=samples/gollazim-yedek-….json node scripts/uye-canli-e2e.mjs
 //
-// Girdi: UYE_ORNEK/giris.json (sentetik test kullanıcısı), UYE_ORNEK/paket-2.json (ikinci
-// yayın; deneme sırasında `yayinla` komutuyla gönderilir). Yayın adresinde o an bu
-// kullanıcının açabildiği bir paket bulunmalıdır. Tarayıcı geçici bir profille açılır.
-import { execFile } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+// DİKKAT: yayın adresine DENEME paketi gönderir ve sonunda yayındaki paketi KALDIRIR.
+// Gerçek üyeler yayındayken çalıştırmayın. Sentetik test kullanıcısı ve iki paket geçici
+// bir klasörde üretilir, deneme bitince silinir; kalıcı bir giriş dosyası bırakılmaz.
+// Tarayıcı geçici bir profille açılır. Çıktı (kimlik içermez): UYE_ORNEK/canli-e2e-rapor.json
+import { execFile, execFileSync } from 'node:child_process'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { homedir, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
-const sampleDir = resolve(process.env.UYE_ORNEK ?? 'samples/uye')
+if (!process.env.UYE_BACKUP || !existsSync(resolve(process.env.UYE_BACKUP))) {
+  console.error('UYE_BACKUP (JSON yedek) verilmeli.')
+  process.exit(1)
+}
+const reportDir = resolve(process.env.UYE_ORNEK ?? 'samples/uye')
+const sampleDir = mkdtempSync(join(tmpdir(), 'gollazim-canli-ornek-'))
+
+/** Geçici klasörde şifreli örnek paket (ve ilk çağrıda sentetik test kullanıcısı) üretir */
+function generate(dir, env = {}) {
+  execFileSync('npx', ['vitest', 'run', 'src/services/member/sample'], { env: { ...process.env, UYE_ORNEK: dir, ...env }, stdio: ['ignore', 'pipe', 'pipe'] })
+}
+generate(sampleDir, { UYE_N: '1' })
+generate(sampleDir, { UYE_N: '2', UYE_DOSYA: 'paket-2.json' })
+const yayinla = (...args) => new Promise((done) => execFile('node', ['scripts/yayinla.mjs', ...args], { encoding: 'utf8' }, (error, stdout, stderr) => done({ ok: !error, text: `${stdout}${stderr}` })))
 const packageUrl = process.env.YAYIN_URL ?? 'https://husostats-ai.github.io/gollazim-yayin/paket.json'
 const login = JSON.parse(readFileSync(join(sampleDir, 'giris.json'), 'utf8'))
 // Üye sayfası paketi bu adresten ister (derleme zamanı ayarı; sunucu açılmadan önce verilir).
@@ -40,6 +54,9 @@ const numberAt = async (url) => {
 
 let failed = false
 try {
+  const firstPublish = await yayinla(join(sampleDir, 'paket.json'))
+  step('ilk deneme paketi yayınlandı', firstPublish.ok, firstPublish.text.trim().split('\n').pop())
+  if (!firstPublish.ok) throw new Error('ilk yayın yapılamadı')
   const page = await browser.newPage()
   const external = []
   page.on('request', (r) => !r.url().startsWith(local) && !r.url().startsWith('data:') && external.push(r.url()))
@@ -65,7 +82,7 @@ try {
 
   // Yeni yayın: yayın komutu çalışırken üye sayfası açık kalır.
   const publishStarted = Date.now()
-  const publishOutput = await new Promise((done) => execFile('node', ['scripts/yayinla.mjs', join(sampleDir, 'paket-2.json')], { encoding: 'utf8' }, (error, stdout, stderr) => done({ ok: !error, text: `${stdout}${stderr}` })))
+  const publishOutput = await yayinla(join(sampleDir, 'paket-2.json'))
   const visibleSeconds = /\((\d+) sn sonra görüldü\)/.exec(publishOutput.text)?.[1]
   step('yeni yayın gönderildi ve adresten doğrulandı', publishOutput.ok, publishOutput.text.trim().split('\n').pop())
   report.olcumler.yayinKomutuToplamSn = ((Date.now() - publishStarted) / 1000).toFixed(0)
@@ -101,8 +118,12 @@ try {
   await browser.close()
   await server.close()
   rmSync(profile, { recursive: true, force: true })
+  // Deneme paketi canlıda kalmaz; test kullanıcısının şifresi de burada biter.
+  const removed = await yayinla('--kaldir')
+  step('deneme paketi yayından kaldırıldı', removed.ok, removed.text.trim().split('\n').pop())
+  rmSync(sampleDir, { recursive: true, force: true })
 }
 failed ||= report.adimlar.some((a) => a.sonuc === 'HATA')
-writeFileSync(join(sampleDir, 'canli-e2e-rapor.json'), JSON.stringify(report, null, 1) + '\n')
+writeFileSync(join(reportDir, 'canli-e2e-rapor.json'), JSON.stringify(report, null, 1) + '\n')
 console.log(`\n${report.adimlar.filter((a) => a.sonuc === 'TAMAM').length}/${report.adimlar.length} adım tamam · ölçümler: ${JSON.stringify(report.olcumler)}`)
 process.exit(failed ? 1 : 0)

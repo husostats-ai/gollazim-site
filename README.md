@@ -165,15 +165,20 @@ npm run yayinla -- --kaldir                      # yayındaki paketi kaldırır 
 Çıktılar `samples/uye/` altına yazılır, repoya girmez:
 
 ```
-UYE_ORNEK=samples/uye UYE_BACKUP=samples/gollazim-yedek-YYYY-AA-GG.json npm run uye:ornek   # şifreli örnek paket + test kullanıcısı (giris.json)
+UYE_ORNEK=samples/uye UYE_BACKUP=samples/gollazim-yedek-YYYY-AA-GG.json npm run uye:ornek   # şifreli örnek paket + sentetik test kullanıcısı (giris.json)
 npm run dev                                                                                # http://localhost:5173/#/uye
-npm run build && npm run uye:e2e                                                           # derlenmiş siteyi Chrome'da uçtan uca dener
-npm run build && UYE_BACKUP=samples/….json UYE_CSV=samples/….csv npm run uye:admin-e2e          # Admin: üye yönetimi, yayın, anahtar yedeği + tüm sayfalar için duman testi
 ```
 
-Veritabanı şeması değiştiğinde `scripts/dexie-yukseltme-testi.mjs` eski sürümün derlemesiyle kurulan veritabanını yeni sürümle açıp tabloları karşılaştırır; `scripts/uye-canli-e2e.mjs` canlı yayın adresini yereldeki üye sayfasıyla dener (ikisinin de kullanımı dosyanın başında yazar).
+`giris.json` test kullanıcısının şifresini düz metin olarak içerir; işiniz bitince silin.
 
-Uçtan uca deneme için ayrıca `paket-2.json`, `paket-cikarilmis.json` ve `paket-eski.json` gerekir (`UYE_N`, `UYE_DOSYA`, `UYE_CIKAR`, `UYE_AT` ile üretilir; ayrıntı `src/services/member/sample.test.ts` başında). Tarayıcı sürücüsünün kurulumu aşağıdaki bölümdedir.
+Uçtan uca denemeler (derlenmiş site, gerçek tarayıcı, geçici profil). Bunlar kendi sentetik kullanıcılarını ve paketlerini **geçici bir klasörde** üretir ve bitince siler; kalıcı bir giriş dosyası bırakmaz:
+
+```
+npm run build && UYE_BACKUP=samples/….json npm run uye:e2e                                  # üye sayfası
+npm run build && UYE_BACKUP=samples/….json UYE_CSV=samples/….csv npm run uye:admin-e2e      # Admin: üye yönetimi, yayın, anahtar yedeği + tüm sayfalar için duman testi
+```
+
+Veritabanı şeması değiştiğinde `scripts/dexie-yukseltme-testi.mjs` eski sürümün derlemesiyle kurulan veritabanını yeni sürümle açıp tabloları karşılaştırır. `scripts/uye-canli-e2e.mjs` canlı yayın adresini yereldeki üye sayfasıyla dener; **yayın adresine deneme paketi gönderir ve sonunda paketi kaldırır**, gerçek üyeler yayındayken çalıştırılmaz. Tarayıcı sürücüsünün kurulumu aşağıdaki bölümdedir.
 
 ## Referans dökümü (geliştirme aracı)
 

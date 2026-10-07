@@ -5,9 +5,10 @@
 //   npm run build && UYE_BACKUP=samples/gollazim-yedek-….json UYE_CSV=samples/….csv npm run uye:admin-e2e
 //
 // Tarayıcı iki ayrı, geçici profille açılır (ikincisi "profil sıfırlandı" denemesidir);
-// kullanıcının tarayıcı verisine dokunulmaz. Çıktı (samples/ repoya girmez):
-// UYE_ORNEK/e2e/ (indirilen paketler, anahtar yedeği, bir test üyesinin girişi),
-// UYE_ORNEK/ekran/admin-*.png ve UYE_ORNEK/admin-e2e-rapor.json
+// kullanıcının tarayıcı verisine dokunulmaz. İndirilen paketler, anahtar yedeği ve test
+// üyelerinin şifreleri GEÇİCİ bir klasörde tutulur ve deneme bitince silinir.
+// Çıktı (kimlik içermez): UYE_ORNEK/ekran/admin-*.png ve UYE_ORNEK/admin-e2e-rapor.json
+import { execFileSync } from 'node:child_process'
 import { createServer } from 'node:http'
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -22,10 +23,9 @@ if (!process.env.UYE_BACKUP || !existsSync(backupFile) || !process.env.UYE_CSV |
   process.exit(1)
 }
 const dist = resolve('dist')
-const outDir = join(sampleDir, 'e2e')
+/** İndirilenlerin tutulduğu geçici klasör; deneme bitince silinir */
+const outDir = mkdtempSync(join(tmpdir(), 'gollazim-admin-e2e-'))
 const shots = join(sampleDir, 'ekran')
-rmSync(outDir, { recursive: true, force: true })
-mkdirSync(outDir, { recursive: true })
 mkdirSync(shots, { recursive: true })
 const puppeteer = createRequire(join(resolve(process.env.PUPPETEER_DIR ?? join(homedir(), 'araclar', 'puppeteer-chrome107')), 'x.js'))('puppeteer-core')
 
@@ -404,9 +404,15 @@ try {
   step('diğer üyeler yeni yayını açıyor: zeynep', (await memberLogin(second.browser, 'zeynep', passwords.zeynep)).startsWith('ok:Yayın no 4'))
   step('çıkarılan üye hâlâ giremiyor', (await memberLogin(second.browser, 'veli', passwords.veli)) === `hata:${GENERIC}`)
 
-  // Sızıntı denetimi için: son paket ve bir test üyesinin girişi (samples/ altında, repoya girmez)
-  copyFileSync(published, join(outDir, 'paket.json'))
+  // İndirilen son paket bir test üyesiyle çözülüp ham veriye karşı taranır (geçici dosyalarla).
   writeFileSync(join(outDir, 'giris.json'), JSON.stringify({ username: 'ali', password: passwords.ali }))
+  let leak = ''
+  try {
+    execFileSync('npx', ['vitest', 'run', 'src/services/memberAdmin', '-t', 'indirilen paket'], { env: { ...process.env, UYE_E2E_PAKET: published, UYE_E2E_GIRIS: join(outDir, 'giris.json'), UYE_BACKUP: backupFile }, stdio: ['ignore', 'pipe', 'pipe'] })
+  } catch (error) {
+    leak = String(error.stdout ?? error.message).split('\n').filter((l) => /Assertion|expected|FAIL/.test(l)).slice(0, 2).join(' ') || 'denetim çalışmadı'
+  }
+  step('indirilen paketin düz hâlinde yasak terim ve ham alan yok', leak === '', leak)
   step('konsol hatası yok (tüm deneme boyunca)', report.konsolHatalari.length === 0, report.konsolHatalari.slice(0, 3).join(' | '))
 } catch (error) {
   failed = true
@@ -419,6 +425,8 @@ try {
   await first?.close().catch(() => undefined)
   await second?.close().catch(() => undefined)
   server.close()
+  // Test üyelerinin şifreleri, paketler ve anahtar yedeği burada biter.
+  rmSync(outDir, { recursive: true, force: true })
 }
 failed ||= report.adimlar.some((a) => a.sonuc === 'HATA')
 writeFileSync(join(sampleDir, 'admin-e2e-rapor.json'), JSON.stringify(report, null, 1) + '\n')

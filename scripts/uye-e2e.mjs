@@ -1,26 +1,41 @@
 // Geliştirme aracı: üye sayfasını DERLENMİŞ hâliyle, gerçek tarayıcıda uçtan uca dener.
 //
-//   npm run build
-//   UYE_ORNEK=samples/uye UYE_BACKUP=samples/gollazim-yedek-….json npm run uye:ornek   (paketler)
-//   npm run uye:e2e
+//   npm run build && UYE_BACKUP=samples/gollazim-yedek-….json npm run uye:e2e
 //
 // Yayındaki düzeni taklit eden küçük bir yerel sunucu açar: site /gollazim-site/ altında,
 // şifreli paket aynı alan adında /gollazim-yayin/paket.json adresinde. Tarayıcı her
 // çalıştırmada yeni, geçici bir profille açılır; kullanıcının tarayıcı verisine dokunulmaz.
-// Girdi: dist/ ve UYE_ORNEK klasörü (paket.json, paket-2.json, paket-cikarilmis.json,
-// paket-eski.json, giris.json). Çıktı: UYE_ORNEK/ekran/*.png ve UYE_ORNEK/e2e-rapor.json
+// Şifreli örnek paketler ve sentetik test kullanıcısı her çalıştırmada GEÇİCİ bir klasörde
+// üretilir ve deneme bitince silinir: kalıcı bir giriş dosyası bırakılmaz.
+// Girdi: dist/ ve UYE_BACKUP. Çıktı (kimlik içermez): UYE_ORNEK/ekran/*.png, UYE_ORNEK/e2e-rapor.json
+import { execFileSync } from 'node:child_process'
 import { createServer } from 'node:http'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { homedir, tmpdir } from 'node:os'
 import { extname, join, normalize, resolve } from 'node:path'
 
-const sampleDir = resolve(process.env.UYE_ORNEK ?? 'samples/uye')
+if (!process.env.UYE_BACKUP || !existsSync(resolve(process.env.UYE_BACKUP))) {
+  console.error('UYE_BACKUP (JSON yedek) verilmeli.')
+  process.exit(1)
+}
+const reportDir = resolve(process.env.UYE_ORNEK ?? 'samples/uye')
+/** Paketlerin ve test kullanıcısının üretildiği geçici klasör; deneme bitince silinir */
+const sampleDir = mkdtempSync(join(tmpdir(), 'gollazim-uye-ornek-'))
+
+/** Geçici klasörde şifreli örnek paket (ve ilk çağrıda sentetik test kullanıcısı) üretir */
+function generate(dir, env = {}) {
+  execFileSync('npx', ['vitest', 'run', 'src/services/member/sample'], { env: { ...process.env, UYE_ORNEK: dir, ...env }, stdio: ['ignore', 'pipe', 'pipe'] })
+}
+generate(sampleDir, { UYE_N: '1' })
+generate(sampleDir, { UYE_N: '2', UYE_DOSYA: 'paket-2.json' })
+generate(sampleDir, { UYE_N: '3', UYE_DOSYA: 'paket-cikarilmis.json', UYE_CIKAR: '1' })
+generate(sampleDir, { UYE_N: '4', UYE_DOSYA: 'paket-eski.json', UYE_AT: new Date(Date.now() - 30 * 3_600_000).toISOString() })
 const dist = resolve('dist')
 const puppeteerDir = resolve(process.env.PUPPETEER_DIR ?? join(homedir(), 'araclar', 'puppeteer-chrome107'))
 const puppeteer = createRequire(join(puppeteerDir, 'x.js'))('puppeteer-core')
 const login = JSON.parse(readFileSync(join(sampleDir, 'giris.json'), 'utf8'))
-const shots = join(sampleDir, 'ekran')
+const shots = join(reportDir, 'ekran')
 mkdirSync(shots, { recursive: true })
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.woff2': 'font/woff2', '.txt': 'text/plain', '.json': 'application/json' }
@@ -271,8 +286,10 @@ try {
   await browser.close()
   server.close()
   rmSync(profile, { recursive: true, force: true })
+  // Test kullanıcısının şifresi ve paketler burada biter.
+  rmSync(sampleDir, { recursive: true, force: true })
 }
 failed ||= report.adimlar.some((a) => a.sonuc === 'HATA')
-writeFileSync(join(sampleDir, 'e2e-rapor.json'), JSON.stringify(report, null, 1) + '\n')
-console.log(`\n${report.adimlar.filter((a) => a.sonuc === 'TAMAM').length}/${report.adimlar.length} adım tamam · ${report.tarayici} · rapor: ${join(sampleDir, 'e2e-rapor.json')}`)
+writeFileSync(join(reportDir, 'e2e-rapor.json'), JSON.stringify(report, null, 1) + '\n')
+console.log(`\n${report.adimlar.filter((a) => a.sonuc === 'TAMAM').length}/${report.adimlar.length} adım tamam · ${report.tarayici} · rapor: ${join(reportDir, 'e2e-rapor.json')}`)
 process.exit(failed ? 1 : 0)
