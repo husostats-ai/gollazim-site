@@ -171,6 +171,14 @@ try {
         busy: document.querySelector('[data-testid="member-progress"]') !== null,
         text: dialog?.innerText ?? '',
         buttons: [...(dialog?.querySelectorAll('button') ?? [])].map((b) => Math.round(b.getBoundingClientRect().height)),
+        // Başlık, 18 yaş satırı ve iki düğme kaydırmadan ekranda mı; 18 yaş satırı kaydırılan gövdenin dışında mı
+        pinned: ['member-legal-title', 'member-legal-age'].map((id) => document.getElementById(id)).concat([...(dialog?.querySelectorAll('button') ?? [])]).every((el) => {
+          const box = el?.getBoundingClientRect()
+          return !!box && box.height > 0 && box.top >= 0 && box.bottom <= window.innerHeight && box.left >= 0 && box.right <= window.innerWidth
+        }),
+        age: document.querySelector('[data-testid="member-legal-age"]')?.textContent ?? null,
+        ageOutsideBody: !document.querySelector('[data-testid="member-legal-body"]')?.contains(document.querySelector('[data-testid="member-legal-age"]')),
+        ageAboveButtons: (document.querySelector('[data-testid="member-legal-age"]')?.getBoundingClientRect().bottom ?? Infinity) <= (document.querySelector('[data-testid="member-legal-accept"]')?.getBoundingClientRect().top ?? -Infinity),
         fits: dialog ? dialog.getBoundingClientRect().left >= 0 && dialog.getBoundingClientRect().right <= window.innerWidth && dialog.getBoundingClientRect().top >= 0 && dialog.getBoundingClientRect().bottom <= window.innerHeight : false,
       }
     })
@@ -181,7 +189,7 @@ try {
   const requestsBeforeLegal = requests.length
   let legal = await legalState()
   step('yasal uyarı penceresi açık: role="dialog", aria-modal, odak kabul düğmesinde', legal.open && legal.role === 'dialog' && legal.modal === 'true' && legal.focused === 'member-legal-accept', `odak: ${legal.focused}`)
-  step('pencere metni: başlık, dört paragraf, iki düğme', legal.text.startsWith('⚠️ Yasal Uyarı') && legal.text.includes('Burada yazanlar bahis tavsiyesi değildir ve bahse yönlendirmez.') && legal.text.includes('Bu sayfayı yalnızca 18 yaşından büyükler kullanabilir.') && legal.text.includes('18 yaşından büyüğüm, kabul ediyorum') && legal.text.trimEnd().endsWith('Kabul etmiyorum'))
+  step('pencere metni: başlık, üç paragraf, 18 yaş satırı, iki düğme', legal.text.startsWith('⚠️ Yasal Uyarı') && legal.text.includes('Burada yazanlar bahis tavsiyesi değildir ve bahse yönlendirmez.') && legal.text.includes('Bu sayfayı yalnızca 18 yaşından büyükler kullanabilir.') && legal.text.includes('18 yaşından büyüğüm, kabul ediyorum') && legal.text.trimEnd().endsWith('Kabul etmiyorum'))
   const legalLeak = FORBIDDEN.exec(legal.text.toLocaleLowerCase('tr'))
   step('pencere metninde yasak terim yok', legalLeak === null, legalLeak?.[0] ?? '')
   step('pencere açıkken form etkisiz (inert, bütün alanlar pasif) ve arka plan kaydırılamıyor', legal.inert && legal.disabled && legal.scrollLocked)
@@ -193,6 +201,7 @@ try {
     await page.screenshot({ path: join(shots, `yasal-uyari-${width}.png`) })
     report.ekranlar.push({ dosya: `yasal-uyari-${width}.png`, genislik: width, tasma: size.scroll > size.inner ? `${size.scroll} > ${size.inner}` : 'yok' })
     step(`yasal uyarı ${width} px: taşma yok, pencere ekrana sığıyor, düğmeler en az 44 px`, size.scroll <= size.inner && at.fits && at.buttons.length === 2 && at.buttons.every((h) => h >= 44), `düğme yükseklikleri ${at.buttons.join(', ')} px`)
+    step(`yasal uyarı ${width} px: başlık, 18 yaş satırı ve iki düğme kaydırmadan ekranda; 18 yaş satırı gövdenin dışında, düğmelerin üstünde`, at.pinned && at.ageOutsideBody && at.ageAboveButtons && at.age === 'Bu sayfayı yalnızca 18 yaşından büyükler kullanabilir.', at.age ?? 'satır yok')
   }
   // Kısa ekranda metin pencerenin içinde kayar; düğmeler görünür kalır.
   await page.setViewport({ width: 320, height: 380, deviceScaleFactor: 2 })
@@ -205,6 +214,23 @@ try {
     return { scrollable: body.scrollHeight > body.clientHeight, scrolled: body.scrollTop > 0, visible: accept.top >= 0 && decline.bottom <= window.innerHeight, page: document.documentElement.scrollWidth <= window.innerWidth }
   })
   step('kısa ekranda (320×380) metin pencere içinde kayıyor, düğmeler ekranda', short.scrollable && short.scrolled && short.visible && short.page, JSON.stringify(short))
+  step('kısa ekranda (320×380) 18 yaş satırı da kaydırmadan ekranda', (await legalState()).pinned)
+  // Yatay telefon: başlık, 18 yaş satırı ve düğmeler ekranda; diğer paragraflar pencere içinde kayar.
+  await page.setViewport({ width: 568, height: 320, deviceScaleFactor: 2 })
+  await sleep(150)
+  const landscape = await legalState()
+  const landscapeSize = await overflow(page)
+  const landscapeBody = await page.$eval(sel('member-legal-body'), (body) => {
+    body.scrollTop = 0
+    const before = body.scrollTop
+    body.scrollTop = 9999
+    const moved = body.scrollTop > before
+    body.scrollTop = 0
+    return { height: Math.round(body.clientHeight), scrollable: body.scrollHeight > body.clientHeight, moved }
+  })
+  await page.screenshot({ path: join(shots, 'yasal-uyari-yatay-568.png') })
+  report.ekranlar.push({ dosya: 'yasal-uyari-yatay-568.png', genislik: 568, tasma: landscapeSize.scroll > landscapeSize.inner ? `${landscapeSize.scroll} > ${landscapeSize.inner}` : 'yok' })
+  step('yatay modda (568×320) pencere kullanılabilir: taşma yok, başlık, 18 yaş satırı ve düğmeler ekranda, metin pencere içinde kayıyor', landscapeSize.scroll <= landscapeSize.inner && landscape.fits && landscape.pinned && landscape.buttons.every((h) => h >= 44) && landscapeBody.scrollable && landscapeBody.moved && landscapeBody.height >= 40, JSON.stringify(landscapeBody))
   await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 })
   await sleep(150)
   // Klavye: yazı ve Enter forma ulaşmaz, Esc kapatmaz, Tab pencerenin içinde döner

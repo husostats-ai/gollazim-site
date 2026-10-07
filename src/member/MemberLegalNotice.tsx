@@ -50,7 +50,7 @@ export default function MemberLegalNotice({ onAccept }: { onAccept: () => void }
         role="dialog"
         aria-modal="true"
         aria-labelledby="member-legal-title"
-        aria-describedby="member-legal-body"
+        aria-describedby="member-legal-body member-legal-age"
         onKeyDown={onKeyDown}
         data-testid="member-legal"
         className="flex max-h-full w-full max-w-md min-w-0 flex-col rounded-2xl border border-line bg-navy-700"
@@ -64,6 +64,9 @@ export default function MemberLegalNotice({ onAccept }: { onAccept: () => void }
           ))}
         </div>
         <div className="shrink-0 space-y-2 p-4">
+          <p id="member-legal-age" className="text-sm font-bold break-words text-white" data-testid="member-legal-age">
+            {LEGAL_NOTICE.age}
+          </p>
           {declined && (
             <p role="alert" className="text-sm font-semibold text-warn" data-testid="member-legal-declined">
               {LEGAL_NOTICE.declined}
