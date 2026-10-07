@@ -50,10 +50,12 @@ const ALLOWED = [
   'src/member/MemberAnalysis.tsx',
   'src/member/MemberApp.tsx',
   'src/member/MemberCard.tsx',
+  'src/member/MemberLegalNotice.tsx',
   'src/member/MemberLogin.tsx',
   'src/member/MemberShell.tsx',
   'src/member/MemberStatsPage.tsx',
   'src/member/howToRead.ts',
+  'src/member/legalNotice.ts',
   'src/member/main.tsx',
   'src/member/view.ts',
   // Üye servisleri (paket kurucu payload.ts burada YOK: o admin tarafıdır ve analiz motorunu kullanır)

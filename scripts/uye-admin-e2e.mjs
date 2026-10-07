@@ -136,6 +136,8 @@ async function memberLogin(browser, username, password) {
   await page.setViewport({ width: 390, height: 844 })
   await page.goto(`${site}#/uye`, { waitUntil: 'networkidle0' })
   await page.waitForSelector(sel('member-username'))
+  // Yasal uyarı penceresi: giriş formu ancak kabulden sonra kullanılabilir.
+  if (await page.$(sel('member-legal'))) await page.$eval(sel('member-legal-accept'), (el) => el.click())
   await page.type(sel('member-username'), username)
   await page.type(sel('member-password'), password)
   await page.keyboard.press('Enter')

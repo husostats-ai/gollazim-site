@@ -13,6 +13,7 @@ import { formatRate } from '../utils/format'
 import { HOW_TO_READ, HOW_TO_READ_TITLE } from './howToRead'
 import MemberAnalysis from './MemberAnalysis'
 import MemberLogin from './MemberLogin'
+import { LEGAL_NOTICE } from './legalNotice'
 import MemberShell from './MemberShell'
 import MemberStatsPage from './MemberStatsPage'
 import { CALCULATORS } from '../services/analysis/calculators'
@@ -74,6 +75,53 @@ describe('gösterim yardımcıları', () => {
   })
 })
 
+describe('yasal uyarı penceresi', () => {
+  const login = (props: Partial<Parameters<typeof MemberLogin>[0]> = {}) => html(createElement(MemberLogin, { busy: false, error: null, notice: null, onLogin: noop, ...props }))
+  const dialog = (markup: string) => /<div[^>]*role="dialog"[^>]*>/.exec(markup)
+
+  it('giriş ekranı pencereyle açılır: başlık, dört paragraf ve iki düğme sabit metindir', () => {
+    const markup = login()
+    const tag = dialog(markup)![0]
+    expect(tag).toContain('aria-modal="true"')
+    expect(tag).toContain('aria-labelledby="member-legal-title"')
+    const text = textOf(markup)
+    expect(text).toContain('⚠️ Yasal Uyarı')
+    expect(LEGAL_NOTICE.paragraphs).toHaveLength(4)
+    for (const paragraph of LEGAL_NOTICE.paragraphs) expect(text).toContain(paragraph)
+    expect(/data-testid="member-legal-accept"[^>]*>([^<]*)/.exec(markup)![1]).toBe('18 yaşından büyüğüm, kabul ediyorum')
+    expect(/data-testid="member-legal-decline"[^>]*>([^<]*)/.exec(markup)![1]).toBe('Kabul etmiyorum')
+    // "Devam etmek için onay gerekir." yalnızca reddedince çıkar.
+    expect(markup).not.toContain('member-legal-declined')
+    expect(LEGAL_NOTICE.declined).toBe('Devam etmek için onay gerekir.')
+  })
+
+  it('kabul edilene kadar form etkisizdir: içerik inert, bütün alanlar ve düğmeler pasif', () => {
+    const markup = login()
+    expect(/<div[^>]*data-testid="member-login-content"[^>]*>/.exec(markup)![0]).toMatch(/inert=""/)
+    const content = markup.slice(markup.indexOf('data-testid="member-login-content"'))
+    const controls = [...content.matchAll(/<(input|button)\b[^>]*>/g)].map((m) => m[0])
+    expect(controls.length).toBe(4)
+    for (const control of controls) expect(control, control).toMatch(/\sdisabled=""/)
+    // Hata sonrası "Yeniden dene" düğmesi de pasiftir.
+    const retry = /<button[^>]*data-testid="member-retry"[^>]*>/.exec(login({ error: 'network', onRetry: noop }))![0]
+    expect(retry).toMatch(/\sdisabled=""/)
+  })
+
+  it('kabul edildikten sonra pencere yoktur ve form kullanılabilir', () => {
+    const markup = login({ initialAccepted: true })
+    expect(dialog(markup)).toBeNull()
+    expect(markup).not.toContain('inert')
+    expect(markup).not.toMatch(/\sdisabled=""/)
+  })
+
+  it('metin yasak terim içermez; pakete ve admin metinlerine girmez', () => {
+    const all = [LEGAL_NOTICE.title, ...LEGAL_NOTICE.paragraphs, LEGAL_NOTICE.accept, LEGAL_NOTICE.decline, LEGAL_NOTICE.declined].join(' ')
+    expect(all.toLocaleLowerCase('tr')).not.toMatch(/oran|piyasa|xg|csv|kaynak|footystats|bağlantı|odds|ortalama|https?:|www\./)
+    expect(JSON.stringify(payload)).not.toContain('Yasal Uyarı')
+    expect(JSON.stringify(DEFAULT_MEMBER_TEXTS)).not.toContain('Yasal Uyarı')
+  })
+})
+
 describe('giriş ekranı', () => {
   const login = (props: Partial<Parameters<typeof MemberLogin>[0]> = {}) => html(createElement(MemberLogin, { busy: false, error: null, notice: null, onLogin: noop, ...props }))
 
@@ -114,7 +162,7 @@ describe('giriş ekranı', () => {
   })
 
   it('türetme sırasında alanlar ve düğme devre dışı, ilerleme göstergesi açık', () => {
-    const markup = login({ busy: true })
+    const markup = login({ busy: true, initialAccepted: true })
     expect(markup).toContain('data-testid="member-progress"')
     expect(textOf(markup)).toContain('Giriş yapılıyor…')
     expect(markup.match(/disabled=""/g)!.length).toBe(3)
