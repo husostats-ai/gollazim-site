@@ -127,7 +127,10 @@ describe('üye ekleme', () => {
 
   it('hesap bilgi mesajı: adres, kullanıcı adı, şifre ve iki uyarı', () => {
     const message = accountMessage(issued[0], DEFAULT_MEMBER_TEXTS, MEMBER_SITE_URL)
-    expect(message).toContain('https://husostats-ai.github.io/gollazim-site/#/uye')
+    // Üyelere ayrı üye sitesinin adresi verilir; admin sitesinin adresi mesajda geçmez.
+    expect(message.split('\n')).toContain('Adres: https://husostats-ai.github.io/gollazim-uye/')
+    expect(MEMBER_SITE_URL).toBe('https://husostats-ai.github.io/gollazim-uye/')
+    expect(message).not.toContain('gollazim-site')
     expect(message).toContain('Kullanıcı adı: ayse')
     expect(message).toContain(`Şifre: ${issued[0].password}`)
     expect(message).toContain('Hesap kişiye özeldir, paylaşılamaz.')

@@ -17,8 +17,8 @@ export const MEMBER_IDLE_HOURS = 12
 /** Açık sayfada yeni yayın bu aralıkla denetlenir (dakika) */
 export const MEMBER_POLL_MINUTES = 5
 
-/** Üyelere verilen giriş adresi (hesap bilgi mesajında yer alır) */
-export const MEMBER_SITE_URL = 'https://husostats-ai.github.io/gollazim-site/#/uye'
+/** Üyelere verilen giriş adresi: ayrı üye sitesi (hesap bilgi mesajında yer alır) */
+export const MEMBER_SITE_URL = 'https://husostats-ai.github.io/gollazim-uye/'
 
 /**
  * Ayrı üye sitesinin sürüm bilgisi (derlendiği commit ve açabildiği paket sürümü).

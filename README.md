@@ -162,7 +162,7 @@ npm run yayinla -- --kaldir                      # yayındaki paketi kaldırır 
 
 ### Ayrı üye sitesi
 
-Üye uygulaması ayrıca kendi adresinde yayınlanır: **https://husostats-ai.github.io/gollazim-uye/**. O adreste yalnızca üye uygulaması vardır; admin sayfaları, veri deposu ve CSV okuyucu derlemeye girmez. Uygulama kökte çalışır (`#/` analizler, `#/istatistik`); eski `#/uye` bağlantıları köke yönlenir. Paket yine `gollazim-yayin` adresinden gelir.
+Üye uygulaması ayrıca kendi adresinde yayınlanır: **https://husostats-ai.github.io/gollazim-uye/**. O adreste yalnızca üye uygulaması vardır; admin sayfaları, veri deposu ve CSV okuyucu derlemeye girmez. Uygulama kökte çalışır (`#/` analizler, `#/istatistik`); eski `#/uye` bağlantıları ve bilinmeyen adresler köke yönlenir. Üyelere verilen adres budur; Admin'deki "Hesap mesajını kopyala" bu adresi yazar. Paket yine `gollazim-yayin` adresinden gelir.
 
 ```
 npm run build:uye      # yalnızca derler: dist-uye/

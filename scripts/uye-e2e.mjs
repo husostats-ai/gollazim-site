@@ -148,6 +148,16 @@ try {
   step('giriş ekranı 320 px taşma yok', await shot(page, 'giris', 320))
   step('giriş öncesi paket istenmedi', !requests.some((u) => u.includes('/gollazim-yayin/')))
 
+  // Giriş yapılmamışken bilinmeyen adresler de köke döner (adres çubuğu dahil)
+  const signedOutLanding = []
+  for (const hash of T.prefix === '/gollazim-uye/' ? ['#/admin', '#/istatistik', '#/skor-girisi', '#/uye', '#/olmayan'] : ['#/uye/istatistik', '#/uye/olmayan']) {
+    await page.goto(`${site}${hash}`, { waitUntil: 'networkidle0' })
+    await page.waitForSelector(sel('member-login'))
+    await sleep(150)
+    signedOutLanding.push(`${hash}→${await page.evaluate(() => location.hash)}`)
+  }
+  step('giriş yapılmamışken bilinmeyen adresler köke yönleniyor', signedOutLanding.every((l) => l.endsWith(`→${T.home}`)) && (await page.$(sel('member-login'))) !== null, signedOutLanding.join('  '))
+
   // 2) Yanlış şifre
   await signIn(page, login.username, 'ABCD-EFGH-JKMN-PQRS')
   await page.waitForSelector(sel('member-error'))

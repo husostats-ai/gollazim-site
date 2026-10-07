@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { MEMBER_IDLE_HOURS, MEMBER_PACKAGE_URL, MEMBER_POLL_MINUTES } from '../config/member'
 import { createMemberController } from '../services/member/controller'
 import { todayInAppZone } from '../utils/date'
@@ -25,6 +25,8 @@ const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'scroll'] as const
 export default function MemberApp({ basePath = '/uye' }: { basePath?: string }) {
   const state = useSyncExternalStore(controller.subscribe, controller.getState)
   const [now, setNow] = useState(() => Date.now())
+  const { pathname } = useLocation()
+  const home = basePath || '/'
   const signedIn = state.status === 'signedIn'
 
   useEffect(() => {
@@ -70,12 +72,15 @@ export default function MemberApp({ basePath = '/uye' }: { basePath?: string }) 
       </MemberFrame>
     )
 
-  if (state.status === 'signedOut')
+  if (state.status === 'signedOut') {
+    // Giriş yapılmamışken yalnızca giriş ekranı vardır: başka her adres köke döner.
+    if (pathname !== home) return <Navigate to={home} replace />
     return (
       <MemberFrame>
         <MemberLogin busy={state.busy} error={state.error} notice={state.notice} onLogin={(username, password) => void controller.login(username, password)} onRetry={state.resumable ? () => void controller.retry() : undefined} />
       </MemberFrame>
     )
+  }
 
   const today = todayInAppZone()
   return (
@@ -83,7 +88,7 @@ export default function MemberApp({ basePath = '/uye' }: { basePath?: string }) 
       <Routes>
         <Route index element={<MemberAnalysis payload={state.payload} today={today} />} />
         <Route path="istatistik" element={<MemberStatsPage payload={state.payload} />} />
-        <Route path="*" element={<Navigate to={basePath || '/'} replace />} />
+        <Route path="*" element={<Navigate to={home} replace />} />
       </Routes>
     </MemberShell>
   )
