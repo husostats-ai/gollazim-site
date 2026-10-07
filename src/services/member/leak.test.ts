@@ -147,7 +147,7 @@ describe('yayın paketi: ham veri sızıntısı', () => {
       texts: ['disclaimer', 'account'],
       day: ['date', 'matches', 'lists'],
       match: ['home', 'away', 'league', 'time', 'status', 'score', 'homeStanding', 'awayStanding'],
-      standing: ['rank', 'played'],
+      standing: ['rank', 'played', 'stale'],
       list: ['categoryId', 'items'],
       item: ['match', 'percent', 'model', 'conflict', 'stars', 'reliability', 'outcome', 'detail'],
       statsRoot: ['all', 'shared'],
@@ -217,6 +217,11 @@ describe('yayın paketi: şema denetimi fazladan ya da eksik alanı reddeder', (
     expect(broken((p) => void (firstItem(p).stars = 6))).toThrow(MemberPayloadError)
     expect(broken((p) => void ((firstItem(p) as { reliability: string }).reliability = 'çok yüksek'))).toThrow(MemberPayloadError)
     expect(broken((p) => void (firstItem(p).match = 999))).toThrow(MemberPayloadError)
+    // Çelişki türü serbest metin değildir ve kategoriyle tutarlı olmalıdır.
+    expect(broken((p) => void ((firstItem(p) as { conflict: unknown }).conflict = true))).toThrow(MemberPayloadError)
+    expect(broken((p) => void ((firstItem(p) as { conflict: unknown }).conflict = 'piyasa'))).toThrow(MemberPayloadError)
+    expect(broken((p) => void (p.days[0].lists[0].items[0].conflict = 'hesap'))).toThrow(MemberPayloadError)
+    expect(broken((p) => void (p.days[0].lists.find((l) => l.categoryId === 'homeWin15')!.items[0].conflict = 'model'))).toThrow(MemberPayloadError)
     expect(broken((p) => void ((p as { v: number }).v = 2))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days = []))).toThrow(MemberPayloadError)
     expect(broken((p) => void p.days[0].lists.reverse())).toThrow(MemberPayloadError)

@@ -1,4 +1,4 @@
-import { CATEGORIES, MAX_MATCHES_PER_CATEGORY, type CategoryId } from '../../config/categories'
+import { CATEGORIES, getCategory, MAX_MATCHES_PER_CATEGORY, type CategoryId } from '../../config/categories'
 import type { MemberTexts } from '../../config/memberTexts'
 import type { LeagueTable, Match, MatchResult, MatchStatus, Pick, PickOutcome, SharedPick, TeamAlias, Thresholds } from '../../types'
 import { formatScore } from '../../utils/score'
@@ -17,7 +17,7 @@ import { assertMemberPayload } from './schema'
 //
 // Pakete GİRMEZ: ham CSV (Match.stats), FootyStats kolonları ve bağlantıları, oranlar,
 // piyasa yüzdesi ve piyasa çelişkisi, xG, gol/korner/kart ortalamaları, "Kaynak" satırı,
-// rozet ipucu metinleri, örneklem sayısı, eşikler ve diğer ayarlar, yapay zekâ kararları,
+// rozet ipucu metinleri, "xG zayıf" ve "model piyasadan sapıyor" rozetleri, örneklem sayısı, eşikler ve diğer ayarlar, yapay zekâ kararları,
 // skor olasılıkları, paylaşım kayıtları, kalibrasyon tabloları.
 //
 // Yeni bir alan eklemek: buradaki tipe ve kurucuya, schema.ts'teki denetime ve
@@ -68,7 +68,15 @@ export interface MemberStats {
 export interface MemberStanding {
   rank: number
   played: number
+  /** Tablo yayın anında 7 günden eski: "güncel değil" */
+  stale: boolean
 }
+
+/**
+ * Çelişki türü. model: hazır yüzde ile gol modeli çelişiyor (ana gol kategorileri).
+ * hesap: iki ayrı hesap birbiriyle çelişiyor (Taraf & Gol).
+ */
+export type MemberConflict = 'model' | 'hesap'
 
 export interface MemberMatch {
   home: string
@@ -91,8 +99,8 @@ export interface MemberItem {
   percent: number
   /** İkinci hesabın (model) yüzdesi; yoksa null */
   model: number | null
-  /** Hazır yüzde ile model çelişiyor */
-  conflict: boolean
+  /** Çelişki rozeti; çelişki yoksa null */
+  conflict: MemberConflict | null
   /** 1-5 */
   stars: number
   reliability: ReliabilityLevel
@@ -186,7 +194,10 @@ function statsOf(picks: Pick[]): MemberStats {
   }
 }
 
-const standingOf = (info: StandingInfo | null): MemberStanding | null => (info ? { rank: info.rank, played: info.played } : null)
+const standingOf = (info: StandingInfo | null): MemberStanding | null => (info ? { rank: info.rank, played: info.played, stale: info.stale } : null)
+
+/** Taraf & Gol listelerinde çelişki iki hesabın, diğerlerinde hazır yüzde ile modelin çelişkisidir */
+export const conflictKindOf = (categoryId: CategoryId): MemberConflict => (getCategory(categoryId).group === 'sidegoals' ? 'hesap' : 'model')
 
 function dayOf(input: MemberPayloadInput, day: MemberDayInput, now: Date): MemberDay {
   // Admin ekranındaki listelerle aynı çağrı; sıra her zaman yüzdeye göredir.
@@ -223,7 +234,7 @@ function dayOf(input: MemberPayloadInput, day: MemberDayInput, now: Date): Membe
       match: indexOf(prediction.match),
       percent: prediction.percent,
       model: prediction.secondPercent ?? null,
-      conflict: prediction.notes.some((note) => note.kind === 'conflict'),
+      conflict: prediction.notes.some((note) => note.kind === 'conflict') ? conflictKindOf(prediction.categoryId) : null,
       stars: prediction.stars,
       reliability: prediction.reliability.level,
       outcome: pick ? pick.outcome : null,

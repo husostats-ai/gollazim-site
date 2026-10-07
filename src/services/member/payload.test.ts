@@ -8,7 +8,7 @@ import { buildStarStats } from '../stats/starStats'
 import { buildStats } from '../stats/statsEngine'
 import { sharedPicksOnly } from '../story/shared'
 import { DAY, dayMatches, MARKET_LIMIT, memberInput, PICKS, PREVIOUS_DAY, PUBLISHED_AT, SHARED, THRESHOLDS } from './__fixtures__/rawData'
-import { buildMemberPayload, MEMBER_DAILY_LIMIT, MEMBER_PAYLOAD_VERSION, type MemberDay } from './payload'
+import { buildMemberPayload, conflictKindOf, MEMBER_DAILY_LIMIT, MEMBER_PAYLOAD_VERSION, type MemberDay } from './payload'
 
 const payload = buildMemberPayload(memberInput())
 const today = payload.days[0]
@@ -54,10 +54,24 @@ describe('buildMemberPayload', () => {
 
   it('model yüzdesi ve model çelişkisi: yalnızca ikinci hesabı olan kategorilerde', () => {
     const conflicted = list(today, 'over25').items.find((i) => today.matches[i.match].home === 'İç Anadolu FK')!
-    expect(conflicted).toMatchObject({ percent: 100, conflict: true })
+    expect(conflicted).toMatchObject({ percent: 100, conflict: 'model' })
     expect(conflicted.model).not.toBeNull()
-    expect(list(today, 'ht05').items.every((i) => i.model === null && !i.conflict)).toBe(true)
+    expect(list(today, 'ht05').items.every((i) => i.model === null && i.conflict === null)).toBe(true)
     expect(list(today, 'corners85').items.every((i) => i.model === null && i.reliability === 'unmeasured')).toBe(true)
+  })
+
+  it('çelişki türü: ana gol kategorilerinde "model", Taraf & Gol listelerinde "hesap"', () => {
+    const analysis = analyzeDay(dayMatches(DAY), THRESHOLDS, 'percent', MARKET_LIMIT)
+    const kinds = new Set<string>()
+    for (const category of CATEGORIES) {
+      const expected = analysis[category.id].predictions.map((p) => (p.notes.some((n) => n.kind === 'conflict') ? conflictKindOf(category.id) : null))
+      expect(list(today, category.id).items.map((i) => i.conflict)).toEqual(expected)
+      expected.forEach((kind) => kind && kinds.add(`${category.group ?? 'tek'}:${kind}`))
+    }
+    // Veride iki tür de var; türler karışmıyor.
+    expect([...kinds].sort()).toEqual(['bolgol:model', 'sidegoals:hesap', 'tek:model'])
+    expect(conflictKindOf('awayWin25')).toBe('hesap')
+    expect(conflictKindOf('btts')).toBe('model')
   })
 
   it('skor girilen maçta skor, sonuç ve kategoriye özgü ayrıntı; girilmeyende hepsi boş', () => {
@@ -85,9 +99,19 @@ describe('buildMemberPayload', () => {
   })
 
   it('lig tablosundan yalnızca sıra ve oynanan maç; tabloda olmayan takımda null', () => {
-    expect(today.matches[matchOf(today, 'Kuzey Yıldızı')]).toMatchObject({ homeStanding: { rank: 1, played: 8 }, awayStanding: { rank: 4, played: 7 } })
-    expect(today.matches[matchOf(today, 'Doğu Gençlik')]).toMatchObject({ homeStanding: { rank: 9, played: 8 }, awayStanding: null })
+    expect(today.matches[matchOf(today, 'Kuzey Yıldızı')]).toEqual(expect.objectContaining({ homeStanding: { rank: 1, played: 8, stale: false }, awayStanding: { rank: 4, played: 7, stale: false } }))
+    expect(today.matches[matchOf(today, 'Doğu Gençlik')]).toEqual(expect.objectContaining({ homeStanding: { rank: 9, played: 8, stale: false }, awayStanding: null }))
     expect(today.matches[matchOf(today, 'Yayla Gençlerbirliği')]).toMatchObject({ homeStanding: null, awayStanding: null })
+  })
+
+  it('tablo yayın anında 7 günden eskiyse "güncel değil" bayrağı; tam 7 günde değil', () => {
+    // Tablo 4 Ekim'de yapıştırıldı.
+    const staleAt = (publishedAt: string) => {
+      const day = buildMemberPayload(memberInput({ publishedAt })).days[0]
+      return day.matches[matchOf(day, 'Kuzey Yıldızı')].homeStanding
+    }
+    expect(staleAt('2026-10-11T09:00:00.000Z')).toEqual({ rank: 1, played: 8, stale: false })
+    expect(staleAt('2026-10-12T09:00:00.000Z')).toEqual({ rank: 1, played: 8, stale: true })
   })
 
   it('istatistik değerleri istatistik sayfasının hesabıyla aynıdır (Tümü ve Paylaşılan)', () => {

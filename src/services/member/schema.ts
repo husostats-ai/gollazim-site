@@ -1,4 +1,4 @@
-import { CATEGORIES, MAX_MATCHES_PER_CATEGORY, isCategoryId } from '../../config/categories'
+import { CATEGORIES, getCategory, MAX_MATCHES_PER_CATEGORY, isCategoryId } from '../../config/categories'
 import { MEMBER_TEXT_FIELDS } from '../../config/memberTexts'
 import type { MemberPayload } from './payload'
 
@@ -15,7 +15,7 @@ export const MEMBER_KEYS = {
   texts: ['disclaimer', 'account'],
   day: ['date', 'matches', 'lists'],
   match: ['home', 'away', 'league', 'time', 'status', 'score', 'homeStanding', 'awayStanding'],
-  standing: ['rank', 'played'],
+  standing: ['rank', 'played', 'stale'],
   list: ['categoryId', 'items'],
   item: ['match', 'percent', 'model', 'conflict', 'stars', 'reliability', 'outcome', 'detail'],
   statsRoot: ['all', 'shared'],
@@ -133,6 +133,7 @@ function standing(value: unknown, path: string): void {
   const s = object(value, path, MEMBER_KEYS.standing)
   integer(s.rank, `${path}.rank`, 1, 200)
   integer(s.played, `${path}.played`, 0, 200)
+  if (typeof s.stale !== 'boolean') fail(`${path}.stale`, 'doğru/yanlış bekleniyor')
 }
 
 function day(value: unknown, path: string): void {
@@ -163,7 +164,8 @@ function day(value: unknown, path: string): void {
       integer(item.match, `${q}.match`, 0, matches.length - 1)
       integer(item.percent, `${q}.percent`, 0, 100)
       nullable(item.model, (v) => integer(v, `${q}.model`, 0, 100))
-      if (typeof item.conflict !== 'boolean') fail(`${q}.conflict`, 'doğru/yanlış bekleniyor')
+      // Çelişki türü kategoriye bağlıdır: Taraf & Gol'de 'hesap', diğerlerinde 'model'.
+      nullable(item.conflict, (v) => oneOf(v, `${q}.conflict`, [getCategory(CATEGORIES[i].id).group === 'sidegoals' ? 'hesap' : 'model']))
       integer(item.stars, `${q}.stars`, 1, 5)
       oneOf(item.reliability, `${q}.reliability`, MEMBER_RELIABILITY_LEVELS)
       nullable(item.outcome, (v) => oneOf(v, `${q}.outcome`, OUTCOMES))

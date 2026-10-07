@@ -88,7 +88,7 @@ describe('temizlik desenleri', () => {
       'SUPABASE_KEY=service' + '_role',
       '/england/kuzey-vs-guney-h2h-' + 'stats',
       '{"format":"gollazim-' + 'uye-paket","v":1}',
-      '{"app":"gollazim","version":1,"exportedAt":""}',
+      '{"app":"gollazim",' + '"version":1,"exportedAt":""}',
     ]
     for (const sample of leaked) expect(scan('x', sample), sample).toHaveLength(1)
     expect(scan('x', 'İleride Supabase’e geçilirse: VITE_SUPABASE_ANON_KEY=')).toEqual([])
