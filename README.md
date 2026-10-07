@@ -145,7 +145,24 @@ Chrome 107 ve üzerinde denenmiştir.
   - *Üye anahtar yedeği:* üye listesi ve anahtarlar normal veri yedeğine **girmez** ve normal yedeği geri yüklemek onları silmez. Kendi parolanızla şifrelenmiş ayrı bir dosyadır (`gollazim-uye-anahtar-….json`). Bu yedek ve tarayıcı verisi birlikte kaybolursa tüm şifreler yeniden dağıtılır.
   - Şifre içeren dağıtım listesi (`gollazim-uye-dagitim-….csv`), anahtar yedeği ve `paket.json` `.gitignore`'dadır; repoya ya da `public/` altına konmaz.
 
-Yerelde denemek için (çıktılar `samples/uye/` altına yazılır, repoya girmez):
+### Yayınlama
+
+Admin sayfasında **Yayınla** ile indirilen `paket.json`, ayrı bir public repo olan [`gollazim-yayin`](https://github.com/husostats-ai/gollazim-yayin) üzerinden sunulur (`https://husostats-ai.github.io/gollazim-yayin/paket.json`; üye sayfasının varsayılan adresi budur). Site reposuna paket konmaz.
+
+```
+npm run yayinla -- ~/İndirilenler/paket.json     # paketi yayınlar
+npm run yayinla -- --kaldir                      # yayındaki paketi kaldırır (üye sayfası "yayın yok" der)
+```
+
+- Komut önce dosyanın **şifreli** bir yayın paketi olduğunu denetler; düz paket, veri yedeği ya da anahtar yedeği verilirse hiçbir şey göndermeden durur.
+- Yayın reposu her seferinde geçmişsiz **tek commit** olarak yeniden kurulur (yalnızca `paket.json` ve `.nojekyll`) ve force-push edilir; ardından dosya yayın adresinden çekilip SHA-256 özeti karşılaştırılır. Pages yeni dosyayı genelde bir dakikanın altında sunar.
+- Yalnızca mevcut `gh` oturumu kullanılır; hiçbir anahtar dosyaya ya da repoya yazılmaz.
+- Eski commit'ler repoda görünmez, ama GitHub onları bir süre SHA ile sunmaya devam edebilir ve paketi indiren herkes kopyasını saklayabilir: "geçmiş tutmaz" bir kolaylıktır, silme garantisi değildir. İçerik şifrelidir.
+- Üye çıkarma ve şifre yenileme, yeni paket **yayınlandığında** etkili olur.
+
+### Yerelde deneme
+
+Çıktılar `samples/uye/` altına yazılır, repoya girmez:
 
 ```
 UYE_ORNEK=samples/uye UYE_BACKUP=samples/gollazim-yedek-YYYY-AA-GG.json npm run uye:ornek   # şifreli örnek paket + test kullanıcısı (giris.json)
@@ -153,6 +170,8 @@ npm run dev                                                                     
 npm run build && npm run uye:e2e                                                           # derlenmiş siteyi Chrome'da uçtan uca dener
 npm run build && UYE_BACKUP=samples/….json UYE_CSV=samples/….csv npm run uye:admin-e2e          # Admin: üye yönetimi, yayın, anahtar yedeği + tüm sayfalar için duman testi
 ```
+
+Veritabanı şeması değiştiğinde `scripts/dexie-yukseltme-testi.mjs` eski sürümün derlemesiyle kurulan veritabanını yeni sürümle açıp tabloları karşılaştırır; `scripts/uye-canli-e2e.mjs` canlı yayın adresini yereldeki üye sayfasıyla dener (ikisinin de kullanımı dosyanın başında yazar).
 
 Uçtan uca deneme için ayrıca `paket-2.json`, `paket-cikarilmis.json` ve `paket-eski.json` gerekir (`UYE_N`, `UYE_DOSYA`, `UYE_CIKAR`, `UYE_AT` ile üretilir; ayrıntı `src/services/member/sample.test.ts` başında). Tarayıcı sürücüsünün kurulumu aşağıdaki bölümdedir.
 
