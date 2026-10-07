@@ -160,6 +160,21 @@ npm run yayinla -- --kaldir                      # yayındaki paketi kaldırır 
 - Eski commit'ler repoda görünmez, ama GitHub onları bir süre SHA ile sunmaya devam edebilir ve paketi indiren herkes kopyasını saklayabilir: "geçmiş tutmaz" bir kolaylıktır, silme garantisi değildir. İçerik şifrelidir.
 - Üye çıkarma ve şifre yenileme, yeni paket **yayınlandığında** etkili olur.
 
+### Ayrı üye sitesi
+
+Üye uygulaması ayrıca kendi adresinde yayınlanır: **https://husostats-ai.github.io/gollazim-uye/**. O adreste yalnızca üye uygulaması vardır; admin sayfaları, veri deposu ve CSV okuyucu derlemeye girmez. Uygulama kökte çalışır (`#/` analizler, `#/istatistik`); eski `#/uye` bağlantıları köke yönlenir. Paket yine `gollazim-yayin` adresinden gelir.
+
+```
+npm run build:uye      # yalnızca derler: dist-uye/
+npm run uye-yayinla    # denetler, derler, yayınlar ve canlıda doğrular
+npm run uye-yayinla -- --dogrula   # canlıdaki dosyalar yereldeki dist-uye ile aynı mı
+```
+
+- Giriş `uye.html` → `src/member/main.tsx`, yapılandırma `vite.uye.config.ts`.
+- `uye-yayinla` şunları şart koşar: çalışma ağacı temiz, `HEAD` uzak `main` ile aynı, tip denetimi ve tüm testler geçiyor, çıktı `scripts/lib/uye-cikti-denetim.mjs` denetiminden geçiyor (izinli dosya listesi; veri deposu, admin sayfası, paket şifreleme kodu, ham veri ve yasak terim izi yok; `noindex` ve başlık yerinde). Sonra üye sitesinin reposu geçmişsiz tek commit olarak kurulur ve force-push edilir. Yalnızca mevcut `gh` oturumu kullanılır.
+- **Üye sitesi admin sitesinden ayrı yayınlanır.** Üye uygulamasını ya da paket biçimini değiştiren her sürümden sonra `npm run uye-yayinla` çalıştırılmalıdır; `deploy.yml` yalnızca admin sitesini yayınlar. Üye sitesi `surum.json` ile sürümünü bildirir; Admin'in "Yayınla" bölümü üye sitesi eski kaldıysa uyarır.
+- Üye sitesi admin sitesiyle aynı alan adındadır (`husostats-ai.github.io`): tarayıcı depolaması yalıtılmış değildir. Üye uygulaması veritabanı ve `localStorage` kullanmaz; bu, çıktı denetimiyle ve uçtan uca denemeyle doğrulanır.
+
 ### Yerelde deneme
 
 Çıktılar `samples/uye/` altına yazılır, repoya girmez:
@@ -174,7 +189,7 @@ npm run dev                                                                     
 Uçtan uca denemeler (derlenmiş site, gerçek tarayıcı, geçici profil). Bunlar kendi sentetik kullanıcılarını ve paketlerini **geçici bir klasörde** üretir ve bitince siler; kalıcı bir giriş dosyası bırakmaz:
 
 ```
-npm run build && UYE_BACKUP=samples/….json npm run uye:e2e                                  # üye sayfası
+npm run build && npm run build:uye && UYE_BACKUP=samples/….json npm run uye:e2e             # üye uygulaması: eski #/uye rotası ve ayrı üye sitesi, aynı paketlerle
 npm run build && UYE_BACKUP=samples/….json UYE_CSV=samples/….csv npm run uye:admin-e2e      # Admin: üye yönetimi, yayın, anahtar yedeği + tüm sayfalar için duman testi
 ```
 

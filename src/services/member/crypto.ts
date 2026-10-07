@@ -101,7 +101,7 @@ const ENVELOPE_KEYS = ['format', 'v', 'n', 'publishedAt', 'kdf', 'siteSalt', 'pu
 const subtle = (): SubtleCrypto => {
   const api = globalThis.crypto?.subtle
   // Tarayıcılar WebCrypto'yu yalnızca HTTPS ve localhost'ta açar.
-  if (!api) throw new Error('Bu tarayıcıda ya da bağlantıda şifreleme kullanılamıyor (HTTPS gerekir).')
+  if (!api) throw new Error('Bu tarayıcıda şifreleme kullanılamıyor (HTTPS gerekir).')
   return api
 }
 

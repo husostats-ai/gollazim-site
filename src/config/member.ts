@@ -19,3 +19,9 @@ export const MEMBER_POLL_MINUTES = 5
 
 /** Üyelere verilen giriş adresi (hesap bilgi mesajında yer alır) */
 export const MEMBER_SITE_URL = 'https://husostats-ai.github.io/gollazim-site/#/uye'
+
+/**
+ * Ayrı üye sitesinin sürüm bilgisi (derlendiği commit ve açabildiği paket sürümü).
+ * Admin'in "Yayınla" ekranı buradan okur; adres admin sitesiyle aynı alan adındadır.
+ */
+export const MEMBER_SITE_VERSION_URL = '/gollazim-uye/surum.json'

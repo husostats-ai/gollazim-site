@@ -18,8 +18,11 @@ const controller = createMemberController({
 
 const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'scroll'] as const
 
-/** #/uye: üye girişi ve salt okunur üye sayfaları. Uygulamanın geri kalanından bağımsızdır. */
-export default function MemberApp() {
+/**
+ * Üye girişi ve salt okunur üye sayfaları. Uygulamanın geri kalanından bağımsızdır.
+ * basePath: uygulamanın bağlandığı yol. Ayrı üye sitesinde kök (''), eski adreste '/uye'.
+ */
+export default function MemberApp({ basePath = '/uye' }: { basePath?: string }) {
   const state = useSyncExternalStore(controller.subscribe, controller.getState)
   const [now, setNow] = useState(() => Date.now())
   const signedIn = state.status === 'signedIn'
@@ -76,11 +79,11 @@ export default function MemberApp() {
 
   const today = todayInAppZone()
   return (
-    <MemberShell payload={state.payload} now={now} today={today} refreshError={state.refreshError} onLogout={controller.logout}>
+    <MemberShell payload={state.payload} now={now} today={today} refreshError={state.refreshError} onLogout={controller.logout} basePath={basePath}>
       <Routes>
         <Route index element={<MemberAnalysis payload={state.payload} today={today} />} />
         <Route path="istatistik" element={<MemberStatsPage payload={state.payload} />} />
-        <Route path="*" element={<Navigate to="/uye" replace />} />
+        <Route path="*" element={<Navigate to={basePath || '/'} replace />} />
       </Routes>
     </MemberShell>
   )

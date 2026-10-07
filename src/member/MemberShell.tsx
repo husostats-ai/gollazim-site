@@ -38,10 +38,12 @@ interface Props {
   today: string
   refreshError: MemberErrorKind | null
   onLogout: () => void
+  /** Uygulamanın bağlandığı yol: ayrı üye sitesinde '', eski adreste '/uye' */
+  basePath?: string
   children: ReactNode
 }
 
-export default function MemberShell({ payload, now, today, refreshError, onLogout, children }: Props) {
+export default function MemberShell({ payload, now, today, refreshError, onLogout, basePath = '/uye', children }: Props) {
   return (
     <MemberFrame
       actions={
@@ -51,10 +53,10 @@ export default function MemberShell({ payload, now, today, refreshError, onLogou
       }
       nav={
         <>
-          <NavLink to="/uye" end className={tab}>
+          <NavLink to={basePath || '/'} end className={tab}>
             ANALİZLER
           </NavLink>
-          <NavLink to="/uye/istatistik" className={tab}>
+          <NavLink to={`${basePath}/istatistik`} className={tab}>
             İSTATİSTİK
           </NavLink>
         </>

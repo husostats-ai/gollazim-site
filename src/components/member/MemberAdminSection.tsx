@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
-import { MEMBER_SITE_URL } from '../../config/member'
+import { MEMBER_SITE_URL, MEMBER_SITE_VERSION_URL } from '../../config/member'
 import { memberAdminRepo } from '../../services/data'
 import { addMembers, backupMemberKeys, previewPublication, publish, removeMemberByName, renewMemberPassword, restoreMemberKeys } from '../../services/memberAdmin/actions'
 import { checkPassphrase, PASSPHRASE_MIN_LENGTH } from '../../services/memberAdmin/keyBackup'
 import { PUBLICATION_FILE_NAME, summarizePayload, type Publication, type PublishSummary } from '../../services/memberAdmin/publish'
 import { accountMessage, activeMembers, checkNewUsername, distributionCsv, distributionFileName, parseBulkUsernames, USERNAME_PROBLEM_TEXTS, type IssuedLogin } from '../../services/memberAdmin/registry'
+import { MEMBER_PAYLOAD_VERSION } from '../../services/member/payload'
 import { KEY_BACKUP_LOSS_TEXT, keyBackupStatus } from '../../services/memberAdmin/reminder'
+import { fetchSiteVersion, MEMBER_SITE_UPDATE_HINT, siteVersionStatus, type SiteVersionStatus } from '../../services/memberAdmin/siteVersion'
 import { useApp } from '../../state/AppContext'
 import { copyText } from '../../utils/clipboard'
 import { toAppDateTime } from '../../utils/date'
@@ -127,6 +129,19 @@ export default function MemberAdminSection() {
   const [restoreFile, setRestoreFile] = useState<File | null>(null)
   const [keyStatus, setKeyStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+  /** Ayrı üye sitesinin sürümü ile bu sürümün karşılaştırması; okunana dek null */
+  const [siteStatus, setSiteStatus] = useState<SiteVersionStatus | null>(null)
+
+  // Üye sitesi ayrı yayınlanır ve eski kalabilir: sürümü aynı alan adındaki adresinden okunur.
+  useEffect(() => {
+    let cancelled = false
+    void fetchSiteVersion(MEMBER_SITE_VERSION_URL, (url, init) => fetch(url, init), Date.now()).then((site) => {
+      if (!cancelled) setSiteStatus(siteVersionStatus(site, { commit: __APP_COMMIT__, payloadVersion: MEMBER_PAYLOAD_VERSION }))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Varsayılan gün: bugün (verisi varsa), yoksa seçili gün, o da yoksa en yeni gün.
   const publishDay = day && dates.includes(day) ? day : dates.includes(today) ? today : (selectedDate ?? dates[0] ?? null)
@@ -397,6 +412,23 @@ export default function MemberAdminSection() {
             <span className="font-extrabold">{activeCount}</span> aktif üye · sıradaki yayın no <span className="font-extrabold">{data.meta.publishCounter + 1}</span>
           </p>
         </div>
+
+        {siteStatus && siteStatus.level !== 'ok' && (
+          <p
+            className={`mt-3 rounded-xl border p-3 text-sm ${siteStatus.level === 'incompatible' ? 'border-loss-line bg-loss-soft font-bold text-loss-text' : siteStatus.level === 'older' ? 'border-warn-line bg-warn-soft text-warn' : 'border-navy-500 bg-navy-800 text-muted'}`}
+            data-testid="publish-site-version"
+            data-level={siteStatus.level}
+          >
+            {siteStatus.level !== 'unknown' && <span aria-hidden="true">⚠ </span>}
+            {siteStatus.text}
+            {siteStatus.level !== 'unknown' && <span className="font-normal"> {MEMBER_SITE_UPDATE_HINT}</span>}
+          </p>
+        )}
+        {siteStatus?.level === 'ok' && (
+          <p className="mt-3 text-xs text-muted" data-testid="publish-site-version" data-level="ok">
+            {siteStatus.text}
+          </p>
+        )}
 
         {summary && (
           <ul className="mt-3 space-y-0.5 text-sm text-muted" data-testid="publish-summary">
