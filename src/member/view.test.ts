@@ -14,7 +14,9 @@ import MemberAnalysis from './MemberAnalysis'
 import MemberLogin from './MemberLogin'
 import MemberShell from './MemberShell'
 import MemberStatsPage from './MemberStatsPage'
-import { categoryChoices, dayChip, dayTitle, isStale, listFor, secondPercentLabel, updatedText } from './view'
+import { CALCULATORS } from '../services/analysis/calculators'
+import type { MemberPayload } from '../services/member/payload'
+import { categoryChoices, dayChip, dayTitle, isOverstated, isStale, listFor, PERCENT_LABELS, PERCENT_NOTE, percentKind, secondPercentLabel, updatedText } from './view'
 
 // Üye sayfasının görünümü: bileşenler sunucu tarafı çizimle (tarayıcısız) HTML'e çevrilir.
 // Tıklama gerektiren akışlar (gün ve kategori seçimi) açılış seçimi verilerek çizilir;
@@ -149,6 +151,17 @@ describe('üye düzeni', () => {
     for (const word of ['ADMİN', 'SKOR GİRİŞİ', 'AI ANALİZİ', 'CSV', 'Yedek', 'Görsele ekle', 'paylaşıldı']) expect(text).not.toContain(word)
   })
 
+  it('yasal uyarı sayfanın en altında da yer alır (paketten gelen metinle)', () => {
+    const custom = buildMemberPayload(memberInput({ texts: { disclaimer: 'Özel uyarı metni.', account: 'Özel hesap notu.' } }))
+    const markup = shell(analysis(), NOW, null, custom)
+    const footer = markup.slice(markup.indexOf('data-testid="member-footer"'))
+    expect(textOf(footer)).toContain('Özel uyarı metni.')
+    expect(textOf(footer)).toContain('Özel hesap notu.')
+    // Alt bilgi içeriğin (kartların) altındadır.
+    expect(markup.indexOf('data-testid="member-footer"')).toBeGreaterThan(markup.lastIndexOf('data-testid="member-card"'))
+    expect(markup.indexOf('<footer')).toBeGreaterThan(markup.indexOf('data-testid="member-cards"'))
+  })
+
   it('paket eskiyse uyarı çıkar, güncelse çıkmaz', () => {
     expect(textOf(shell(analysis(), NOW))).not.toContain(STALE_DATA_TEXT)
     expect(shell(analysis(), NOW)).not.toContain('member-stale')
@@ -163,7 +176,7 @@ describe('üye düzeni', () => {
 })
 
 describe('kategori listeleri ve üye kartı', () => {
-  const cards = (markup: string) => markup.split('data-testid="member-card">').slice(1).map(textOf)
+  const cards = (markup: string) => markup.split(/data-testid="member-card"[^>]*>/).slice(1).map(textOf)
 
   it('gün seçici: seçilen gün ve önceki gün; seçilen günün başlığı ve listesi çizilir', () => {
     const today = html(analysis(0))
@@ -245,6 +258,57 @@ describe('kategori listeleri ve üye kartı', () => {
     const old = buildMemberPayload(memberInput({ publishedAt: '2026-10-20T06:30:00.000Z' }))
     const markup = html(createElement(MemberAnalysis, { payload: old, today: DAY, initialCategory: 'over25' }))
     expect(textOf(markup)).toContain('1. sıra · 8 maç · ⚠ tablo eski')
+  })
+
+  it('büyük yüzdenin altındaki etiket yüzdenin gerçekten ne olduğunu söyler', () => {
+    // Etiket, yüzdenin hesaplandığı yöntemle birebir örtüşür: CSV'deki hazır yüzdeyi
+    // doğrudan kullanan kategoriler "geçmiş sıklık", gerisi "model tahmini"dir.
+    for (const category of CATEGORIES) expect(percentKind(category.id), category.id).toBe(CALCULATORS[category.id].basis.startsWith('CSV:') ? 'history' : 'model')
+    expect(PERCENT_LABELS).toEqual({ history: 'Geçmiş maçlarda görülme sıklığı', model: 'Model tahmini' })
+    const label = (categoryId: (typeof CATEGORIES)[number]['id']) => /data-testid="member-percent-label">([^<]*)/.exec(html(analysis(0, categoryId)))![1]
+    for (const id of ['over25', 'ht05', 'btts', 'sh05', 'over35', 'ht15', 'corners85'] as const) expect(label(id), id).toBe('Geçmiş maçlarda görülme sıklığı')
+    for (const id of ['over25btts', 'cards35', 'homeWin15', 'awayWin15'] as const) expect(label(id), id).toBe('Model tahmini')
+    // Etiket her kartta vardır ve paketten gelmez (pakette böyle bir alan yoktur).
+    const markup = html(analysis(0, 'over25'))
+    expect(markup.split('data-testid="member-percent-label"').length - 1).toBe(markup.split('data-testid="member-card"').length - 1)
+    expect(JSON.stringify(payload)).not.toContain('Geçmiş maçlarda')
+  })
+
+  it('kartların üstünde sabit açıklama satırı', () => {
+    expect(PERCENT_NOTE).toBe("Yüzdeler geçmiş verilere ve model hesaplarına dayanan özetlerdir; sonucun kesin olduğu anlamına gelmez. Güvenilirlik 'Düşük' ise örnek azdır.")
+    const markup = html(analysis(0, 'over25'))
+    expect(/data-testid="member-percent-note">([^<]*)/.exec(markup)![1].replace(/&#x27;/g, "'")).toBe(PERCENT_NOTE)
+    expect(markup.indexOf('member-percent-note')).toBeLessThan(markup.indexOf('member-cards'))
+    expect(html(createElement(MemberAnalysis, { payload: buildMemberPayload(memberInput({ days: [{ date: '2026-10-09', matches: [], results: [] }] })), today: DAY }))).not.toContain('member-percent-note')
+  })
+
+  it('%100 ve güvenilirlik Düşük ise yüzde sönük, güvenilirlik rozeti belirgin; başka durumda değil', () => {
+    expect(isOverstated({ percent: 100, reliability: 'low' })).toBe(true)
+    for (const [percent, reliability] of [[100, 'high'], [100, 'medium'], [100, 'unknown'], [100, 'unmeasured'], [99, 'low'], [0, 'low']] as const) expect(isOverstated({ percent, reliability }), `${percent} ${reliability}`).toBe(false)
+
+    // Verideki %100'lük maç "Yüksek" güvenilirlikte: olağan görünüm.
+    const normal = html(analysis(0, 'over25'))
+    expect(normal).not.toContain('data-overstated="true"')
+    expect(/class="([^"]*)" data-testid="member-percent">%100/.exec(normal)![1]).toContain('text-3xl')
+
+    // Aynı maç "Düşük" güvenilirlikte olsaydı
+    const low = JSON.parse(JSON.stringify(payload)) as MemberPayload
+    low.days[0].lists[0].items[0].reliability = 'low'
+    const markup = html(createElement(MemberAnalysis, { payload: low, today: DAY, initialCategory: 'over25' }))
+    const card = markup.split('data-testid="member-card"')[1]
+    expect(card.startsWith(' data-overstated="true"')).toBe(true)
+    const percentClass = /class="([^"]*)" data-testid="member-percent">%100/.exec(card)![1]
+    expect(percentClass).toContain('text-2xl')
+    expect(percentClass).toContain('text-muted')
+    expect(percentClass).not.toContain('text-brand')
+    const badge = /<span class="([^"]*)" data-testid="member-reliability">([\s\S]*?)<\/span><\/span>|<span class="([^"]*)" data-testid="member-reliability">/.exec(card)!
+    expect(badge[1] ?? badge[3]).toContain('font-extrabold')
+    expect(badge[1] ?? badge[3]).toContain('border-2')
+    expect(textOf(card)).toContain('⚠ Güvenilirlik: Düşük')
+    // Yalnızca o kart etkilenir; yüzde ve sıra değişmez.
+    expect(markup.split('data-overstated="true"').length - 1).toBe(1)
+    expect(cards(markup)[0].startsWith('1 ')).toBe(true)
+    expect(cards(markup)[0]).toContain('%100')
   })
 
   it('önerisi olmayan gün boş durum gösterir', () => {

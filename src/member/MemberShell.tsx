@@ -83,6 +83,11 @@ export default function MemberShell({ payload, now, today, refreshError, onLogou
         <p className="mt-0.5">{payload.texts.account}</p>
       </div>
       {children}
+      {/* Yasal uyarı sayfanın en altında da yer alır: uzun listelerin sonunda da görünür. */}
+      <footer className="mt-8 border-t border-line pt-4 text-xs text-muted" data-testid="member-footer">
+        <p className="font-semibold text-white">{payload.texts.disclaimer}</p>
+        <p className="mt-1">{payload.texts.account}</p>
+      </footer>
     </MemberFrame>
   )
 }

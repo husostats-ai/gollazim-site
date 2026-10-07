@@ -3,6 +3,7 @@ import type { ReliabilityLevel } from '../services/analysis/types'
 import { MEMBER_CONFLICT_LABELS, MEMBER_OUTCOMES, MEMBER_RELIABILITY_LABELS, MEMBER_STATUS_LABELS, STALE_TABLE_LABEL, standingText } from '../services/member/labels'
 import type { MemberItem, MemberMatch, MemberStanding } from '../services/member/payload'
 import type { PickOutcome } from '../types'
+import { isOverstated } from './view'
 
 const RELIABILITY_TONE: Record<ReliabilityLevel, string> = {
   high: 'border-win-line bg-win-soft text-win',
@@ -37,12 +38,24 @@ function Standing({ side, standing }: { side: string; standing: MemberStanding |
  * Üye sayfasının salt okunur maç kartı. Yalnızca yayın paketindeki alanları gösterir;
  * hiçbir hesap yapmaz ve uygulama durumuna bağlı değildir.
  */
-export default function MemberCard({ rank, match, item, categoryLabel, secondLabel }: { rank: number; match: MemberMatch; item: MemberItem; categoryLabel: string; secondLabel: string }) {
+interface Props {
+  rank: number
+  match: MemberMatch
+  item: MemberItem
+  categoryLabel: string
+  /** Büyük yüzdenin altındaki sabit etiket: yüzdenin neyi ölçtüğü */
+  percentLabel: string
+  secondLabel: string
+}
+
+export default function MemberCard({ rank, match, item, categoryLabel, percentLabel, secondLabel }: Props) {
   const outcome = item.outcome ? MEMBER_OUTCOMES[item.outcome] : null
   const status = match.status ? MEMBER_STATUS_LABELS[match.status] : null
   const isModelBased = item.reliability === 'market' || item.reliability === 'market-partial'
+  // %100 ama az maça dayanıyorsa yüzde sönük, güvenilirlik rozeti belirgin gösterilir.
+  const overstated = isOverstated(item)
   return (
-    <article className="flex min-w-0 flex-col gap-3 rounded-2xl border border-line bg-navy-700 p-4" data-testid="member-card">
+    <article className="flex min-w-0 flex-col gap-3 rounded-2xl border border-line bg-navy-700 p-4" data-testid="member-card" data-overstated={overstated}>
       <div className="flex min-w-0 items-center gap-2 text-xs text-muted">
         <span className="grid h-6 min-w-6 shrink-0 place-items-center rounded-full bg-navy-600 px-1.5 font-bold text-white">{rank}</span>
         {match.time && <span className="shrink-0 font-semibold text-white">{match.time}</span>}
@@ -57,8 +70,11 @@ export default function MemberCard({ rank, match, item, categoryLabel, secondLab
           <p className="mt-1 text-xs font-bold tracking-wide text-brand">{categoryLabel}</p>
         </div>
         <div className="shrink-0 text-right">
-          <p className="text-3xl leading-none font-black text-brand" data-testid="member-percent">
+          <p className={`leading-none font-black ${overstated ? 'text-2xl text-muted' : 'text-3xl text-brand'}`} data-testid="member-percent">
             %{item.percent}
+          </p>
+          <p className="mt-1 ml-auto max-w-[7.5rem] text-[10px] leading-tight text-muted" data-testid="member-percent-label">
+            {percentLabel}
           </p>
           {item.model !== null && (
             <p className="mt-1 text-xs text-muted" data-testid="member-model">
@@ -82,8 +98,12 @@ export default function MemberCard({ rank, match, item, categoryLabel, secondLab
         )}
         {item.detail && <span className="text-xs whitespace-nowrap text-muted">{item.detail}</span>}
         {status && <span className={`${BADGE} border-navy-500 bg-navy-600 whitespace-nowrap text-muted`}>{status}</span>}
-        <span className={`${BADGE} flex-wrap ${RELIABILITY_TONE[item.reliability]}`} data-testid="member-reliability">
-          {!isModelBased && <span className="font-normal opacity-80">Güvenilirlik:</span>}
+        <span
+          className={overstated ? `inline-flex max-w-full flex-wrap items-center gap-x-1 rounded-full border-2 px-2.5 py-1 text-xs font-extrabold ${RELIABILITY_TONE[item.reliability]}` : `${BADGE} flex-wrap ${RELIABILITY_TONE[item.reliability]}`}
+          data-testid="member-reliability"
+        >
+          {overstated && <span aria-hidden="true">⚠</span>}
+          {!isModelBased && <span className={overstated ? '' : 'font-normal opacity-80'}>Güvenilirlik:</span>}
           {MEMBER_RELIABILITY_LABELS[item.reliability]}
         </span>
         {item.conflict && (

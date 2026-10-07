@@ -145,6 +145,40 @@ try {
   // 4) Kartlar, gün ve kategori seçimi
   const cardCount = await page.$$eval(sel('member-card'), (els) => els.length)
   step('kategori listesi çizildi', cardCount > 0, `${cardCount} kart`)
+  const labels = await page.$$eval(sel('member-percent-label'), (els) => [...new Set(els.map((el) => el.textContent.trim()))])
+  step('büyük yüzdenin altında sabit etiket var', labels.length === 1 && labels[0] === 'Geçmiş maçlarda görülme sıklığı' && (await page.$$eval(sel('member-percent-label'), (els) => els.length)) === cardCount, labels.join(' | '))
+  step('kartların üstünde açıklama satırı', (await text(page, 'member-percent-note')).startsWith('Yüzdeler geçmiş verilere ve model hesaplarına dayanan özetlerdir;'), await text(page, 'member-percent-note'))
+  // %100 + Düşük güvenilirlik: yüzde sönük ve küçük, rozet belirgin (gerçek veride bu kartlar var)
+  const styles = await page.evaluate(() => {
+    const read = (card) => {
+      const percent = card.querySelector('[data-testid="member-percent"]')
+      const badge = card.querySelector('[data-testid="member-reliability"]')
+      return { text: percent.textContent.trim(), size: parseFloat(getComputedStyle(percent).fontSize), color: getComputedStyle(percent).color, badgeSize: parseFloat(getComputedStyle(badge).fontSize), badgeWeight: getComputedStyle(badge).fontWeight, badge: badge.textContent.trim() }
+    }
+    const cards = [...document.querySelectorAll('[data-testid="member-card"]')]
+    return { soluk: cards.filter((c) => c.dataset.overstated === 'true').map(read), olagan: cards.filter((c) => c.dataset.overstated !== 'true').map(read) }
+  })
+  const dim = styles.soluk[0]
+  const normal = styles.olagan[0]
+  step('%100 + Düşük: yüzde daha küçük ve sönük, güvenilirlik rozeti daha büyük ve kalın', !!dim && !!normal && dim.text === '%100' && dim.badge.includes('Düşük') && dim.size < normal.size && dim.color !== normal.color && dim.badgeSize > normal.badgeSize && Number(dim.badgeWeight) > Number(normal.badgeWeight), dim && normal ? `sönük ${dim.size}px ${dim.color} · olağan ${normal.size}px ${normal.color} · rozet ${dim.badgeSize}px/${dim.badgeWeight} ↔ ${normal.badgeSize}px/${normal.badgeWeight} · ${styles.soluk.length} sönük, ${styles.olagan.length} olağan kart` : 'bu kategoride örnek yok')
+  step('sönük gösterim yalnızca %100 + Düşük kartlarda', styles.soluk.every((c) => c.text === '%100' && c.badge.includes('Düşük')) && styles.olagan.every((c) => !(c.text === '%100' && c.badge.includes('Düşük'))))
+  // Yasal uyarı sayfanın en altında, mobil boyutta görünür
+  for (const width of [320, 390]) {
+    await page.setViewport({ width, height: 844, deviceScaleFactor: 1 })
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+    await new Promise((r) => setTimeout(r, 150))
+    const footer = await page.$eval(sel('member-footer'), (el) => {
+      const box = el.getBoundingClientRect()
+      const last = [...document.querySelectorAll('[data-testid="member-card"]')].pop().getBoundingClientRect()
+      return { text: el.textContent, inView: box.top >= 0 && box.bottom <= window.innerHeight && box.left >= 0 && box.right <= window.innerWidth, below: box.top >= last.bottom, height: box.height, color: getComputedStyle(el.firstElementChild).color, size: getComputedStyle(el.firstElementChild).fontSize }
+    })
+    step(`yasal uyarı sayfanın en altında görünür (${width} px)`, footer.inView && footer.below && footer.height > 20 && footer.text.includes('bahis tavsiyesi değildir') && footer.text.includes('18+'), `${footer.size}, ${footer.color}, yükseklik ${Math.round(footer.height)} px`)
+    if (width === 320) {
+      await page.screenshot({ path: join(shots, 'alt-yasal-uyari-320.png') })
+      report.ekranlar.push({ dosya: 'alt-yasal-uyari-320.png', genislik: 320, tasma: 'yok' })
+    }
+  }
+  await page.evaluate(() => window.scrollTo(0, 0))
   step('analizler 390 px taşma yok', await shot(page, 'analiz', 390))
   step('analizler 320 px taşma yok', await shot(page, 'analiz', 320))
   const chips = await page.$$eval('[data-testid^="member-category-"]', (els) => els.map((el) => el.dataset.testid))
