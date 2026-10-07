@@ -5,7 +5,7 @@ import { RELIABILITY_LABELS, SAMPLE_HINT, sampleText } from '../analysis/reliabi
 import { goalModelPercent, MODEL_CONFLICT_LIMIT } from '../analysis/goalModel'
 import { MARKET_CATEGORY_IDS, MARKET_CONFLICT_LABEL, marketPercent } from '../analysis/market'
 import { stat } from '../analysis/stat'
-import { usableAvgGoals, usableXg } from '../analysis/statAvailability'
+import { usableAvgCards, usableAvgCorners, usableAvgGoals, usableXg } from '../analysis/statAvailability'
 import type { Prediction } from '../analysis/types'
 import type { AiMatchItem } from './collect'
 
@@ -65,8 +65,9 @@ export function matchBlock(item: AiMatchItem, number: number): string {
   const stats = [
     // Eksik gol ortalaması kaynakta 0 olarak gelir ve hesaplarda kullanılmaz; isteme de "0" diye yazılmaz.
     `Gol ortalaması: ${num(usableAvgGoals(match))}`,
-    `Korner ortalaması: ${num(stat(match, 'avgCorners'))}`,
-    `Kart ortalaması: ${num(stat(match, 'avgCards'))}`,
+    // Eksik korner / kart ortalaması kaynakta 0 (kartta bazen negatif) gelir; isteme sayı diye yazılmaz.
+    `Korner ortalaması: ${num(usableAvgCorners(match))}`,
+    `Kart ortalaması: ${num(usableAvgCards(match))}`,
     `Maç başı puan (PPG): ${pair(stat(match, 'homePpg'), stat(match, 'awayPpg'))}`,
     // Eksik xG kaynakta 0 olarak gelir ve hesaplarda kullanılmaz; isteme de "0" diye yazılmaz.
     `Maç öncesi xG: ${xg ? pair(xg.home, xg.away) : MISSING}`,
