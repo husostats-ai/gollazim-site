@@ -37,7 +37,7 @@ function Standing({ side, standing }: { side: string; standing: MemberStanding |
  * Üye sayfasının salt okunur maç kartı. Yalnızca yayın paketindeki alanları gösterir;
  * hiçbir hesap yapmaz ve uygulama durumuna bağlı değildir.
  */
-export default function MemberCard({ rank, match, item, categoryLabel }: { rank: number; match: MemberMatch; item: MemberItem; categoryLabel: string }) {
+export default function MemberCard({ rank, match, item, categoryLabel, secondLabel }: { rank: number; match: MemberMatch; item: MemberItem; categoryLabel: string; secondLabel: string }) {
   const outcome = item.outcome ? MEMBER_OUTCOMES[item.outcome] : null
   const status = match.status ? MEMBER_STATUS_LABELS[match.status] : null
   const isModelBased = item.reliability === 'market' || item.reliability === 'market-partial'
@@ -62,7 +62,7 @@ export default function MemberCard({ rank, match, item, categoryLabel }: { rank:
           </p>
           {item.model !== null && (
             <p className="mt-1 text-xs text-muted" data-testid="member-model">
-              Model <span className="font-bold text-white">%{item.model}</span>
+              {secondLabel} <span className="font-bold text-white">%{item.model}</span>
             </p>
           )}
           <Stars count={item.stars} className="mt-1.5 block text-sm" />

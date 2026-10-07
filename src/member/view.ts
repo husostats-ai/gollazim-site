@@ -45,3 +45,9 @@ export function listFor(day: MemberDay, categoryId: CategoryId | null): MemberLi
 }
 
 export const categoryLabel = (categoryId: string): string => CATEGORIES.find((c) => c.id === categoryId)?.label ?? categoryId
+
+/**
+ * Kartta ikinci yüzdenin adı: ana gol kategorilerinde "Model", Taraf & Gol listelerinde
+ * "İkinci hesap" (orada ikinci yüzde aynı olasılığın başka bir yöntemle hesabıdır).
+ */
+export const secondPercentLabel = (categoryId: CategoryId): string => (CATEGORIES.find((c) => c.id === categoryId)?.group === 'sidegoals' ? 'İkinci hesap' : 'Model')

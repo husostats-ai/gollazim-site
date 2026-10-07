@@ -14,7 +14,7 @@ import MemberAnalysis from './MemberAnalysis'
 import MemberLogin from './MemberLogin'
 import MemberShell from './MemberShell'
 import MemberStatsPage from './MemberStatsPage'
-import { categoryChoices, dayChip, dayTitle, isStale, listFor, updatedText } from './view'
+import { categoryChoices, dayChip, dayTitle, isStale, listFor, secondPercentLabel, updatedText } from './view'
 
 // Üye sayfasının görünümü: bileşenler sunucu tarafı çizimle (tarayıcısız) HTML'e çevrilir.
 // Tıklama gerektiren akışlar (gün ve kategori seçimi) açılış seçimi verilerek çizilir;
@@ -230,6 +230,13 @@ describe('kategori listeleri ve üye kartı', () => {
     expect(side).toContain('data-conflict="hesap"')
     expect(textOf(side)).toContain('⚠ Hesaplar çelişiyor')
     expect(textOf(side)).not.toContain('Model çelişkisi')
+    // İkinci yüzdenin adı: Taraf & Gol'de "İkinci hesap", diğerlerinde "Model".
+    expect(textOf(side)).toMatch(/İkinci hesap %\d+/)
+    expect(textOf(side)).not.toMatch(/Model %\d+/)
+    expect(textOf(html(analysis(0, 'over25')))).toMatch(/Model %\d+/)
+    expect(textOf(html(analysis(0, 'over25')))).not.toContain('İkinci hesap')
+    expect(secondPercentLabel('awayWin25')).toBe('İkinci hesap')
+    expect(secondPercentLabel('btts')).toBe('Model')
     expect(html(analysis(0, 'over25'))).not.toContain('data-conflict="hesap"')
   })
 
