@@ -5,7 +5,7 @@ import { RELIABILITY_LABELS, SAMPLE_HINT, sampleText } from '../analysis/reliabi
 import { goalModelPercent, MODEL_CONFLICT_LIMIT } from '../analysis/goalModel'
 import { MARKET_CATEGORY_IDS, MARKET_CONFLICT_LABEL, marketPercent } from '../analysis/market'
 import { stat } from '../analysis/stat'
-import { usableXg } from '../analysis/xgAvailability'
+import { usableAvgGoals, usableXg } from '../analysis/statAvailability'
 import type { Prediction } from '../analysis/types'
 import type { AiMatchItem } from './collect'
 
@@ -63,7 +63,8 @@ export function matchBlock(item: AiMatchItem, number: number): string {
   const odds = [stat(match, 'oddsHome'), stat(match, 'oddsDraw'), stat(match, 'oddsAway')]
   const xg = usableXg(match)
   const stats = [
-    `Gol ortalaması: ${num(stat(match, 'avgGoals'))}`,
+    // Eksik gol ortalaması kaynakta 0 olarak gelir ve hesaplarda kullanılmaz; isteme de "0" diye yazılmaz.
+    `Gol ortalaması: ${num(usableAvgGoals(match))}`,
     `Korner ortalaması: ${num(stat(match, 'avgCorners'))}`,
     `Kart ortalaması: ${num(stat(match, 'avgCards'))}`,
     `Maç başı puan (PPG): ${pair(stat(match, 'homePpg'), stat(match, 'awayPpg'))}`,

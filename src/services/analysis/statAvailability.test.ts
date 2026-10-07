@@ -10,7 +10,8 @@ import { scoreForecast } from './scoreForecast'
 import { buildSideGoalsModel } from './sideGoals/sideGoals'
 import { statSummary } from './summary'
 import { makeMatch } from './testUtils'
-import { usableXg, XG_MISSING_TEXT } from './xgAvailability'
+import { expectedTotalGoals } from './goalModel'
+import { STAT_MISSING_TEXT, usableAvgGoals, usableXg } from './statAvailability'
 
 // Eksik xG'nin GÖSTERİMİ: kaynakta "0" olarak gelen xG kartta ve yapay zekâ isteminde
 // "veri yok" yazılır. Hesaplar değişmez; dolu xG'li maçların metni de değişmez.
@@ -64,7 +65,7 @@ describe('usableXg: gösterimdeki kural hesaplardaki kuralla aynıdır', () => {
 
   it('kullanılabilir xG değerleri aynen döner', () => {
     expect(usableXg(withXg(1.6, 1.1, 'm'))).toEqual({ home: 1.6, away: 1.1 })
-    expect(XG_MISSING_TEXT).toBe('veri yok')
+    expect(STAT_MISSING_TEXT).toBe('veri yok')
   })
 })
 
@@ -138,5 +139,101 @@ describe('hesaplar değişmedi: eksik xG eskisi gibi dışlanır, 0 olarak girme
     // Model yüzdesi gol ortalamasına düşer (xG 0 girseydi %0 çıkardı).
     expect(goalModelPercent(zero, 'over25')).toEqual({ percent: 72, source: 'avgGoals' })
     expect(goalModelPercent(withXg(1.6, 1.1, 'm'), 'over25')!.source).toBe('xg')
+  })
+})
+
+// ───────── Gol ortalaması ─────────
+
+const withAvg = (avgGoals: StatValue | undefined, id: string, extra: Record<string, StatValue> = {}): Match => {
+  const { avgGoals: _, ...rest } = BASE
+  return makeMatch({ ...rest, ...(avgGoals !== undefined && { avgGoals }), ...extra }, { id, home: 'Ev Takımı', away: 'Dep Takımı', time: '20:00', league: 'Testland · Deneme Ligi' })
+}
+const AVG_CASES: [string, StatValue | undefined, boolean][] = [
+  ['dolu', 3.75, true],
+  ['çok küçük ama pozitif', 0.01, true],
+  ['0', 0, false],
+  ['negatif', -1, false],
+  ['kolon yok', undefined, false],
+  ['boş değer', null, false],
+]
+const avgLine = (block: string): string => /Gol ortalaması: [^;]*/.exec(block)![0].trim()
+
+describe('usableAvgGoals: gösterimdeki kural hesaplardaki kuralla aynıdır', () => {
+  it.each(AVG_CASES)('%s', (_, avgGoals, usable) => {
+    // xG'siz maç: gol modeli yalnızca gol ortalamasına bakar.
+    const match = withAvg(avgGoals, 'm')
+    expect(usableAvgGoals(match) !== null).toBe(usable)
+    expect(expectedTotalGoals(match) !== null).toBe(usable)
+    expect(goalModelPercent(match, 'over25') !== null).toBe(usable)
+    if (usable) expect(expectedTotalGoals(match)).toEqual({ total: avgGoals, source: 'avgGoals' })
+    // Taraf & Gol: 2.5 Alt/Üst oranı ve xG yokken toplam gol yalnızca gol ortalamasından tahmin edilir.
+    const { oddsOver25: _o, oddsUnder25: _u, ...noTotals } = BASE
+    const sideOnly = makeMatch({ ...noTotals, avgGoals: avgGoals ?? null }, { id: 's' })
+    expect(buildSideGoalsModel(sideOnly) !== null).toBe(usable)
+  })
+})
+
+describe('admin kartı: gol ortalaması', () => {
+  const avgItem = (match: Match) => statSummary(match, 'over25').find((i) => i.label === 'Gol ort.')
+
+  it('dolu gol ortalaması eskisi gibi yazılır', () => {
+    expect(avgItem(withAvg(3.75, 'm'))).toEqual({ label: 'Gol ort.', value: '3,75' })
+    expect(avgItem(withAvg(0.01, 'm'))).toEqual({ label: 'Gol ort.', value: '0,01' })
+  })
+
+  it('0 ya da negatif gol ortalaması "veri yok" yazılır', () => {
+    for (const value of [0, -1, -0.5]) expect(avgItem(withAvg(value, 'm')), String(value)).toEqual({ label: 'Gol ort.', value: 'veri yok' })
+  })
+
+  it('kolon hiç yoksa satır eskisi gibi hiç yazılmaz; xG satırı ve diğer kartlar etkilenmez', () => {
+    expect(avgItem(withAvg(undefined, 'm'))).toBeUndefined()
+    expect(avgItem(withAvg(null, 'm'))).toBeUndefined()
+    expect(statSummary(withAvg(0, 'm', { homeXg: 1.6, awayXg: 1.1 }), 'over25')).toEqual([
+      { label: 'Gol ort.', value: 'veri yok' },
+      { label: 'xG', value: '1,6 – 1,1' },
+    ])
+    // Korner ve kart kartlarında gol ortalaması satırı zaten yoktur.
+    expect(statSummary(withAvg(0, 'm'), 'corners85').some((i) => i.label === 'Gol ort.')).toBe(false)
+    expect(statSummary(withAvg(0, 'm'), 'cards35').some((i) => i.label === 'Gol ort.')).toBe(false)
+  })
+})
+
+describe('yapay zekâ istemi: gol ortalaması', () => {
+  it('dolu gol ortalaması satırı eskisiyle birebir aynıdır', () => {
+    expect(avgLine(blockOf(withAvg(3.75, 'm')))).toBe('Gol ortalaması: 3,75')
+    expect(avgLine(blockOf(withAvg(2, 'm')))).toBe('Gol ortalaması: 2')
+  })
+
+  it('0 ya da negatif gol ortalaması "veri yok" yazılır', () => {
+    for (const value of [0, -1]) {
+      const block = blockOf(withAvg(value, 'm'))
+      expect(avgLine(block), String(value)).toBe('Gol ortalaması: veri yok')
+      expect(block).not.toMatch(/Gol ortalaması: (0|-1) /)
+    }
+  })
+
+  it('0 olarak gelen gol ortalaması, hiç gelmemiş gol ortalamasıyla birebir aynı bloğu verir', () => {
+    expect(blockOf(withAvg(0, 'ayni'))).toBe(blockOf(withAvg(undefined, 'ayni')))
+    expect(blockOf(withAvg(0, 'ayni'))).toBe(blockOf(withAvg(null, 'ayni')))
+  })
+
+  it('yalnızca gol ortalaması alanı değişir; korner, kart, puan, xG ve oranlar aynı kalır', () => {
+    const rest = (block: string) => block.split('\n').find((l) => l.startsWith('İstatistik:'))!.replace(/Gol ortalaması: [^;]*;/, 'Gol ortalaması: X ;')
+    const filled = withAvg(3.75, 'm', { homeXg: 1.6, awayXg: 1.1 })
+    const zero = withAvg(0, 'm', { homeXg: 1.6, awayXg: 1.1 })
+    expect(rest(blockOf(zero))).toBe(rest(blockOf(filled)))
+    // xG doluyken gol modeli xG'den hesaplanır: gol ortalamasının 0 olması model satırını değiştirmez.
+    const model = (block: string) => block.split('\n').find((l) => l.startsWith('Gol modeli:'))
+    expect(model(blockOf(zero))).toBe(model(blockOf(filled)))
+  })
+})
+
+describe('hesaplar değişmedi: eksik gol ortalaması eskisi gibi dışlanır, 0 olarak girmez', () => {
+  it('0 gol ortalaması ile gol ortalamasız maç aynı yüzdeleri, yıldızları ve skor olasılıklarını verir', () => {
+    const strip = (match: Match) => Object.values(analyzeDay([match], defaultThresholds(), 'percent')).map((a) => a.predictions.map(({ match: _, ...p }) => p))
+    expect(strip(withAvg(0, 'm'))).toEqual(strip(withAvg(undefined, 'm')))
+    expect(scoreForecast(withAvg(0, 'm'))).toEqual(scoreForecast(withAvg(undefined, 'm')))
+    // xG de gol ortalaması da yokken model yüzdesi hiç üretilmez (0 girseydi %0 çıkardı).
+    expect(goalModelPercent(withAvg(0, 'm'), 'over25')).toBeNull()
   })
 })
