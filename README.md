@@ -130,3 +130,15 @@ Arayüzde ve story görsellerinde [Inter](https://rsms.me/inter/) kullanılır. 
 ## Tarayıcı desteği
 
 Chrome 107 ve üzerinde denenmiştir.
+
+## Referans dökümü (geliştirme aracı)
+
+Bir değişikliğin analizi, dondurulmuş önerileri, istatistikleri ve story görsellerini etkilemediğini göstermek için değişiklikten önce ve sonra çalıştırılır; özet dosyaları (`ozetler.sha256`, `png.sha256`) birebir aynı çıkmalıdır. Çıktılar veri içerir ve `samples/ref/` altına yazılır (repoya girmez).
+
+```
+REF_BACKUP=samples/gollazim-yedek-YYYY-AA-GG.json npm run referans       # metin çıktıları
+npm run referans:png                                                    # 12 story PNG (gerçek tarayıcı)
+```
+
+- `REF_OUT` çıktı klasörünü değiştirir (varsayılan `samples/ref`); karşılaştırma için ikinci çalıştırmada başka bir klasör verin.
+- PNG'ler tarayıcıda üretilir. `puppeteer-core` projenin bağımlılığı **değildir**; repo dışına bir kez kurulur: `mkdir -p ~/araclar/puppeteer-chrome107 && cd ~/araclar/puppeteer-chrome107 && npm init -y && npm i puppeteer-core@19.2.2` (Chrome 107 ile çalışan sürüm). Başka bir klasör `PUPPETEER_DIR`, başka bir tarayıcı `CHROME_PATH` ile gösterilir. Tarayıcı her çalıştırmada yeni, geçici bir profille açılır.

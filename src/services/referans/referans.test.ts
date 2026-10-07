@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { CATEGORIES, getCategory, type CategoryId } from '../../config/categories'
 import { normalizeStoryTexts } from '../../config/storyTexts'
-import type { BackupFile, Match, Pick } from '../../types'
+import type { BackupFile, Match } from '../../types'
 import { toAppDateTime } from '../../utils/date'
 import { formatLongDate } from '../../utils/format'
 import { buildAiStats } from '../ai/aiStats'
@@ -19,6 +19,7 @@ import { backfillMarket, buildMarketStats } from '../stats/marketStats'
 import { buildScoreStats } from '../stats/scoreStats'
 import { buildStarStats } from '../stats/starStats'
 import { buildStats } from '../stats/statsEngine'
+import { ABSENT, canonical, pickRecord } from './canonical'
 import { buildDetailCsv, buildStatsSummary } from '../stats/statsSummary'
 import { sharedPicksOnly } from '../story/shared'
 
@@ -37,36 +38,6 @@ export const STORY_REF = {
 }
 
 export const storyRefFileName = (categoryId: CategoryId, count: number): string => `kategori-${getCategory(categoryId).slug}-${count}-mac.png`
-
-const ABSENT = '«alan yok»'
-const PICK_FIELDS: (keyof Pick)[] = [
-  'id',
-  'matchId',
-  'categoryId',
-  'date',
-  'percent',
-  'threshold',
-  'outcome',
-  'frozenAt',
-  'reliability',
-  'conflict',
-  'secondPercent',
-  'marketPercent',
-  'marketConflict',
-  'stars',
-  'modelDrift',
-]
-
-/** Anahtarları sıralı, girintili JSON. Olmayan alan yazılmaz; null ve 'none' olduğu gibi kalır. */
-const canonical = (value: unknown): string =>
-  JSON.stringify(
-    value,
-    (_, v: unknown) =>
-      v !== null && typeof v === 'object' && !Array.isArray(v)
-        ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
-        : v,
-    1,
-  ) + '\n'
 
 const sha256 = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex')
 
@@ -118,14 +89,7 @@ it.runIf(process.env.REF_BACKUP)('referans dökümü', () => {
   }))
 
   // 3) Dondurulmuş öneriler: kayıtlı alanlar aynen; kayıtta olmayan alan açıkça işaretlenir
-  const known = new Set<string>(PICK_FIELDS)
-  const picks = [...b.picks]
-    .sort((x, y) => (x.id < y.id ? -1 : 1))
-    .map((p) => {
-      const extra = Object.keys(p).filter((k) => !known.has(k))
-      if (extra.length > 0) throw new Error(`Öneride bilinmeyen alan: ${extra.join(', ')}`)
-      return Object.fromEntries(PICK_FIELDS.map((k) => [k, k in p ? p[k] : ABSENT]))
-    })
+  const picks = [...b.picks].sort((x, y) => (x.id < y.id ? -1 : 1)).map(pickRecord)
 
   // 4) İstatistik sayfası değerleri
   const sharedOnly = sharedPicksOnly(b.picks, shared)

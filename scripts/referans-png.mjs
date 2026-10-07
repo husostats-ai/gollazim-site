@@ -1,28 +1,32 @@
 // Geliştirme aracı: referans story görsellerini gerçek tarayıcıda üretir ve özetlerini yazar.
 //
 //   npm run referans          (önce: story-girdi.json'u üretir)
-//   PUPPETEER_DIR=<puppeteer-core kurulu klasör> npm run referans:png
+//   npm run referans:png
 //
 // Girdi : REF_OUT/story-girdi.json (varsayılan samples/ref)
 // Çıktı : REF_OUT/png/*.png ve REF_OUT/png.sha256
 //
 // Tarayıcı her çalıştırmada yeni, geçici bir profille açılır; kullanıcının tarayıcı
 // verisine dokunulmaz. puppeteer-core projenin bağımlılığı değildir (Chrome 107 için
-// 19.2.2 gerekir); kurulu olduğu klasör PUPPETEER_DIR ile verilir.
+// 19.2.2 gerekir): repo dışında bir klasöre kurulur ve yeri PUPPETEER_DIR ile verilir;
+// verilmezse ~/araclar/puppeteer-chrome107 kullanılır. Kurulum README'de yazar.
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createServer } from 'vite'
 
 const outDir = resolve(process.env.REF_OUT ?? 'samples/ref')
 const chrome = process.env.CHROME_PATH ?? '/usr/bin/google-chrome'
-if (!process.env.PUPPETEER_DIR) {
-  console.error('PUPPETEER_DIR verilmedi: puppeteer-core@19.2.2 kurulu klasörü gösterin.')
+const puppeteerDir = resolve(process.env.PUPPETEER_DIR ?? join(homedir(), 'araclar', 'puppeteer-chrome107'))
+let puppeteer
+try {
+  puppeteer = createRequire(join(puppeteerDir, 'x.js'))('puppeteer-core')
+} catch {
+  console.error(`puppeteer-core bulunamadı: ${puppeteerDir}\nKurulum: mkdir -p ${puppeteerDir} && cd ${puppeteerDir} && npm init -y && npm i puppeteer-core@19.2.2`)
   process.exit(1)
 }
-const puppeteer = createRequire(join(resolve(process.env.PUPPETEER_DIR), 'x.js'))('puppeteer-core')
 const input = JSON.parse(readFileSync(join(outDir, 'story-girdi.json'), 'utf8'))
 
 const server = await createServer({ server: { port: 0, host: '127.0.0.1' }, logLevel: 'error' })
