@@ -131,6 +131,25 @@ Arayüzde ve story görsellerinde [Inter](https://rsms.me/inter/) kullanılır. 
 
 Chrome 107 ve üzerinde denenmiştir.
 
+## Üye sayfası (geliştirme aşamasında)
+
+`#/uye` adresinde, kullanıcı adı ve şifreyle açılan salt okunur bir sayfa. Sunucu yoktur: yayınlanan veri, izinli alan listesiyle sıfırdan kurulan bir **yayın paketi** olarak şifrelenir; üye tarayıcısında kullanıcı adı ve şifresiyle çözer. Ana menüde bağlantısı yoktur.
+
+- **Pakete giren alanlar** `src/services/member/payload.ts` içinde tek tek yazılıdır; ham CSV, oranlar, xG, ortalamalar, yapay zekâ kararları ve ayarlar girmez. `schema.ts` izinli olmayan tek bir alanı reddeder; sızıntı testleri (`leak.test.ts`, `src/member/view.test.ts`) paketi ve çizilen sayfayı yasak terimler için tarar.
+- **Şifreleme** `src/services/member/crypto.ts`: AES-256-GCM, PBKDF2-SHA256 (en az 600.000 iterasyon). Şifreler yalnızca üretilir (kullanıcı seçemez); şifre hiçbir yerde saklanmaz, sekmenin `sessionStorage`'ında yalnızca türetilmiş anahtar tutulur ve 12 saat işlem yapılmazsa oturum kapanır.
+- **Sınır:** üye sayfası (`src/member/`) veri deposunu, analiz motorunu ve uygulama durumunu içe aktaramaz (`boundary.test.ts`); ayrı bir parça olarak derlenir.
+- **Paket adresi:** `VITE_UYE_PAKET_URL` (bkz. `.env.example`).
+
+Yerelde denemek için (çıktılar `samples/uye/` altına yazılır, repoya girmez):
+
+```
+UYE_ORNEK=samples/uye UYE_BACKUP=samples/gollazim-yedek-YYYY-AA-GG.json npm run uye:ornek   # şifreli örnek paket + test kullanıcısı (giris.json)
+npm run dev                                                                                # http://localhost:5173/#/uye
+npm run build && npm run uye:e2e                                                           # derlenmiş siteyi Chrome'da uçtan uca dener
+```
+
+Uçtan uca deneme için ayrıca `paket-2.json`, `paket-cikarilmis.json` ve `paket-eski.json` gerekir (`UYE_N`, `UYE_DOSYA`, `UYE_CIKAR`, `UYE_AT` ile üretilir; ayrıntı `src/services/member/sample.test.ts` başında). Tarayıcı sürücüsünün kurulumu aşağıdaki bölümdedir.
+
 ## Referans dökümü (geliştirme aracı)
 
 Bir değişikliğin analizi, dondurulmuş önerileri, istatistikleri ve story görsellerini etkilemediğini göstermek için değişiklikten önce ve sonra çalıştırılır; özet dosyaları (`ozetler.sha256`, `png.sha256`) birebir aynı çıkmalıdır. Çıktılar veri içerir ve `samples/ref/` altına yazılır (repoya girmez).

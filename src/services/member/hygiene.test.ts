@@ -79,6 +79,19 @@ describe.runIf(existsSync(DIST))('derleme çıktısı temizliği (dist/)', () =>
   it('içerikte anahtar, yedek, paket ya da ham CSV izi yok', () => {
     expect(files.filter((f) => !BINARY.test(f)).flatMap((f) => scan(f, readFileSync(join(DIST, f), 'utf8')))).toEqual([])
   })
+
+  it('üyelerin indirdiği parçalar ham veri, analiz ve veri deposu kodu içermez', () => {
+    const scripts = files.filter((f) => /^assets\/.+\.js$/.test(f))
+    // Eski bir derleme çıktısında üye sayfası yoktur; o zaman bu denetim atlanır.
+    if (!scripts.some((f) => f.startsWith('assets/MemberApp-'))) return
+    expect(scripts.some((f) => f.startsWith('assets/AdminRoot-'))).toBe(true)
+    // Uygulamanın geri kalanı (AdminRoot) dışındaki her parça üye sayfasında yüklenebilir.
+    // CSV kolon adları, oran alanları, IndexedDB kitaplığı ve CSV okuyucu yalnızca AdminRoot'tadır.
+    for (const file of scripts.filter((f) => !f.startsWith('assets/AdminRoot-'))) {
+      const code = readFileSync(join(DIST, file), 'utf8')
+      for (const marker of ['Odds_', 'oddsHome', 'Pre-Match xG', 'FootyStats', 'IndexedDB', 'Dexie', 'aiVerdicts', 'scoreSnapshot']) expect(code, `${file}: ${marker}`).not.toContain(marker)
+    }
+  })
 })
 
 describe('temizlik desenleri', () => {

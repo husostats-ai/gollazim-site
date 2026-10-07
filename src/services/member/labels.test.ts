@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { MEMBER_CONFLICT_LABELS, MEMBER_RELIABILITY_LABELS, standingText } from './labels'
+import { ACCESS_DENIED_TEXT } from './crypto'
+import { MEMBER_CONFLICT_LABELS, MEMBER_ERROR_TEXTS, MEMBER_NOTICE_TEXTS, MEMBER_OUTCOMES, MEMBER_RELIABILITY_LABELS, MEMBER_STATUS_LABELS, STALE_DATA_TEXT, STALE_TABLE_LABEL, standingText } from './labels'
 import { MEMBER_RELIABILITY_LEVELS } from './schema'
 
 describe('üye etiketleri', () => {
@@ -14,8 +15,22 @@ describe('üye etiketleri', () => {
   })
 
   it('üyeye görünen hiçbir etiket ham veriye ya da oranlara değinmez', () => {
-    const all = [...Object.values(MEMBER_RELIABILITY_LABELS), ...Object.values(MEMBER_CONFLICT_LABELS)].join(' ')
-    expect(all).not.toMatch(/piyasa|oran|xg|csv/i)
+    const all = [
+      ...Object.values(MEMBER_RELIABILITY_LABELS),
+      ...Object.values(MEMBER_CONFLICT_LABELS),
+      ...Object.values(MEMBER_OUTCOMES).map((o) => o.label),
+      ...Object.values(MEMBER_STATUS_LABELS),
+      ...Object.values(MEMBER_ERROR_TEXTS),
+      ...Object.values(MEMBER_NOTICE_TEXTS),
+      STALE_DATA_TEXT,
+      STALE_TABLE_LABEL,
+    ].join(' ')
+    expect(all).not.toMatch(/piyasa|oran|xg|csv|kaynak|footystats|bağlantı|https?:\/\//i)
+  })
+
+  it('giriş hatasının metni tek ve geneldir; sonuç işaretleri sonuç görselindekiyle aynıdır', () => {
+    expect(MEMBER_ERROR_TEXTS.credentials).toBe(ACCESS_DENIED_TEXT)
+    expect(Object.values(MEMBER_OUTCOMES).map((o) => o.mark)).toEqual(['✓', '✗', '—', '···'])
   })
 
   it('lig sırası metni', () => {
