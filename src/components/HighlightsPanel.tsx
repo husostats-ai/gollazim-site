@@ -1,14 +1,22 @@
 import { useState } from 'react'
 import { getCategory } from '../config/categories'
 import { RELIABILITY_LABELS } from '../services/analysis/reliability'
-import { byKickoffTime, highlightOutcome, lockState, REFUSAL_TEXTS, summarizeHighlights } from '../services/highlights/highlights'
+import { byKickoffTime, HIGHLIGHT_OUTCOME_LABELS, highlightOutcome, lockState, REFUSAL_TEXTS, summarizeHighlights } from '../services/highlights/highlights'
 import { useApp } from '../state/AppContext'
 import { useNow } from '../state/useNow'
 import { toAppDateTime } from '../utils/date'
 import { formatDay, formatPlainDate } from '../utils/format'
 import { formatScore } from '../utils/score'
+import type { PickOutcome } from '../types'
 import DatePicker from './DatePicker'
-import OutcomeBadge from './OutcomeBadge'
+
+// Admin'in diğer ekranlarındaki sonuç rozetiyle aynı renkler; metin bu bölüme özgüdür.
+const OUTCOME_TONE: Record<PickOutcome, string> = {
+  won: 'border-win-line bg-win-soft text-win',
+  lost: 'border-loss-line bg-loss-soft text-loss-text',
+  void: 'border-navy-500 bg-navy-600 text-muted',
+  pending: 'border-navy-500 bg-navy-600 text-muted',
+}
 
 /** "8 Eki 2026 09:41" (Türkiye saati); aynı günse yalnızca saat */
 const addedText = (addedAt: string, day: string): string => {
@@ -108,7 +116,9 @@ export default function HighlightsPanel() {
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
                   {score && <span className="text-xs font-bold whitespace-nowrap">{score}</span>}
-                  <OutcomeBadge outcome={outcome} />
+                  <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-bold whitespace-nowrap ${OUTCOME_TONE[outcome]}`} data-testid="highlight-outcome" data-outcome={outcome}>
+                    {HIGHLIGHT_OUTCOME_LABELS[outcome]}
+                  </span>
                   {locked ? (
                     <span className="rounded-full border border-navy-500 px-2 py-0.5 text-[11px] font-bold whitespace-nowrap text-muted" title="Maç başladı; seçim kilitli, kaldırılamaz.">
                       🔒 Kilitli

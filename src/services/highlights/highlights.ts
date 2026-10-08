@@ -99,6 +99,17 @@ export function highlightOutcome(record: Pick_<Highlight, 'categoryId'>, pick: P
   return result ? evaluatePick(record.categoryId, result) : 'pending'
 }
 
+/**
+ * Bu bölümde gösterilen sonuç etiketleri. Admin'in diğer ekranlarındaki rozet metinlerinden
+ * (OUTCOME_LABELS) bilerek ayrıdır; yalnızca "Günün öne çıkanları" listesinde kullanılır.
+ */
+export const HIGHLIGHT_OUTCOME_LABELS: Record<PickOutcome, string> = {
+  won: 'Tuttu',
+  lost: 'Tutmadı',
+  void: 'Değerlendirilemedi',
+  pending: 'Bekliyor',
+}
+
 export interface HighlightSummary {
   selected: number
   won: number
