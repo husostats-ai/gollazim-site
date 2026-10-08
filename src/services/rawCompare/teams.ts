@@ -44,3 +44,15 @@ export function teamDistance(a: string, b: string): number | null {
 }
 
 export const sameTeam = (a: string, b: string): boolean => teamDistance(a, b) !== null
+
+/**
+ * Rakip adı karşılaştırması için daha gevşek ölçü: adlardan biri ötekinin başıysa da aynı sayılır
+ * ("Lusail" / "Lusail City"). Yalnızca aynı takımın aynı tarihli satırında, gereksiz "rakip adı
+ * farklı" uyarısını önlemek için kullanılır; takım eşleştirmede kullanılmaz.
+ */
+export function sameOpponent(a: string, b: string): boolean {
+  if (sameTeam(a, b)) return true
+  const [ta, tb] = [normalizeTeam(a).split(' '), normalizeTeam(b).split(' ')]
+  const [short, long] = ta.length <= tb.length ? [ta, tb] : [tb, ta]
+  return short[0] !== '' && short.every((token, i) => token === long[i])
+}

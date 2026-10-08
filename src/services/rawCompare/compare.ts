@@ -1,7 +1,7 @@
 import type { H2HRow, LastRow, ParsedAnswer, Score, TotalRow, Venue } from './parser'
 import { fold } from './parser'
 import { checkTotal, computeRates, leagueRows, venueRates, type TeamRates, type TotalCheck, type VenueRates } from './rates'
-import { sameTeam, teamDistance } from './teams'
+import { sameOpponent, sameTeam, teamDistance } from './teams'
 
 // İki yapay zekâ cevabını maç maç, satır satır karşılaştırır. Saf fonksiyonlardır.
 //   kırmızı: maç sonu skoru farklı ya da TOPLAM satırlarla tutmuyor
@@ -233,7 +233,7 @@ export function compareAnswers({ a, b, labels, fixtures }: CompareInput): MatchC
               if (ra.ft !== null || rb.ft !== null) warn('blue', `${what}: maç sonu skoru yalnızca ${labels[ra.ft ? 'A' : 'B']} cevabında var (${showScore(ra.ft ?? rb.ft)})`)
             } else if (!sameScore(ra.ft, rb.ft)) warn('red', `${what}: maç sonu skoru farklı; ${labels.A} ${showScore(ra.ft)}, ${labels.B} ${showScore(rb.ft)}`)
             if (ra.ht !== null && rb.ht !== null && !sameScore(ra.ht, rb.ht)) warn('yellow', `${what}: devre skoru farklı; ${labels.A} ${showScore(ra.ht)}, ${labels.B} ${showScore(rb.ht)}`)
-            if (!sameTeam(ra.opponent, rb.opponent)) warn('yellow', `${what}: rakip adı farklı; ${labels.A} ${ra.opponent}, ${labels.B} ${rb.opponent}`)
+            if (!sameOpponent(ra.opponent, rb.opponent)) warn('yellow', `${what}: rakip adı farklı; ${labels.A} ${ra.opponent}, ${labels.B} ${rb.opponent}`)
             if (ra.venue !== rb.venue) warn('yellow', `${what}: İÇ / DIŞ farklı; ${labels.A} ${showVenue(ra.venue)}, ${labels.B} ${showVenue(rb.venue)}`)
             if (ra.competition !== rb.competition) warn('yellow', `${what}: yarışma farklı; ${labels.A} ${ra.competitionText || 'bilinmiyor'}, ${labels.B} ${rb.competitionText || 'bilinmiyor'}`)
             // Doğrulanmış satır: maç sonu skoru iki cevapta aynı. Devre skoru, iç / dış ve yarışma
