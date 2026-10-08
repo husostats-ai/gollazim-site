@@ -1,4 +1,4 @@
-import { RELIABILITY_LABELS, SAMPLE_HINT, sampleText } from '../services/analysis/reliability'
+import { DATA_LABELS, DATA_TERM, SAMPLE_HINT, sampleText } from '../services/analysis/reliability'
 import type { Reliability, ReliabilityLevel } from '../services/analysis/types'
 
 const TONE: Record<ReliabilityLevel, string> = {
@@ -43,8 +43,8 @@ export default function ReliabilityBadge({
         compact ? 'whitespace-nowrap' : 'flex-wrap'
       } ${TONE[level]}`}
     >
-      {!compact && !isMarket && <span className="font-normal opacity-80">Veri güvenilirliği:</span>}
-      {compact && level === 'unmeasured' ? 'Güv. ölçülemedi' : RELIABILITY_LABELS[level]}
+      {!compact && !isMarket && <span className="font-normal opacity-80">{DATA_TERM}:</span>}
+      {compact && level === 'unmeasured' ? 'Veri ölçülemedi' : DATA_LABELS[level]}
       {sample && <span className="font-normal opacity-80">· {sample}</span>}
     </span>
   )

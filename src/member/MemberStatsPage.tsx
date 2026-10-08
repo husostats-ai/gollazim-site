@@ -182,7 +182,7 @@ export default function MemberStatsPage({ payload, initialScope = 'all', initial
             <Card title="KATEGORİ BAZLI BAŞARI" note="Çizgili çubuk: az veri (henüz az sayıda sonuçlanan öneri).">
               <Bars rows={rowsOf(stats.byCategory, categoryLabel)} />
             </Card>
-            <Card title="GÜVENİLİRLİĞE GÖRE BAŞARI" note="Önerinin sonuçlandığı andaki güvenilirlik seviyesine göre.">
+            <Card title="GEÇMİŞ VERİ MİKTARINA GÖRE BAŞARI" note="Geçmiş veri: yüzdenin kaç maçlık veriye dayandığı (önerinin sonuçlandığı andaki seviye). Maçın sonucuna güveni anlatmaz.">
               <Bars rows={rowsOf(stats.byReliability, (key) => MEMBER_RELIABILITY_LABELS[key as ReliabilityLevel] ?? key)} />
             </Card>
           </div>

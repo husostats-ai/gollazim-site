@@ -1,6 +1,6 @@
 import Stars from '../components/Stars'
 import type { ReliabilityLevel } from '../services/analysis/types'
-import { MEMBER_CONFLICT_LABELS, MEMBER_OUTCOMES, MEMBER_RELIABILITY_LABELS, MEMBER_STATUS_LABELS, STALE_TABLE_LABEL, standingText } from '../services/member/labels'
+import { MEMBER_CONFLICT_LABELS, MEMBER_DATA_TERM, MEMBER_OUTCOMES, MEMBER_RELIABILITY_LABELS, memberSampleText, MEMBER_STATUS_LABELS, STALE_TABLE_LABEL, standingText } from '../services/member/labels'
 import type { MemberItem, MemberMatch, MemberStanding } from '../services/member/payload'
 import type { PickOutcome } from '../types'
 import { categoryLabel as labelOf, isOverstated, percentKind } from './view'
@@ -8,7 +8,7 @@ import { categoryLabel as labelOf, isOverstated, percentKind } from './view'
 // Renkler düz onaltılık değerlerdir (Chrome < 111 oklch paletini çizemez) ve yalnızca bu kartta
 // kullanılır; admin kartının rozetleri ayrıdır.
 //
-// Güvenilirlik rozeti: yalnızca çerçeve, dolu zemin yok, kırmızı ve yeşil yok. Sonuç rozetiyle
+// "Geçmiş veri" rozeti: yalnızca çerçeve, dolu zemin yok, kırmızı ve yeşil yok. Sonuç rozetiyle
 // (aşağıda) karışmasın diye bilerek daha soluktur. Düşük seviyenin turuncusu, "Model çelişkisi"
 // rozetinin dolu sarısından ayrıdır; ölçülemeyen seviyeler kesik çerçevelidir.
 const RELIABILITY_TONE: Record<ReliabilityLevel, string> = {
@@ -59,7 +59,7 @@ export default function MemberCard({ rank, match, item, categoryLabel, percentLa
   const outcome = item.outcome ? MEMBER_OUTCOMES[item.outcome] : null
   const status = match.status ? MEMBER_STATUS_LABELS[match.status] : null
   const isModelBased = item.reliability === 'market' || item.reliability === 'market-partial'
-  // %100 ama az maça dayanıyorsa yüzde sönük, güvenilirlik rozeti belirgin gösterilir.
+  // %100 ama az maça dayanıyorsa yüzde sönük, "geçmiş veri" rozeti belirgin gösterilir.
   const overstated = isOverstated(item)
   // Sürüm 1 paketlerde bu alan yoktur.
   const others = item.others ?? []
@@ -112,8 +112,14 @@ export default function MemberCard({ rank, match, item, categoryLabel, percentLa
           data-testid="member-reliability"
         >
           {overstated && <span aria-hidden="true">⚠</span>}
-          {!isModelBased && <span className={overstated ? '' : 'font-normal opacity-80'}>Güvenilirlik:</span>}
+          {!isModelBased && <span className={overstated ? '' : 'font-normal opacity-80'}>{MEMBER_DATA_TERM}:</span>}
           {MEMBER_RELIABILITY_LABELS[item.reliability]}
+          {/* Tahmini maç sayısı (sürüm 5 paketlerde, sayı çıkarılabildiyse); eski paketlerde yalnızca seviye görünür. */}
+          {item.sample !== undefined && (
+            <span className={overstated ? '' : 'font-normal opacity-80'} data-testid="member-sample">
+              · {memberSampleText(item.sample)}
+            </span>
+          )}
         </span>
         {item.conflict && (
           <span className={`${BADGE} border-warn-line bg-warn-soft whitespace-nowrap text-warn`} data-testid="member-conflict" data-conflict={item.conflict}>

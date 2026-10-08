@@ -13,7 +13,7 @@ import SideGoalsStatsCard from '../components/stats/SideGoalsStatsCard'
 import StatsTable from '../components/stats/StatsTable'
 import TrendChart from '../components/stats/TrendChart'
 import { getCategory, GROUPS } from '../config/categories'
-import { RELIABILITY_LABELS } from '../services/analysis/reliability'
+import { DATA_LABELS } from '../services/analysis/reliability'
 import { buildAiStats } from '../services/ai/aiStats'
 import { aiRepo, matchesRepo, picksRepo, resultsRepo, sharedRepo } from '../services/data'
 import { buildStarStats, recomputedNote } from '../services/stats/starStats'
@@ -107,7 +107,7 @@ export default function StatsPage() {
 
   const { overall } = stats
   const categoryRows = stats.byCategory.map((b) => ({ ...b, label: getCategory(b.key).label }))
-  const reliabilityRows = stats.byReliability.map((b) => ({ ...b, label: RELIABILITY_LABELS[b.key] }))
+  const reliabilityRows = stats.byReliability.map((b) => ({ ...b, label: DATA_LABELS[b.key] }))
 
   const labelFor: Record<Period, (b: Bucket) => { label: string; shortLabel: string }> = {
     daily: (b) => ({
@@ -159,7 +159,7 @@ export default function StatsPage() {
             </div>
             <p className="min-w-0 text-xs text-muted" data-testid="stats-scope-note">
               {scope === 'shared'
-                ? `${SCOPE_LABELS.shared}: ana kategoriler, tüm kategoriler, kategori, güvenilirlik ve zaman tabloları yalnızca Story görselinde paylaşılan dondurulmuş önerileri sayar. Kalibrasyon, model/piyasa ve yapay zekâ kartları her zaman tüm önerileri kullanır.`
+                ? `${SCOPE_LABELS.shared}: ana kategoriler, tüm kategoriler, kategori, geçmiş veri ve zaman tabloları yalnızca Story görselinde paylaşılan dondurulmuş önerileri sayar. Kalibrasyon, model/piyasa ve yapay zekâ kartları her zaman tüm önerileri kullanır.`
                 : `${SCOPE_LABELS.all}: tüm dondurulmuş öneriler sayılır.`}
             </p>
           </div>
@@ -207,12 +207,12 @@ export default function StatsPage() {
             </Card>
 
             <Card
-              title="VERİ GÜVENİLİRLİĞİNE GÖRE BAŞARI"
-              note="Önerinin dondurulduğu andaki güvenilirlik rozetine göre. Yüksek güvenilirlikte oran belirgin biçimde daha iyiyse rozet işe yarıyor demektir."
+              title="GEÇMİŞ VERİ MİKTARINA GÖRE BAŞARI"
+              note="Önerinin dondurulduğu andaki “geçmiş veri” rozetine göre (yüzdenin kaç maçlık veriye dayandığı). “Çok” satırında oran belirgin biçimde daha iyiyse rozet işe yarıyor demektir."
             >
               <RateBars rows={reliabilityRows} />
               <TableToggle>
-                <StatsTable firstColumn="Güvenilirlik" rows={reliabilityRows} />
+                <StatsTable firstColumn="Geçmiş veri" rows={reliabilityRows} />
               </TableToggle>
             </Card>
           </div>
@@ -226,12 +226,12 @@ export default function StatsPage() {
               {recomputedNote(starStats) && (
                 <p className="mt-2 text-xs text-muted" data-testid="stars-recomputed">
                   {recomputedNote(starStats)}: yıldız kaydı eklenmeden önce dondurulmuş önerilerde yıldız, kayıtlı yüzde,
-                  güvenilirlik ve model çelişkisinden yeniden bulundu.
+                  geçmiş veri seviyesi ve model çelişkisinden yeniden bulundu.
                 </p>
               )}
               {starStats.missing > 0 && (
                 <p className="mt-2 text-xs text-muted" data-testid="stars-missing">
-                  {starStats.missing} eski öneride (Taraf & Gol ya da güvenilirliği kayıtlı olmayan) yıldız bulunamadığı için bu
+                  {starStats.missing} eski öneride (Taraf & Gol ya da geçmiş veri seviyesi kayıtlı olmayan) yıldız bulunamadığı için bu
                   tabloya girmez.
                 </p>
               )}

@@ -21,6 +21,8 @@ export const MEMBER_KEYS = {
   standing: ['rank', 'played', 'stale'],
   list: ['categoryId', 'items'],
   item: ['match', 'percent', 'model', 'conflict', 'stars', 'reliability', 'outcome', 'detail', 'others'],
+  /** Sürüm 5: önerinin isteğe bağlı alanı (tahmini maç sayısı); sayı çıkarılamadıysa bulunmaz */
+  itemOptional: ['sample'],
   /** Sürüm 1 paketlerdeki öneri (others alanı yok) */
   itemV1: ['match', 'percent', 'model', 'conflict', 'stars', 'reliability', 'outcome', 'detail'],
   other: ['categoryId', 'percent', 'reliability'],
@@ -42,6 +44,14 @@ const STATUSES = ['pending', 'completed', 'postponed', 'cancelled']
 const STAR_KEYS = ['5', '4', '3', '2', '1']
 
 const MAX_DAYS = 7
+/**
+ * Tahmini maç sayısının sınırları ve seviyeyle tutarlılığı. Değerler analiz tarafındaki
+ * eşiklerle (8 ve 16) aynıdır; bu dosya üye sitesine girdiği için analiz kodu içe aktarılmaz,
+ * eşitlik testle denetlenir.
+ */
+export const SAMPLE_RANGE = { min: 2, max: 40 } as const
+export const SAMPLE_LEVEL_LIMITS = { medium: 8, high: 16 } as const
+const levelOfSample = (sample: number): string => (sample >= SAMPLE_LEVEL_LIMITS.high ? 'high' : sample >= SAMPLE_LEVEL_LIMITS.medium ? 'medium' : 'low')
 /** Bir günde pakete girebilecek en fazla öne çıkan seçim */
 const MAX_HIGHLIGHTS = 60
 const MAX_NAME = 120
@@ -61,10 +71,10 @@ const fail = (path: string, message: string): never => {
   throw new MemberPayloadError(`Yayın paketi geçersiz (${path}): ${message}`)
 }
 
-function object(value: unknown, path: string, keys: readonly string[]): Obj {
+function object(value: unknown, path: string, keys: readonly string[], optional: readonly string[] = []): Obj {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return fail(path, 'nesne bekleniyor')
   const actual = Object.keys(value)
-  const extra = actual.filter((k) => !keys.includes(k))
+  const extra = actual.filter((k) => !keys.includes(k) && !optional.includes(k))
   if (extra.length > 0) return fail(path, `izinli olmayan alan: ${extra.join(', ')}`)
   const missing = keys.filter((k) => !actual.includes(k))
   if (missing.length > 0) return fail(path, `eksik alan: ${missing.join(', ')}`)
@@ -203,7 +213,7 @@ function day(value: unknown, path: string, version: number): void {
     if (l.categoryId !== CATEGORIES[i].id) fail(`${p}.categoryId`, 'kategoriler kayıt defterindeki sırada olmalı')
     array(l.items, `${p}.items`, MAX_MATCHES_PER_CATEGORY).forEach((raw, j) => {
       const q = `${p}.items[${j}]`
-      const item = object(raw, q, version === 1 ? MEMBER_KEYS.itemV1 : MEMBER_KEYS.item)
+      const item = object(raw, q, version === 1 ? MEMBER_KEYS.itemV1 : MEMBER_KEYS.item, version >= 5 ? MEMBER_KEYS.itemOptional : [])
       integer(item.match, `${q}.match`, 0, matches.length - 1)
       integer(item.percent, `${q}.percent`, 0, 100)
       nullable(item.model, (v) => integer(v, `${q}.model`, 0, 100))
@@ -211,6 +221,8 @@ function day(value: unknown, path: string, version: number): void {
       nullable(item.conflict, (v) => oneOf(v, `${q}.conflict`, [getCategory(CATEGORIES[i].id).group === 'sidegoals' ? 'hesap' : 'model']))
       integer(item.stars, `${q}.stars`, 1, 5)
       oneOf(item.reliability, `${q}.reliability`, MEMBER_RELIABILITY_LEVELS)
+      // Tahmini maç sayısı yalnızca seviyesi ondan çıkan öneride bulunur ve seviyeyle tutarlıdır.
+      if (item.sample !== undefined && levelOfSample(integer(item.sample, `${q}.sample`, SAMPLE_RANGE.min, SAMPLE_RANGE.max)) !== item.reliability) fail(`${q}.sample`, 'seviyeyle tutarlı olmalı')
       nullable(item.outcome, (v) => oneOf(v, `${q}.outcome`, OUTCOMES))
       nullable(item.detail, (v) => text(v, `${q}.detail`, 20, DETAIL))
       if (placed.has(`${i}:${item.match}`)) fail(`${q}.match`, 'aynı maç bir listede iki kez yer alamaz')
@@ -238,7 +250,7 @@ function day(value: unknown, path: string, version: number): void {
 /** Paketi şemaya karşı denetler; uymuyorsa MemberPayloadError fırlatır. */
 export function assertMemberPayload(value: unknown): asserts value is MemberPayload {
   const p = object(value, 'paket', MEMBER_KEYS.payload)
-  if (p.v !== 1 && p.v !== 2 && p.v !== 3 && p.v !== 4) fail('paket.v', 'desteklenmeyen paket sürümü')
+  if (p.v !== 1 && p.v !== 2 && p.v !== 3 && p.v !== 4 && p.v !== 5) fail('paket.v', 'desteklenmeyen paket sürümü')
   integer(p.n, 'paket.n', 1, COUNT_MAX)
   text(p.publishedAt, 'paket.publishedAt', 24, ISO)
   const texts = object(p.texts, 'paket.texts', MEMBER_KEYS.texts)

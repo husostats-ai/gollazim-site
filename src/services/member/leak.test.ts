@@ -6,12 +6,13 @@ import { toAppDateTime } from '../../utils/date'
 import { shiftDate } from '../../utils/format'
 import { highlightInputOf, PUBLISH_DAY_COUNT } from '../memberAdmin/publish'
 import { analyzeDay } from '../analysis/engine'
+import { estimateSampleSize, levelForSample, RELIABILITY_LIMITS } from '../analysis/reliability'
 import { CATEGORIES } from '../../config/categories'
 import { TEXT_FIELDS } from '../../config/columnAliases'
 import { isBackupFile } from '../data/backupFormat'
 import { DAY, dayHighlights, dayMatches, HIGHLIGHT_PERCENT, HIGHLIGHTS, MATCHES, memberInput, PICKS, PREVIOUS_DAY, RAW_CANARIES, RAW_HEADERS, RAW_STAT_KEYS, RESULTS, URL_CANARY } from './__fixtures__/rawData'
 import { buildMemberPayload, type MemberPayload, type MemberPayloadInput } from './payload'
-import { assertMemberPayload, MEMBER_KEYS, MemberPayloadError } from './schema'
+import { assertMemberPayload, MEMBER_KEYS, MemberPayloadError, SAMPLE_LEVEL_LIMITS, SAMPLE_RANGE } from './schema'
 
 // SIZINTI TESTLERİ: yayın paketinin düz hâlinde ham veriden hiçbir iz bulunmamalı.
 // Veri (bkz. __fixtures__/rawData.ts) gerçek dışa aktarımın 107 kolonunu taşır ve ham
@@ -153,6 +154,7 @@ describe('yayın paketi: ham veri sızıntısı', () => {
       standing: ['rank', 'played', 'stale'],
       list: ['categoryId', 'items'],
       item: ['match', 'percent', 'model', 'conflict', 'stars', 'reliability', 'outcome', 'detail', 'others'],
+      itemOptional: ['sample'],
       itemV1: ['match', 'percent', 'model', 'conflict', 'stars', 'reliability', 'outcome', 'detail'],
       other: ['categoryId', 'percent', 'reliability'],
       statsRoot: ['all', 'shared'],
@@ -237,7 +239,7 @@ describe('yayın paketi: şema denetimi fazladan ya da eksik alanı reddeder', (
     expect(broken((p) => void ((firstItem(p) as { conflict: unknown }).conflict = 'piyasa'))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days[0].lists[0].items[0].conflict = 'hesap'))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days[0].lists.find((l) => l.categoryId === 'homeWin15')!.items[0].conflict = 'model'))).toThrow(MemberPayloadError)
-    expect(broken((p) => void ((p as { v: number }).v = 5))).toThrow(MemberPayloadError)
+    expect(broken((p) => void ((p as { v: number }).v = 6))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days = []))).toThrow(MemberPayloadError)
     expect(broken((p) => void p.days[0].lists.reverse())).toThrow(MemberPayloadError)
   })
@@ -269,7 +271,7 @@ describe('yayın paketi: "aynı maçın diğer önerileri" yalnızca paketteki �
           entries += item.others!.length
         }
     expect(entries).toBeGreaterThan(100)
-    expect(payload.v).toBe(4)
+    expect(payload.v).toBe(5)
   })
 
   it('pakete girmeyen (ilk 15 dışında kalan) öneri bu satıra da girmez', () => {
@@ -304,6 +306,7 @@ describe('yayın paketi: "aynı maçın diğer önerileri" yalnızca paketteki �
     ;(v1 as { v: number }).v = 1
     for (const scope of ['all', 'shared'] as const) delete v1.statistics[scope].main
     for (const day of v1.days) for (const list of day.lists) for (const item of list.items) delete item.others
+    for (const day of v1.days) for (const list of day.lists) for (const item of list.items) delete item.sample
     for (const day of v1.days) delete day.highlights
     expect(() => assertMemberPayload(v1)).not.toThrow()
     // Sürüm 1 pakette bu alan bulunamaz; sürüm 2 pakette bulunmak zorundadır.
@@ -344,6 +347,7 @@ describe('yayın paketi: ana kategorilerin toplu başarısı (sürüm 3)', () =>
     ;(v2 as { v: number }).v = 2
     for (const scope of ['all', 'shared'] as const) delete v2.statistics[scope].main
     for (const day of v2.days) delete day.highlights
+    for (const day of v2.days) for (const list of day.lists) for (const item of list.items) delete item.sample
     expect(() => assertMemberPayload(v2)).not.toThrow()
     // Sürüm 2 pakette bu alan bulunamaz; sürüm 3 pakette bulunmak zorundadır.
     expect(rejects((p) => void ((p as { v: number }).v = 2))).toThrow(MemberPayloadError)
@@ -436,12 +440,105 @@ describe('yayın paketi: günün öne çıkanları (sürüm 4)', () => {
     const v3 = copy()
     ;(v3 as { v: number }).v = 3
     for (const day of v3.days) delete day.highlights
+    for (const day of v3.days) for (const list of day.lists) for (const item of list.items) delete item.sample
     expect(() => assertMemberPayload(v3)).not.toThrow()
     // Sürüm 3 pakette bu alan bulunamaz; sürüm 4 pakette bulunmak zorundadır.
     expect(rejects((p) => void ((p as { v: number }).v = 3))).toThrow(MemberPayloadError)
     const v4 = JSON.parse(JSON.stringify(v3)) as MemberPayload
     ;(v4 as { v: number }).v = 4
     expect(() => assertMemberPayload(v4)).toThrow('eksik alan: highlights')
+  })
+})
+
+describe('yayın paketi: tahmini maç sayısı (sürüm 5)', () => {
+  const copy = (): MemberPayload => JSON.parse(text) as MemberPayload
+  const rejects = (mutate: (p: MemberPayload) => void) => () => {
+    const p = copy()
+    mutate(p)
+    assertMemberPayload(p)
+  }
+  type Loose = Record<string, unknown>
+  const items = payload.days.flatMap((day) => day.lists.flatMap((list) => list.items.map((item) => ({ day, list, item }))))
+  const withSample = (p: MemberPayload) => p.days[0].lists.flatMap((l) => l.items).find((i) => i.sample !== undefined)!
+  const withoutSample = (p: MemberPayload) => p.days[0].lists.flatMap((l) => l.items).find((i) => i.sample === undefined)!
+
+  it('sayı, analizdeki tahmini örneklemin aynısıdır; seviye ondan çıkar', () => {
+    let counted = 0
+    for (const { day, item } of items) {
+      if (item.sample === undefined) continue
+      const shown = day.matches[item.match]
+      const match = dayMatches(day.date).find((m) => m.home === shown.home && m.away === shown.away)!
+      expect(item.sample).toBe(estimateSampleSize(match))
+      expect(item.reliability).toBe(levelForSample(item.sample))
+      counted++
+    }
+    expect(counted).toBeGreaterThan(30)
+  })
+
+  it('sayı çıkarılamayan öneride alan hiç yoktur (null ya da 0 yazılmaz)', () => {
+    for (const { item } of items) {
+      const measured = item.reliability === 'low' || item.reliability === 'medium' || item.reliability === 'high'
+      expect('sample' in item, `${item.reliability}`).toBe(measured)
+      if (measured) expect(Number.isInteger(item.sample) && item.sample! >= SAMPLE_RANGE.min && item.sample! <= SAMPLE_RANGE.max).toBe(true)
+    }
+    // Korner / kart (ölçülemedi) ve Taraf & Gol (model tabanlı) listelerinde sayı yok.
+    expect(items.filter(({ item }) => item.reliability === 'unmeasured').length).toBeGreaterThan(0)
+    expect(items.filter(({ item }) => item.reliability === 'market' || item.reliability === 'market-partial').length).toBeGreaterThan(0)
+  })
+
+  it('sayı yalnızca önerinin kendisinde: diğer öneriler satırına, öne çıkanlara ve istatistiğe girmez', () => {
+    for (const { item } of items) for (const other of item.others!) expect(Object.keys(other)).toEqual(['categoryId', 'percent', 'reliability'])
+    const elsewhere = collect([payload.days.map((d) => d.highlights), payload.days.map((d) => d.matches), payload.statistics, payload.texts])
+    expect(elsewhere.keys.has('sample')).toBe(false)
+    // Pakete bu sürümde başka hiçbir yeni alan girmedi: izinli anahtarlara eklenen tek ad budur.
+    expect(MEMBER_KEYS.itemOptional).toEqual(['sample'])
+    expect(MEMBER_KEYS.highlight).toEqual(['home', 'away', 'league', 'time', 'categoryId', 'status', 'score', 'outcome'])
+  })
+
+  it('şema: alan isteğe bağlıdır; seviyeyle tutarsız, aralık dışı ya da tam sayı olmayan değer reddedilir', () => {
+    expect(() => assertMemberPayload(copy())).not.toThrow()
+    expect(rejects((p) => void delete withSample(p).sample)).not.toThrow()
+    expect(rejects((p) => void (withSample(p).sample = 4.5))).toThrow(MemberPayloadError)
+    expect(rejects((p) => void (withSample(p).sample = 1))).toThrow(MemberPayloadError)
+    expect(rejects((p) => void (withSample(p).sample = 41))).toThrow(MemberPayloadError)
+    expect(rejects((p) => void ((withSample(p) as unknown as Loose).sample = '12'))).toThrow(MemberPayloadError)
+    expect(rejects((p) => void ((withSample(p) as unknown as Loose).sample = null))).toThrow(MemberPayloadError)
+    // Seviye sayıdan çıkar: uyuşmayan çift kabul edilmez.
+    expect(rejects((p) => void (withSample(p).sample = withSample(p).reliability === 'high' ? 4 : 30))).toThrow('seviyeyle tutarlı olmalı')
+    // Sayısı olamayacak seviyede (ölçülemedi, model tabanlı) sayı bulunamaz.
+    expect(rejects((p) => void (withoutSample(p).sample = 12))).toThrow('seviyeyle tutarlı olmalı')
+    // Başka nesnelere eklenemez.
+    expect(rejects((p) => void ((p.days[0].highlights![0] as unknown as Loose).sample = 12))).toThrow('izinli olmayan alan: sample')
+    expect(rejects((p) => void ((p.days[0].matches[0] as unknown as Loose).sample = 12))).toThrow('izinli olmayan alan: sample')
+  })
+
+  it('seviye sınırları analizdeki eşiklerle aynıdır (8 ve 16)', () => {
+    expect(SAMPLE_LEVEL_LIMITS).toEqual(RELIABILITY_LIMITS)
+    expect(SAMPLE_LEVEL_LIMITS).toEqual({ medium: 8, high: 16 })
+    for (const n of [2, 7, 8, 15, 16, 40]) {
+      const p = copy()
+      const item = withSample(p)
+      const day = p.days[0]
+      const level = levelForSample(n)
+      // Aynı maçın diğer listelerdeki satırları da tutarlı kalsın diye yalnızca bu öneri ve ona bakan satırlar değişir.
+      const listIndex = day.lists.findIndex((l) => l.items.includes(item))
+      for (const list of day.lists) for (const entry of list.items) for (const other of entry.others!) if (entry.match === item.match && other.categoryId === day.lists[listIndex].categoryId) other.reliability = level
+      item.sample = n
+      item.reliability = level
+      expect(() => assertMemberPayload(p), `${n} -> ${level}`).not.toThrow()
+    }
+  })
+
+  it('sürüm 4 paket (bu alan olmadan) hâlâ kabul edilir; sürüm 4 pakette alan bulunamaz', () => {
+    const v4 = copy()
+    ;(v4 as { v: number }).v = 4
+    for (const day of v4.days) for (const list of day.lists) for (const item of list.items) delete item.sample
+    expect(() => assertMemberPayload(v4)).not.toThrow()
+    expect(rejects((p) => void ((p as { v: number }).v = 4))).toThrow('izinli olmayan alan: sample')
+    // Sürüm 5 pakette alan zorunlu değildir (sayı çıkarılamayan öneriler).
+    const v5 = JSON.parse(JSON.stringify(v4)) as MemberPayload
+    ;(v5 as { v: number }).v = 5
+    expect(() => assertMemberPayload(v5)).not.toThrow()
   })
 })
 

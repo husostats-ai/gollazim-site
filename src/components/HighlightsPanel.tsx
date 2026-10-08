@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getCategory } from '../config/categories'
-import { RELIABILITY_LABELS } from '../services/analysis/reliability'
+import { DATA_LABELS } from '../services/analysis/reliability'
 import { settingsRepo } from '../services/data'
 import { createHighlightStoryPng, highlightStoryFileName, highlightStoryPages, type HighlightStoryData, type HighlightStoryKind, type HighlightStoryRow } from '../services/image/highlightStory'
 import type { HighlightSummary } from '../services/highlights/highlights'
@@ -77,7 +77,7 @@ function StoryImages({ date, rows, summary }: { date: string; rows: HighlightSto
     <div className="mt-4 border-t border-line pt-3" data-testid="highlight-stories">
       <h3 className="text-sm font-extrabold tracking-wide">GÖRSELLER</h3>
       <p className="mt-1 text-xs text-muted">
-        Görsellerde yüzde ve güvenilirlik yazmaz. Paylaşılan kaydı oluşturmaz.
+        Görsellerde yüzde ve geçmiş veri etiketi yazmaz. Paylaşılan kaydı oluşturmaz.
         {pageCount > 1 && ` ${rows.length} seçim ${pageCount} görsele bölünür (1/${pageCount} …).`}
       </p>
       {summary.pending > 0 && (
@@ -192,7 +192,7 @@ export default function HighlightsPanel() {
                   <p className="mt-0.5 text-[11px] break-words text-muted">
                     <span className="font-bold text-brand">{getCategory(record.categoryId).label}</span>
                     {' · '}eklenirken %{record.percent}
-                    {record.reliability && ` · güvenilirlik: ${RELIABILITY_LABELS[record.reliability]}`}
+                    {record.reliability && ` · geçmiş veri: ${DATA_LABELS[record.reliability]}`}
                     {record.league && ` · ${record.league}`}
                   </p>
                   <p className="mt-0.5 text-[11px] text-muted">

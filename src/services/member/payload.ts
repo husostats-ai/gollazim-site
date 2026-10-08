@@ -19,7 +19,7 @@ import { assertMemberPayload } from './schema'
 //
 // Pakete GİRMEZ: ham CSV (Match.stats), FootyStats kolonları ve bağlantıları, oranlar,
 // piyasa yüzdesi ve piyasa çelişkisi, xG, gol/korner/kart ortalamaları, "Kaynak" satırı,
-// rozet ipucu metinleri, "xG zayıf" ve "model piyasadan sapıyor" rozetleri, örneklem sayısı, eşikler ve diğer ayarlar, yapay zekâ kararları,
+// rozet ipucu metinleri, "xG zayıf" ve "model piyasadan sapıyor" rozetleri, eşikler ve diğer ayarlar, yapay zekâ kararları,
 // skor olasılıkları, paylaşım kayıtları, kalibrasyon tabloları.
 //
 // Yeni bir alan eklemek: buradaki tipe ve kurucuya, schema.ts'teki denetime ve
@@ -29,10 +29,11 @@ import { assertMemberPayload } from './schema'
  * Paket sürümü. 2: her önerinin yanında aynı maçın diğer listelerdeki önerileri (others) var.
  * 3: istatistiklerde ana kategorilerin toplu başarısı (main) var.
  * 4: her günde "günün öne çıkanları" seçimleri (highlights) var.
- * Sürüm 1 (others alanı olmayan), sürüm 2 (main alanı olmayan) ve sürüm 3 (highlights alanı olmayan)
- * paketler üye sayfasında hâlâ açılır.
+ * 5: önerilerde tahmini maç sayısı (sample) bulunabilir.
+ * Sürüm 1 (others alanı olmayan), sürüm 2 (main alanı olmayan), sürüm 3 (highlights alanı olmayan)
+ * ve sürüm 4 (sample alanı olmayan) paketler üye sayfasında hâlâ açılır.
  */
-export const MEMBER_PAYLOAD_VERSION = 4
+export const MEMBER_PAYLOAD_VERSION = 5
 
 /** Günlük dökümde pakete giren en fazla gün sayısı (en yeniler) */
 export const MEMBER_DAILY_LIMIT = 90
@@ -135,6 +136,12 @@ export interface MemberItem {
   /** 1-5 */
   stars: number
   reliability: ReliabilityLevel
+  /**
+   * Yüzdenin dayandığı tahmini maç sayısı (alt sınır: ev sahibinin iç saha + deplasmanın dış saha
+   * maçları). Yalnızca sayı çıkarılabildiyse vardır (seviye Az / Orta / Çok iken); çıkarılamadıysa
+   * alan hiç yazılmaz. Sürüm 1-4 paketlerde bu alan yoktur.
+   */
+  sample?: number
   /** Dondurulmuş önerinin sonucu; skor girilmediyse null */
   outcome: PickOutcome | null
   /** Sonucun kategoriye özgü ayrıntısı ("İY 1-0", "Korner 11"); yoksa null */
@@ -183,7 +190,7 @@ export interface MemberDay {
 }
 
 export interface MemberPayload {
-  v: 1 | 2 | 3 | typeof MEMBER_PAYLOAD_VERSION
+  v: 1 | 2 | 3 | 4 | typeof MEMBER_PAYLOAD_VERSION
   /** Yayın numarası */
   n: number
   /** Yayın anı (ISO) */
@@ -310,7 +317,7 @@ function dayOf(input: MemberPayloadInput, day: MemberDayInput, now: Date): Membe
   const itemOf = (prediction: Prediction): MemberItem => {
     const pick = pickByKey.get(`${prediction.match.id}|${prediction.categoryId}`)
     const detail = resultDetail(prediction.categoryId, resultById.get(prediction.match.id))
-    return {
+    const item: MemberItem = {
       match: indexOf(prediction.match),
       percent: prediction.percent,
       model: prediction.secondPercent ?? null,
@@ -322,6 +329,9 @@ function dayOf(input: MemberPayloadInput, day: MemberDayInput, now: Date): Membe
       // Aşağıda, tüm listeler kurulduktan sonra doldurulur.
       others: [],
     }
+    // Tahmini maç sayısı yalnızca çıkarılabildiyse yazılır; yoksa alan hiç bulunmaz.
+    if (prediction.reliability.sampleSize !== null) item.sample = prediction.reliability.sampleSize
+    return item
   }
 
   const lists: MemberList[] = CATEGORIES.map((category) => ({
