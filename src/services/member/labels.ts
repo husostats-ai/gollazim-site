@@ -7,10 +7,16 @@ import type { MemberConflict, MemberStanding } from './payload'
 // taşır; metinler burada üretilir. Admin ekranındaki etiketlerden bilerek ayrıdır:
 // üyeye ham veriye ya da oranlara değinen metin gösterilmez.
 
+/** Rozetin adı: seviye, yüzdenin kaç maçlık veriye dayandığını anlatır (maçın sonucuna güveni değil) */
+export const MEMBER_DATA_TERM = 'Geçmiş veri'
+
+/** "en az 4 maç": sayı tahmini bir alt sınırdır, gerçekte daha fazla olabilir */
+export const memberSampleText = (sample: number): string => `en az ${sample} maç`
+
 export const MEMBER_RELIABILITY_LABELS: Record<ReliabilityLevel, string> = {
-  low: 'Düşük',
+  low: 'Az',
   medium: 'Orta',
-  high: 'Yüksek',
+  high: 'Çok',
   unknown: 'Bilinmiyor',
   unmeasured: 'Ölçülemedi',
   market: 'Model tabanlı',

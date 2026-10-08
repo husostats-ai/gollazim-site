@@ -104,6 +104,26 @@ export const assessReliability = (match: Match): Reliability => {
 
 export const UNMEASURED: Reliability = { level: 'unmeasured', sampleSize: null }
 
+/**
+ * Arayüzde görünen ad ve seviye etiketleri. Seviye, yüzdenin kaç maçlık veriye dayandığını
+ * anlatır; maçın sonucuna duyulan güveni değil. Mantık, eşikler ve yıldız sınırları aynıdır;
+ * yalnızca görünen metin budur.
+ */
+export const DATA_TERM = 'Geçmiş veri'
+export const DATA_LABELS: Record<ReliabilityLevel, string> = {
+  low: 'Az',
+  medium: 'Orta',
+  high: 'Çok',
+  unknown: 'Bilinmiyor',
+  unmeasured: 'Ölçülemedi',
+  market: 'Piyasa tabanlı',
+  'market-partial': 'Piyasa (kısmi)',
+}
+
+/**
+ * AI ANALİZİ promptunda ve "Analiz için özet" metninde kullanılan ESKİ etiketler. Bu iki metin
+ * yapay zekâya girdi olduğu için bilerek değiştirilmedi; arayüz DATA_LABELS kullanır.
+ */
 export const RELIABILITY_LABELS: Record<ReliabilityLevel, string> = {
   low: 'Düşük',
   medium: 'Orta',

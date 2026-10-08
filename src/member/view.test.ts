@@ -274,7 +274,7 @@ describe('kategori listeleri ve üye kartı', () => {
     }
   })
 
-  it('kart alanları: saat, lig, hazır yüzde, model, yıldız, güvenilirlik, çelişki, sıra, skor, sonuç', () => {
+  it('kart alanları: saat, lig, hazır yüzde, model, yıldız, geçmiş veri, çelişki, sıra, skor, sonuç', () => {
     const drawn = cards(html(analysis(0, 'over25')))
     const done = drawn.find((c) => c.includes('Kuzey Yıldızı'))!
     expect(done).toContain('12:00')
@@ -284,7 +284,8 @@ describe('kategori listeleri ve üye kartı', () => {
     expect(done).toMatch(/Model %\d+/)
     expect(done).toContain('✓ Tuttu')
     expect(done).toContain('İY 1-0 · MS 3-1')
-    expect(done).toContain('Güvenilirlik:')
+    expect(done).toMatch(/Geçmiş veri: (Az|Orta|Çok) · en az \d+ maç/)
+    expect(done).not.toMatch(/Güvenilirlik|Düşük|Yüksek/)
     expect(done).toContain('⚠ Model çelişkisi')
     expect(done).toContain('Ev: 1. sıra · 8 maç')
     expect(done).toContain('Dep: 4. sıra · 7 maç')
@@ -302,13 +303,16 @@ describe('kategori listeleri ve üye kartı', () => {
     const corners = cards(html(analysis(0, 'corners85')))
     expect(corners.find((c) => c.includes('Kuzey Yıldızı'))).toContain('Korner 12')
     expect(corners.find((c) => c.includes('Doğu Gençlik'))).toContain('— Değerlendirilemedi')
-    expect(corners[0]).toContain('Güvenilirlik: Ölçülemedi')
+    expect(corners[0]).toContain('Geçmiş veri: Ölçülemedi')
+    // Sayı çıkarılamayan seviyede maç sayısı yazmaz.
+    expect(corners[0]).not.toContain('en az')
   })
 
   it('Taraf & Gol: "Model tabanlı" etiketi ve "Hesaplar çelişiyor" rozeti', () => {
     const side = html(analysis(0, 'homeWin15'))
     expect(textOf(side)).toMatch(/Model tabanlı/)
-    expect(textOf(side)).not.toContain('Güvenilirlik: Model tabanlı')
+    expect(textOf(side)).not.toContain('Geçmiş veri: Model tabanlı')
+    expect(textOf(side)).not.toContain('Güvenilirlik')
     expect(side).toContain('data-conflict="hesap"')
     expect(textOf(side)).toContain('⚠ Hesaplar çelişiyor')
     // Kartlarda (açıklama kutusunun dışında) "Model çelişkisi" rozeti yoktur.
@@ -345,25 +349,26 @@ describe('kategori listeleri ve üye kartı', () => {
   })
 
   it('kartların üstünde sabit açıklama satırı', () => {
-    expect(PERCENT_NOTE).toBe("Yüzdeler geçmiş verilere ve model hesaplarına dayanan özetlerdir; sonucun kesin olduğu anlamına gelmez. Güvenilirlik 'Düşük' ise örnek azdır.")
+    expect(PERCENT_NOTE).toBe("Yüzdeler geçmiş verilere ve model hesaplarına dayanan özetlerdir; sonucun kesin olduğu anlamına gelmez. Geçmiş veri 'Az' ise yüzde küçük bir örneğe dayanır.")
     const markup = html(analysis(0, 'over25'))
     expect(/data-testid="member-percent-note">([^<]*)/.exec(markup)![1].replace(/&#x27;/g, "'")).toBe(PERCENT_NOTE)
     expect(markup.indexOf('member-percent-note')).toBeLessThan(markup.indexOf('member-cards'))
     expect(html(createElement(MemberAnalysis, { payload: buildMemberPayload(memberInput({ days: [{ date: '2026-10-09', matches: [], results: [] }] })), today: DAY }))).not.toContain('member-percent-note')
   })
 
-  it('%100 ve güvenilirlik Düşük ise yüzde sönük, güvenilirlik rozeti belirgin; başka durumda değil', () => {
+  it('%100 ve geçmiş veri Az ise yüzde sönük, rozet belirgin; başka durumda değil', () => {
     expect(isOverstated({ percent: 100, reliability: 'low' })).toBe(true)
     for (const [percent, reliability] of [[100, 'high'], [100, 'medium'], [100, 'unknown'], [100, 'unmeasured'], [99, 'low'], [0, 'low']] as const) expect(isOverstated({ percent, reliability }), `${percent} ${reliability}`).toBe(false)
 
-    // Verideki %100'lük maç "Yüksek" güvenilirlikte: olağan görünüm.
+    // Verideki %100'lük maçta geçmiş veri "Çok": olağan görünüm.
     const normal = html(analysis(0, 'over25'))
     expect(normal).not.toContain('data-overstated="true"')
     expect(/class="([^"]*)" data-testid="member-percent">%100/.exec(normal)![1]).toContain('text-3xl')
 
-    // Aynı maç "Düşük" güvenilirlikte olsaydı
+    // Aynı maçta geçmiş veri "Az" olsaydı
     const low = JSON.parse(JSON.stringify(payload)) as MemberPayload
     low.days[0].lists[0].items[0].reliability = 'low'
+    low.days[0].lists[0].items[0].sample = 4
     const markup = html(createElement(MemberAnalysis, { payload: low, today: DAY, initialCategory: 'over25' }))
     const card = markup.split('data-testid="member-card"')[1]
     expect(card.startsWith(' data-overstated="true"')).toBe(true)
@@ -374,7 +379,7 @@ describe('kategori listeleri ve üye kartı', () => {
     const badge = /<span class="([^"]*)" data-testid="member-reliability">([\s\S]*?)<\/span><\/span>|<span class="([^"]*)" data-testid="member-reliability">/.exec(card)!
     expect(badge[1] ?? badge[3]).toContain('font-extrabold')
     expect(badge[1] ?? badge[3]).toContain('border-2')
-    expect(textOf(card)).toContain('⚠ Güvenilirlik: Düşük')
+    expect(textOf(card)).toContain('⚠ Geçmiş veri: Az · en az 4 maç')
     // Yalnızca o kart etkilenir; yüzde ve sıra değişmez.
     expect(markup.split('data-overstated="true"').length - 1).toBe(1)
     expect(cards(markup)[0].startsWith('1 ')).toBe(true)
@@ -423,6 +428,7 @@ describe('kategori listeleri ve üye kartı', () => {
     const day = low.days[0]
     const target = day.lists.find((l) => l.categoryId === 'over25')!.items.find((i) => i.percent === 100)!
     target.reliability = 'low'
+    target.sample = 4
     for (const list of day.lists) for (const item of list.items) for (const other of item.others!) if (item.match === target.match && other.categoryId === 'over25') other.reliability = 'low'
     const markup = html(createElement(MemberAnalysis, { payload: low, today: DAY, initialCategory: 'ht05' }))
     const dimmed = [...markup.matchAll(/data-category="over25" data-overstated="true">([\s\S]*?)<\/span><\/span>|data-category="over25" data-overstated="true">([\s\S]*?)<\/span>/g)]
@@ -446,15 +452,22 @@ describe('kategori listeleri ve üye kartı', () => {
       expect(body).toContain(item.title)
       for (const paragraph of item.paragraphs) expect(body).toContain(paragraph)
     }
-    expect(HOW_TO_READ.map((i) => i.title)).toEqual(['Büyük yüzde', 'Yıldız', 'Güvenilirlik', 'Çelişki rozetleri', 'Lig sırası ve oynanan maç', 'Aynı maçın diğer önerileri', 'Hiçbiri garanti değildir'])
+    expect(HOW_TO_READ.map((i) => i.title)).toEqual(['Büyük yüzde', 'Yıldız', 'Geçmiş veri', 'Çelişki rozetleri', 'Lig sırası ve oynanan maç', 'Aynı maçın diğer önerileri', 'Hiçbiri garanti değildir'])
   })
 
   it('"Nasıl okunur?" metni sabittir: paketten gelmez, eşik sayısı ve yasak terim içermez', () => {
     const all = HOW_TO_READ.flatMap((i) => [i.title, ...i.paragraphs]).join(' ')
     expect(JSON.stringify(payload)).not.toContain('Nasıl okunur')
     expect(all.toLocaleLowerCase('tr')).not.toMatch(/oran|piyasa|xg|csv|kaynak|footystats|bağlantı|odds|ortalama|https?:/)
-    // Sayı olarak yalnızca yıldız ölçeği (1–5), örnek yüzde (%100), liste adlarındaki çizgiler ve "18+" geçer.
-    expect(all.replace(/1–5|%100|2\.5 Üst|18\+/g, '').match(/\d/g)).toBeNull()
+    // Sayı olarak yalnızca yıldız ölçeği (1–5), örnek yüzde (%100), örnek maç sayısı ("en az 4 maç"),
+    // liste adlarındaki çizgiler ve "18+" geçer; eşik sayıları (8, 16) geçmez.
+    expect(all.replace(/1–5|%100|en az 4 maç|2\.5 Üst|18\+/g, '').match(/\d/g)).toBeNull()
+    // Etiketin ne OLMADIĞI açıkça yazılıdır.
+    const data = HOW_TO_READ.find((i) => i.title === 'Geçmiş veri')!.paragraphs.join(' ')
+    expect(data).toContain('maçın sonucuna duyulan güveni DEĞİL, yalnızca eldeki veri miktarını anlatır')
+    expect(data).toContain('küçük bir örneğe dayanır')
+    expect(data).toContain('Gerçekteki maç sayısı daha fazla olabilir; bu yüzden “en az” yazar')
+    expect(all).not.toMatch(/Güvenilirlik|güvenilirlik/)
     // Anlatılan etiketler sayfadaki gerçek etiketlerle aynıdır.
     for (const label of [PERCENT_LABELS.history, PERCENT_LABELS.model, 'Model çelişkisi', 'Hesaplar çelişiyor', 'Model tabanlı', 'Ölçülemedi', 'Bilinmiyor', 'İkinci hesap', '⚠ tablo eski']) expect(all).toContain(label)
   })
@@ -512,8 +525,10 @@ describe('istatistik sayfası', () => {
     expect(textOf(stats('all', 'monthly'))).toContain('Ekim 2026')
   })
 
-  it('güvenilirlik satırları üye etiketleriyle; az veride uyarı; öneri yoksa boş durum', () => {
+  it('geçmiş veri satırları üye etiketleriyle; az veride uyarı; öneri yoksa boş durum', () => {
     const text = textOf(stats('shared'))
+    expect(textOf(stats('all'))).toContain('GEÇMİŞ VERİ MİKTARINA GÖRE BAŞARI')
+    expect(textOf(stats('all'))).not.toMatch(/GÜVENİLİRLİ|güvenilirlik/)
     expect(text).toContain('⚠ az veri')
     expect(textOf(stats('all'))).toContain('Model tabanlı')
     const empty = buildMemberPayload(memberInput({ picks: [], shared: [] }))
@@ -624,5 +639,45 @@ describe('günün öne çıkanları kutusu', () => {
     expect(textOf(markup)).toContain('Bu gün için yayınlanmış öneri yok.')
     // Maç verisi yok: adlar kayıttan, sonuç dondurulmuş öneriden.
     expect(rowsOf(box(markup)!).find((r) => r.includes('Kuzey Yıldızı') && r.includes('2.5 ÜST'))).toContain('✓ Tuttu')
+  })
+})
+
+describe('geçmiş veri rozeti ve tahmini maç sayısı', () => {
+  const badges = (markup: string) => [...markup.matchAll(/data-testid="member-reliability">([\s\S]*?)<\/span>(?=<span class="[^"]*" data-testid="member-conflict"|<\/div>)/g)].map((m) => textOf(m[1]))
+  const over25 = payload.days[0].lists.find((l) => l.categoryId === 'over25')!
+
+  it('seviyenin yanında "en az N maç": paketteki sayı aynen yazılır', () => {
+    const drawn = badges(html(analysis(0, 'over25')))
+    expect(drawn).toHaveLength(over25.items.length)
+    const LABEL = { low: 'Az', medium: 'Orta', high: 'Çok' } as const
+    over25.items.forEach((item, i) => {
+      if (item.sample === undefined) expect(drawn[i]).not.toContain('en az')
+      else expect(drawn[i]).toBe(`Geçmiş veri: ${LABEL[item.reliability as keyof typeof LABEL]} · en az ${item.sample} maç`)
+    })
+    expect(over25.items.some((item) => item.sample !== undefined)).toBe(true)
+  })
+
+  it('sayı olmayan pakette (sürüm 3 ve 4) yalnızca seviye görünür', () => {
+    for (const version of [3, 4]) {
+      const old = JSON.parse(JSON.stringify(payload)) as MemberPayload
+      ;(old as { v: number }).v = version
+      for (const day of old.days) {
+        if (version === 3) delete day.highlights
+        for (const list of day.lists) for (const item of list.items) delete item.sample
+      }
+      const drawn = badges(html(createElement(MemberAnalysis, { payload: old, today: DAY, initialCategory: 'over25' })))
+      expect(drawn).toHaveLength(over25.items.length)
+      for (const text of drawn) expect(text).toMatch(/^Geçmiş veri: (Az|Orta|Çok|Bilinmiyor)$/)
+    }
+  })
+
+  it('"Bilinmiyor" ve "Ölçülemedi" seviyelerinde sayı yazmaz; "Model tabanlı" aynıdır', () => {
+    const unknown = JSON.parse(JSON.stringify(payload)) as MemberPayload
+    const first = unknown.days[0].lists.find((l) => l.categoryId === 'over25')!.items[0]
+    first.reliability = 'unknown'
+    delete first.sample
+    expect(badges(html(createElement(MemberAnalysis, { payload: unknown, today: DAY, initialCategory: 'over25' })))[0]).toBe('Geçmiş veri: Bilinmiyor')
+    for (const text of badges(html(analysis(0, 'corners85')))) expect(text).toBe('Geçmiş veri: Ölçülemedi')
+    for (const text of badges(html(analysis(0, 'homeWin15')))) expect(text).toMatch(/^(Model tabanlı( \(kısmi\))?|Geçmiş veri: .+)$/)
   })
 })

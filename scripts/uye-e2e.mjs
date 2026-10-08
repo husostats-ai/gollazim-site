@@ -331,7 +331,7 @@ try {
   const labels = await page.$$eval(sel('member-percent-label'), (els) => [...new Set(els.map((el) => el.textContent.trim()))])
   step('büyük yüzdenin altında sabit etiket var', labels.length === 1 && labels[0] === 'Geçmiş maçlarda görülme sıklığı' && (await page.$$eval(sel('member-percent-label'), (els) => els.length)) === cardCount, labels.join(' | '))
   step('kartların üstünde açıklama satırı', (await text(page, 'member-percent-note')).startsWith('Yüzdeler geçmiş verilere ve model hesaplarına dayanan özetlerdir;'), await text(page, 'member-percent-note'))
-  // %100 + Düşük güvenilirlik: yüzde sönük ve küçük, rozet belirgin (gerçek veride bu kartlar var)
+  // %100 + geçmiş veri Az: yüzde sönük ve küçük, rozet belirgin (gerçek veride bu kartlar var)
   const styles = await page.evaluate(() => {
     const read = (card) => {
       const percent = card.querySelector('[data-testid="member-percent"]')
@@ -343,8 +343,12 @@ try {
   })
   const dim = styles.soluk[0]
   const normal = styles.olagan[0]
-  step('%100 + Düşük: yüzde daha küçük ve sönük, güvenilirlik rozeti daha büyük ve kalın', !!dim && !!normal && dim.text === '%100' && dim.badge.includes('Düşük') && dim.size < normal.size && dim.color !== normal.color && dim.badgeSize > normal.badgeSize && Number(dim.badgeWeight) > Number(normal.badgeWeight), dim && normal ? `sönük ${dim.size}px ${dim.color} · olağan ${normal.size}px ${normal.color} · rozet ${dim.badgeSize}px/${dim.badgeWeight} ↔ ${normal.badgeSize}px/${normal.badgeWeight} · ${styles.soluk.length} sönük, ${styles.olagan.length} olağan kart` : 'bu kategoride örnek yok')
-  step('sönük gösterim yalnızca %100 + Düşük kartlarda', styles.soluk.every((c) => c.text === '%100' && c.badge.includes('Düşük')) && styles.olagan.every((c) => !(c.text === '%100' && c.badge.includes('Düşük'))))
+  step('%100 + geçmiş veri Az: yüzde daha küçük ve sönük, rozet daha büyük ve kalın', !!dim && !!normal && dim.text === '%100' && dim.badge.includes('Az') && dim.size < normal.size && dim.color !== normal.color && dim.badgeSize > normal.badgeSize && Number(dim.badgeWeight) > Number(normal.badgeWeight), dim && normal ? `sönük ${dim.size}px ${dim.color} · olağan ${normal.size}px ${normal.color} · rozet ${dim.badgeSize}px/${dim.badgeWeight} ↔ ${normal.badgeSize}px/${normal.badgeWeight} · ${styles.soluk.length} sönük, ${styles.olagan.length} olağan kart` : 'bu kategoride örnek yok')
+  const isLow = (c) => /^⚠?\s*Geçmiş veri:\s*Az/.test(c.badge)
+  step('sönük gösterim yalnızca %100 + geçmiş veri Az kartlarda', styles.soluk.every((c) => c.text === '%100' && isLow(c)) && styles.olagan.every((c) => !(c.text === '%100' && isLow(c))))
+  const allBadges = [...styles.soluk, ...styles.olagan].map((c) => c.badge.replace(/\s+/g, ' '))
+  const measured = allBadges.filter((b) => /Geçmiş veri: ?(Az|Orta|Çok)/.test(b))
+  step('rozet "Geçmiş veri: Az / Orta / Çok · en az N maç"; eski "Güvenilirlik" terimi yok', measured.length > 0 && measured.every((b) => /^⚠? ?Geçmiş veri: ?(Az|Orta|Çok) ?· en az \d+ maç$/.test(b)) && allBadges.every((b) => !/Güvenilirlik|Düşük|Yüksek/.test(b)), [...new Set(allBadges)].slice(0, 4).join(' | '))
   // "Aynı maçın diğer önerileri" satırı ve "Nasıl okunur?" kutusu
   const others = await page.evaluate(() => {
     const cards = [...document.querySelectorAll('[data-testid="member-card"]')]
@@ -358,7 +362,7 @@ try {
       rowSize: first ? parseFloat(getComputedStyle(first).fontSize) : 0,
       rowColor: first ? getComputedStyle(first).color : '',
       bigSize: parseFloat(getComputedStyle(big).fontSize),
-      // Satırdaki yüzdeler: %100 + Düşük olanlar vurgusuz (soluk), diğerleri yarı kalın ve beyaz
+      // Satırdaki yüzdeler: %100 + geçmiş veri Az olanlar vurgusuz (soluk), diğerleri yarı kalın ve beyaz
       percents: [...document.querySelectorAll('[data-testid="member-other"]')].map((el) => {
         const percent = [...el.querySelectorAll('span')].find((span) => span.textContent.trim().startsWith('%'))
         return { dim: el.dataset.overstated === 'true', text: percent.textContent.trim(), weight: Number(getComputedStyle(percent).fontWeight), color: getComputedStyle(percent).color }
@@ -368,7 +372,7 @@ try {
   step('"Aynı maçın diğer önerileri" satırı var; küçük ve soluk', others.withRow > 0 && others.sample.startsWith('Aynı maçın diğer önerileri:') && others.rowSize <= 11 && others.rowSize < others.bigSize / 2, `${others.withRow}/${others.cards} kartta · ${others.rowSize}px ${others.rowColor} · "${others.sample.slice(0, 90)}"`)
   const dimOthers = others.percents.filter((p) => p.dim)
   const plainOthers = others.percents.filter((p) => !p.dim)
-  step('satırdaki %100 + Düşük yüzdeler de sönük; diğerleri vurgulu', dimOthers.length > 0 && plainOthers.length > 0 && dimOthers.every((p) => p.text === '%100' && p.weight < 500 && p.color === others.rowColor) && plainOthers.every((p) => p.weight >= 600 && p.color !== others.rowColor), `${dimOthers.length} sönük, ${plainOthers.length} vurgulu`)
+  step('satırdaki %100 + geçmiş veri Az yüzdeler de sönük; diğerleri vurgulu', dimOthers.length > 0 && plainOthers.length > 0 && dimOthers.every((p) => p.text === '%100' && p.weight < 500 && p.color === others.rowColor) && plainOthers.every((p) => p.weight >= 600 && p.color !== others.rowColor), `${dimOthers.length} sönük, ${plainOthers.length} vurgulu`)
   // Kapalı kutu yalnızca başlık satırı kadar yer tutar.
   const howto = await page.$eval(sel('member-howto'), (el) => ({ open: el.open, summary: el.querySelector('summary').textContent.trim(), height: el.offsetHeight }))
   step('"Nasıl okunur?" kutusu kapalı geliyor', !howto.open && howto.height < 60 && howto.summary === 'Nasıl okunur?', `${howto.height} px`)

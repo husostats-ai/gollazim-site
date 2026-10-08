@@ -26,12 +26,14 @@ export const HOW_TO_READ: HowToReadItem[] = [
     ],
   },
   {
-    title: 'Güvenilirlik',
+    title: 'Geçmiş veri',
     paragraphs: [
-      'Yüzdenin kaç maçlık veriye dayandığını gösterir. Düşük: az maç var; örnek az olduğu için yüzde tesadüfen çok yüksek ya da çok düşük çıkmış olabilir. Orta ve Yüksek: yüzde daha çok maça dayanıyor.',
+      'Yüzdenin kaç maçlık veriye dayandığını gösterir: Az, Orta ya da Çok. Bu etiket maçın sonucuna duyulan güveni DEĞİL, yalnızca eldeki veri miktarını anlatır.',
+      'Az: yüzde küçük bir örneğe dayanır; birkaç maçta görülen bir şey tesadüfen çok yüksek ya da çok düşük bir yüzde verebilir. Orta ve Çok: yüzde daha fazla maça dayanır; bu da sonucun kesin olduğu anlamına gelmez.',
+      'Etiketin yanındaki “en az 4 maç” gibi sayı tahmini bir alt sınırdır: ev sahibinin kendi sahasındaki ve deplasman takımının dış sahadaki maçlarından hesaplanır. Gerçekteki maç sayısı daha fazla olabilir; bu yüzden “en az” yazar. Sayı çıkarılamadıysa yalnızca seviye görünür.',
       '“Ölçülemedi” (korner ve kart listeleri) ve “Bilinmiyor”: yüzdenin kaç maça dayandığı çıkarılamadı.',
       '“Model tabanlı” (Taraf & Gol listeleri): yüzde geçmiş maç sayısına değil, modelin hesabına dayanır. “(kısmi)” ise hesabın bir bölümünün tahmine dayandığını belirtir.',
-      'Yüzde %100 ve güvenilirlik Düşük ise yüzde soluk gösterilir: az maçta hep görülmüş olması güçlü bir işaret değildir.',
+      'Yüzde %100 ve geçmiş veri Az ise yüzde soluk gösterilir: az maçta hep görülmüş olması güçlü bir işaret değildir.',
     ],
   },
   {
