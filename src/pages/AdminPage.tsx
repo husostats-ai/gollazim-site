@@ -7,6 +7,7 @@ import MemberAdminSection from '../components/member/MemberAdminSection'
 import MemberKeyReminder from '../components/member/MemberKeyReminder'
 import MemberTextsPanel from '../components/member/MemberTextsPanel'
 import PageTitle from '../components/PageTitle'
+import RawComparePanel from '../components/RawComparePanel'
 import StoryPanel from '../components/StoryPanel'
 import StoryTextsPanel from '../components/StoryTextsPanel'
 import ThresholdPanel from '../components/ThresholdPanel'
@@ -31,6 +32,7 @@ export default function AdminPage() {
         <MemberTextsPanel />
         <BackupPanel />
         <MemberAdminSection />
+        <RawComparePanel />
       </div>
     </>
   )
