@@ -3,6 +3,7 @@ import type { MemberTexts } from '../../config/memberTexts'
 import type { LeagueTable, Match, MatchResult, MatchStatus, Pick, PickOutcome, SharedPick, TeamAlias, Thresholds } from '../../types'
 import { formatScore } from '../../utils/score'
 import { analyzeDay } from '../analysis/engine'
+import { highlightOutcome } from '../highlights/highlights'
 import type { Prediction, ReliabilityLevel } from '../analysis/types'
 import { matchStandings, type StandingInfo } from '../league/standing'
 import { resultDetail } from '../stats/categoryResult'
@@ -27,9 +28,11 @@ import { assertMemberPayload } from './schema'
 /**
  * Paket sürümü. 2: her önerinin yanında aynı maçın diğer listelerdeki önerileri (others) var.
  * 3: istatistiklerde ana kategorilerin toplu başarısı (main) var.
- * Sürüm 1 (others alanı olmayan) ve sürüm 2 (main alanı olmayan) paketler üye sayfasında hâlâ açılır.
+ * 4: her günde "günün öne çıkanları" seçimleri (highlights) var.
+ * Sürüm 1 (others alanı olmayan), sürüm 2 (main alanı olmayan) ve sürüm 3 (highlights alanı olmayan)
+ * paketler üye sayfasında hâlâ açılır.
  */
-export const MEMBER_PAYLOAD_VERSION = 3
+export const MEMBER_PAYLOAD_VERSION = 4
 
 /** Günlük dökümde pakete giren en fazla gün sayısı (en yeniler) */
 export const MEMBER_DAILY_LIMIT = 90
@@ -150,16 +153,37 @@ export interface MemberList {
   items: MemberItem[]
 }
 
+/**
+ * "Günün öne çıkanları" seçimi. Yalnızca maçın kimliği, kategori ve sonuç: yüzde, güvenilirlik,
+ * eklenme zamanı ve kayıt kimlikleri pakete GİRMEZ.
+ */
+export interface MemberHighlight {
+  home: string
+  away: string
+  league: string | null
+  /** HH:mm, Türkiye saati */
+  time: string
+  categoryId: CategoryId
+  /** Skor girilmediyse null */
+  status: MatchStatus | null
+  /** "İY 1-0 · MS 3-1"; skor girilmediyse null */
+  score: string | null
+  /** Skor girilmediyse 'pending' */
+  outcome: PickOutcome
+}
+
 export interface MemberDay {
   /** YYYY-MM-DD */
   date: string
   matches: MemberMatch[]
   /** Kategori kayıt defterindeki sırayla, her kategori için bir liste (boş olabilir) */
   lists: MemberList[]
+  /** O günün öne çıkan seçimleri, saat sırasıyla (boş olabilir). Sürüm 1-3 paketlerde bu alan yoktur. */
+  highlights?: MemberHighlight[]
 }
 
 export interface MemberPayload {
-  v: 1 | 2 | typeof MEMBER_PAYLOAD_VERSION
+  v: 1 | 2 | 3 | typeof MEMBER_PAYLOAD_VERSION
   /** Yayın numarası */
   n: number
   /** Yayın anı (ISO) */
@@ -171,12 +195,28 @@ export interface MemberPayload {
   statistics: { all: MemberStats; shared: MemberStats }
 }
 
+/**
+ * Öne çıkan seçimin paket kurucusuna verilen hâli. Kayıttaki yüzde, güvenilirlik ve eklenme
+ * zamanı bu tipte YOKTUR: çağıran taraf kaydı buna indirger, o alanlar kurucuya hiç ulaşmaz.
+ */
+export interface MemberHighlightInput {
+  matchId: string
+  categoryId: CategoryId
+  // Eklenme anındaki görünüm; maç verisi silinmişse bunlar kullanılır.
+  home: string
+  away: string
+  time: string
+  league: string | null
+}
+
 export interface MemberDayInput {
   date: string
   /** Günün tüm maçları */
   matches: Match[]
-  /** Bu maçların girilmiş skorları */
+  /** Bu maçların (ve öne çıkan seçimlerin maçlarının) girilmiş skorları */
   results: MatchResult[]
+  /** O günün öne çıkan seçimleri; verilmezse yok sayılır */
+  highlights?: MemberHighlightInput[]
 }
 
 export interface MemberPayloadInput {
@@ -300,7 +340,25 @@ function dayOf(input: MemberPayloadInput, day: MemberDayInput, now: Date): Membe
       item.others = others
     }
   }
-  return { date: day.date, matches, lists }
+  // Öne çıkanlar: listelerden bağımsızdır (maç artık listede olmayabilir, verisi silinmiş olabilir).
+  const matchById = new Map(day.matches.map((m) => [m.id, m]))
+  const highlights: MemberHighlight[] = (day.highlights ?? [])
+    .map((selection): MemberHighlight => {
+      const match = matchById.get(selection.matchId)
+      const result = resultById.get(selection.matchId)
+      return {
+        home: match ? match.home : selection.home,
+        away: match ? match.away : selection.away,
+        league: (match ? match.league : selection.league) ?? null,
+        time: match?.time ?? selection.time,
+        categoryId: selection.categoryId,
+        status: result ? result.status : null,
+        score: formatScore(result),
+        outcome: highlightOutcome(selection, pickByKey.get(`${selection.matchId}|${selection.categoryId}`), result),
+      }
+    })
+    .sort((a, b) => a.time.localeCompare(b.time) || a.home.localeCompare(b.home, 'tr') || CATEGORIES.findIndex((c) => c.id === a.categoryId) - CATEGORIES.findIndex((c) => c.id === b.categoryId))
+  return { date: day.date, matches, lists, highlights }
 }
 
 /**

@@ -11,8 +11,10 @@ import {
   highlightOutcome,
   kickoffOf,
   lockState,
+  markPublished,
   normalizeHighlights,
   REFUSAL_TEXTS,
+  removalBlock,
   removeHighlight,
   summarizeHighlights,
   type HighlightCandidate,
@@ -102,6 +104,56 @@ describe('ekle / çıkar', () => {
 
   it('ret metinlerinde oran, tutar ya da kupon geçmez', () => {
     for (const text of Object.values(REFUSAL_TEXTS)) expect(text.toLocaleLowerCase('tr')).not.toMatch(/oran|tutar|kupon|bahis/)
+  })
+})
+
+describe('yayın kilidi', () => {
+  const PUBLISHED = '2026-10-08T07:00:00.000Z'
+
+  it('yayınlanan seçim, maç başlamamış olsa da kaldırılamaz', () => {
+    const record = added('Kuzey', '20:00')
+    const [published] = markPublished([record], [record.id], PUBLISHED)
+    expect(published).toEqual({ ...record, publishedAt: PUBLISHED })
+    expect(lockState(published, BEFORE)).toBe('open') // maç başlamadı
+    expect(removeHighlight([published], published.id, BEFORE)).toEqual({ ok: false, reason: 'published' })
+    expect(removeHighlight([published], published.id, AFTER)).toEqual({ ok: false, reason: 'published' })
+    // Yayınlanmamış seçim aynı anda kaldırılabilir.
+    expect(removeHighlight([record], record.id, BEFORE).ok).toBe(true)
+  })
+
+  it('kilit nedeni: yayınlandı, maç başladı ya da yok', () => {
+    const record = added('Kuzey', '20:00')
+    expect(removalBlock(record, BEFORE)).toBeNull()
+    expect(removalBlock(record, AT)).toBe('locked')
+    expect(removalBlock({ ...record, publishedAt: PUBLISHED }, BEFORE)).toBe('published')
+    // İkisi birden geçerliyse neden "yayınlandı"dır.
+    expect(removalBlock({ ...record, publishedAt: PUBLISHED }, AFTER)).toBe('published')
+  })
+
+  it('yalnızca pakete giren kayıtlar işaretlenir; ilk yayın anı korunur', () => {
+    const a = added('Kuzey', '20:00')
+    const b = added('Güney', '21:00')
+    const first = markPublished([a, b], [a.id], PUBLISHED)
+    expect(first.map((h) => [h.id, h.publishedAt])).toEqual([[a.id, PUBLISHED]])
+    // İkinci yayın: a zaten yayınlanmış (değişmez), b yeni işaretlenir.
+    const second = markPublished([first[0], b], [a.id, b.id], '2026-10-08T09:00:00.000Z')
+    expect(second.map((h) => [h.id, h.publishedAt])).toEqual([[b.id, '2026-10-08T09:00:00.000Z']])
+    expect(markPublished([a, b], [], PUBLISHED)).toEqual([])
+    expect(markPublished([a], ['yok'], PUBLISHED)).toEqual([])
+  })
+
+  it('yayınlanan seçimin yerine aynısı yeniden eklenemez (kayıt durur)', () => {
+    const record = { ...added('Kuzey', '20:00'), publishedAt: PUBLISHED }
+    expect(addHighlight([record], candidate('Kuzey', '20:00'), BEFORE)).toEqual({ ok: false, reason: 'exists' })
+  })
+
+  it('yayın anı yedeğe girer ve geri okunur; bozuk değer atılır', () => {
+    const record = { ...added('Kuzey', '20:00'), publishedAt: PUBLISHED }
+    expect(normalizeHighlights(JSON.parse(JSON.stringify([record])), isCategoryId)).toEqual([record])
+    expect('publishedAt' in normalizeHighlights([{ ...record, publishedAt: 'dün' }], isCategoryId)[0]).toBe(false)
+    // Yedekten gelen yayınlanmış kayıt da kaldırılamaz.
+    const [restored] = normalizeHighlights([record], isCategoryId)
+    expect(removeHighlight([restored], restored.id, BEFORE)).toEqual({ ok: false, reason: 'published' })
   })
 })
 

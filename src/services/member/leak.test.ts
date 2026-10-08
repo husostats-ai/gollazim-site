@@ -4,12 +4,12 @@ import { describe, expect, it } from 'vitest'
 import type { AiVerdict, BackupFile, Match } from '../../types'
 import { toAppDateTime } from '../../utils/date'
 import { shiftDate } from '../../utils/format'
-import { PUBLISH_DAY_COUNT } from '../memberAdmin/publish'
+import { highlightInputOf, PUBLISH_DAY_COUNT } from '../memberAdmin/publish'
 import { analyzeDay } from '../analysis/engine'
 import { CATEGORIES } from '../../config/categories'
 import { TEXT_FIELDS } from '../../config/columnAliases'
 import { isBackupFile } from '../data/backupFormat'
-import { DAY, dayMatches, MATCHES, memberInput, PREVIOUS_DAY, RAW_CANARIES, RAW_HEADERS, RAW_STAT_KEYS, RESULTS, URL_CANARY } from './__fixtures__/rawData'
+import { DAY, dayHighlights, dayMatches, HIGHLIGHT_PERCENT, HIGHLIGHTS, MATCHES, memberInput, PICKS, PREVIOUS_DAY, RAW_CANARIES, RAW_HEADERS, RAW_STAT_KEYS, RESULTS, URL_CANARY } from './__fixtures__/rawData'
 import { buildMemberPayload, type MemberPayload, type MemberPayloadInput } from './payload'
 import { assertMemberPayload, MEMBER_KEYS, MemberPayloadError } from './schema'
 
@@ -146,7 +146,9 @@ describe('yayın paketi: ham veri sızıntısı', () => {
     expect(MEMBER_KEYS).toEqual({
       payload: ['v', 'n', 'publishedAt', 'texts', 'days', 'statistics'],
       texts: ['disclaimer', 'account'],
-      day: ['date', 'matches', 'lists'],
+      day: ['date', 'matches', 'lists', 'highlights'],
+      dayV3: ['date', 'matches', 'lists'],
+      highlight: ['home', 'away', 'league', 'time', 'categoryId', 'status', 'score', 'outcome'],
       match: ['home', 'away', 'league', 'time', 'status', 'score', 'homeStanding', 'awayStanding'],
       standing: ['rank', 'played', 'stale'],
       list: ['categoryId', 'items'],
@@ -235,7 +237,7 @@ describe('yayın paketi: şema denetimi fazladan ya da eksik alanı reddeder', (
     expect(broken((p) => void ((firstItem(p) as { conflict: unknown }).conflict = 'piyasa'))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days[0].lists[0].items[0].conflict = 'hesap'))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days[0].lists.find((l) => l.categoryId === 'homeWin15')!.items[0].conflict = 'model'))).toThrow(MemberPayloadError)
-    expect(broken((p) => void ((p as { v: number }).v = 4))).toThrow(MemberPayloadError)
+    expect(broken((p) => void ((p as { v: number }).v = 5))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days = []))).toThrow(MemberPayloadError)
     expect(broken((p) => void p.days[0].lists.reverse())).toThrow(MemberPayloadError)
   })
@@ -267,7 +269,7 @@ describe('yayın paketi: "aynı maçın diğer önerileri" yalnızca paketteki �
           entries += item.others!.length
         }
     expect(entries).toBeGreaterThan(100)
-    expect(payload.v).toBe(3)
+    expect(payload.v).toBe(4)
   })
 
   it('pakete girmeyen (ilk 15 dışında kalan) öneri bu satıra da girmez', () => {
@@ -302,6 +304,7 @@ describe('yayın paketi: "aynı maçın diğer önerileri" yalnızca paketteki �
     ;(v1 as { v: number }).v = 1
     for (const scope of ['all', 'shared'] as const) delete v1.statistics[scope].main
     for (const day of v1.days) for (const list of day.lists) for (const item of list.items) delete item.others
+    for (const day of v1.days) delete day.highlights
     expect(() => assertMemberPayload(v1)).not.toThrow()
     // Sürüm 1 pakette bu alan bulunamaz; sürüm 2 pakette bulunmak zorundadır.
     expect(rejects((p) => void ((p as { v: number }).v = 1))).toThrow(MemberPayloadError)
@@ -340,12 +343,105 @@ describe('yayın paketi: ana kategorilerin toplu başarısı (sürüm 3)', () =>
     const v2 = copy()
     ;(v2 as { v: number }).v = 2
     for (const scope of ['all', 'shared'] as const) delete v2.statistics[scope].main
+    for (const day of v2.days) delete day.highlights
     expect(() => assertMemberPayload(v2)).not.toThrow()
     // Sürüm 2 pakette bu alan bulunamaz; sürüm 3 pakette bulunmak zorundadır.
     expect(rejects((p) => void ((p as { v: number }).v = 2))).toThrow(MemberPayloadError)
     const v3 = JSON.parse(JSON.stringify(v2)) as MemberPayload
     ;(v3 as { v: number }).v = 3
     expect(() => assertMemberPayload(v3)).toThrow(MemberPayloadError)
+  })
+})
+
+describe('yayın paketi: günün öne çıkanları (sürüm 4)', () => {
+  const copy = (): MemberPayload => JSON.parse(text) as MemberPayload
+  const rejects = (mutate: (p: MemberPayload) => void) => () => {
+    const p = copy()
+    mutate(p)
+    assertMemberPayload(p)
+  }
+  type Loose = Record<string, unknown>
+  const today = payload.days[0].highlights!
+  const find = (home: string, categoryId: string) => today.find((h) => h.home === home && h.categoryId === categoryId)!
+
+  it('her günün seçimleri o günle birlikte, saat sırasıyla; yalnızca sekiz izinli alan', () => {
+    expect(payload.days.map((d) => d.highlights!.length)).toEqual([dayHighlights(DAY).length, dayHighlights(PREVIOUS_DAY).length])
+    expect(today.map((h) => h.time)).toEqual([...today.map((h) => h.time)].sort())
+    for (const day of payload.days) for (const h of day.highlights!) expect(Object.keys(h)).toEqual(['home', 'away', 'league', 'time', 'categoryId', 'status', 'score', 'outcome'])
+    expect(find('Kuzey Yıldızı', 'over25')).toEqual({ home: 'Kuzey Yıldızı', away: 'Güney Spor', league: 'Testland · Deneme Ligi', time: dayMatches(DAY).find((m) => m.home === 'Kuzey Yıldızı')!.time, categoryId: 'over25', status: 'completed', score: 'İY 1-0 · MS 3-1', outcome: 'won' })
+  })
+
+  it('sonuç mevcut değerlendirmeyle gelir: tuttu, tutmadı, bekliyor', () => {
+    expect(find('Kuzey Yıldızı', 'over25').outcome).toBe('won')
+    expect(find('Kuzey Yıldızı', 'corners85').outcome).toBe('won')
+    expect(find('Doğu Gençlik', 'over25')).toMatchObject({ outcome: 'lost', score: 'İY 0-0 · MS 0-0' })
+    expect(find('İç Anadolu FK', 'over25')).toMatchObject({ outcome: 'pending', status: null, score: null })
+    expect(payload.days[1].highlights![0]).toMatchObject({ home: 'Dünkü Ev', categoryId: 'btts', outcome: 'won' })
+    // Dondurulmuş önerinin sonucuyla aynı.
+    for (const record of dayHighlights(DAY)) {
+      const pick = PICKS.find((p) => p.matchId === record.matchId && p.categoryId === record.categoryId)
+      if (pick) expect(find(record.home, record.categoryId).outcome).toBe(pick.outcome)
+    }
+  })
+
+  it('yüzde, güvenilirlik, eklenme zamanı ve kayıt kimlikleri pakete girmez', () => {
+    // Kurucunun girdisi kayıttan indirgenir: o alanlar kurucuya hiç verilmez.
+    for (const record of HIGHLIGHTS) expect(Object.keys(highlightInputOf({ ...record, publishedAt: '2026-10-05T07:00:00.000Z' }))).toEqual(['matchId', 'categoryId', 'home', 'away', 'time', 'league'])
+    const section = JSON.stringify(payload.days.map((d) => d.highlights))
+    const { keys, numbers, strings } = collect(payload.days.map((d) => d.highlights))
+    for (const key of ['percent', 'reliability', 'addedAt', 'publishedAt', 'id', 'matchId', 'date']) expect(keys.has(key), key).toBe(false)
+    // Öne çıkan satırlarında hiç sayı yoktur; kayıttaki yüzde (43) ve güvenilirlik (ölçülemedi) de geçmez.
+    expect(numbers).toEqual([])
+    expect(HIGHLIGHTS.every((h) => h.percent === HIGHLIGHT_PERCENT && h.reliability === 'unmeasured')).toBe(true)
+    expect(section).not.toContain('unmeasured')
+    for (const record of HIGHLIGHTS) {
+      expect(strings).not.toContain(record.id)
+      expect(strings).not.toContain(record.matchId)
+      expect(section).not.toContain(record.addedAt)
+    }
+    // Kayıttaki yüzde, güvenilirlik ve eklenme zamanı değişince paket değişmez.
+    const altered = memberInput({ days: memberInput().days.map((d) => ({ ...d, highlights: dayHighlights(d.date).map((h) => highlightInputOf({ ...h, percent: 99, reliability: 'low', addedAt: '2026-01-01T00:00:00.000Z' })) })) })
+    expect(JSON.stringify(buildMemberPayload(altered))).toBe(text)
+  })
+
+  it('maç verisi silinmişse seçim kayıttaki adlarla girer; sonuç dondurulmuş öneriden gelir', () => {
+    const input = memberInput()
+    const gone = dayHighlights(DAY).find((h) => h.home === 'Kuzey Yıldızı' && h.categoryId === 'over25')!
+    const without = buildMemberPayload({ ...input, days: input.days.map((d) => ({ ...d, matches: d.matches.filter((m) => m.id !== gone.matchId), results: d.results.filter((r) => r.matchId !== gone.matchId) })) })
+    expect(without.days[0].highlights!.find((h) => h.home === 'Kuzey Yıldızı' && h.categoryId === 'over25')).toEqual({ home: 'Kuzey Yıldızı', away: 'Güney Spor', league: gone.league, time: gone.time, categoryId: 'over25', status: null, score: null, outcome: 'won' })
+  })
+
+  it('seçim verilmeyen günde alan boş dizidir', () => {
+    const none = buildMemberPayload(memberInput({ days: memberInput().days.map(({ date, matches, results }) => ({ date, matches, results })) }))
+    expect(none.days.map((d) => d.highlights)).toEqual([[], []])
+    expect(() => assertMemberPayload(JSON.parse(JSON.stringify(none)))).not.toThrow()
+  })
+
+  it('şema: fazladan alan (yüzde, güvenilirlik), bozuk değer ve yinelenen seçim reddedilir', () => {
+    const first = (p: MemberPayload) => p.days[0].highlights![0] as unknown as Loose
+    expect(rejects((p) => void (first(p).percent = 80))).toThrow('izinli olmayan alan: percent')
+    expect(rejects((p) => void (first(p).reliability = 'high'))).toThrow('izinli olmayan alan: reliability')
+    expect(rejects((p) => void (first(p).addedAt = '2026-10-05T06:00:00.000Z'))).toThrow(MemberPayloadError)
+    expect(rejects((p) => void delete first(p).outcome)).toThrow('eksik alan: outcome')
+    expect(rejects((p) => void (first(p).outcome = null))).toThrow(MemberPayloadError)
+    expect(rejects((p) => void (first(p).outcome = 'kazandı'))).toThrow(MemberPayloadError)
+    expect(rejects((p) => void (first(p).time = 'akşam'))).toThrow(MemberPayloadError)
+    expect(rejects((p) => void (first(p).categoryId = 'yok'))).toThrow(MemberPayloadError)
+    expect(rejects((p) => void (first(p).score = '%80 ihtimal'))).toThrow(MemberPayloadError)
+    expect(rejects((p) => void p.days[0].highlights!.push({ ...p.days[0].highlights![0] }))).toThrow('aynı seçim bir günde iki kez yer alamaz')
+    expect(rejects((p) => void ((p.days[0] as unknown as Loose).highlights = 'yok'))).toThrow(MemberPayloadError)
+  })
+
+  it('sürüm 3 paket (bu alan olmadan) hâlâ kabul edilir; sürümler karıştırılamaz', () => {
+    const v3 = copy()
+    ;(v3 as { v: number }).v = 3
+    for (const day of v3.days) delete day.highlights
+    expect(() => assertMemberPayload(v3)).not.toThrow()
+    // Sürüm 3 pakette bu alan bulunamaz; sürüm 4 pakette bulunmak zorundadır.
+    expect(rejects((p) => void ((p as { v: number }).v = 3))).toThrow(MemberPayloadError)
+    const v4 = JSON.parse(JSON.stringify(v3)) as MemberPayload
+    ;(v4 as { v: number }).v = 4
+    expect(() => assertMemberPayload(v4)).toThrow('eksik alan: highlights')
   })
 })
 

@@ -109,7 +109,7 @@ export function IssuedBox({ issued, data, onClose, onDownloaded, onRepublish, bu
 
 export default function MemberAdminSection() {
   const data = useMemberAdminData()
-  const { dates, today, selectedDate, dataVersion } = useApp()
+  const { dates, today, selectedDate, dataVersion, highlights, refresh } = useApp()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [issued, setIssued] = useState<Issued | null>(null)
@@ -159,7 +159,8 @@ export default function MemberAdminSection() {
     return () => {
       cancelled = true
     }
-  }, [publishDay, version, dataVersion])
+    // Öne çıkan seçimler değişince de özet yenilenir.
+  }, [publishDay, version, dataVersion, highlights])
 
   if (!data) return null
   const existing = data.members.map((m) => m.username)
@@ -167,6 +168,9 @@ export default function MemberAdminSection() {
   const parsed = parseBulkUsernames(bulk, existing)
   const backupState = keyBackupStatus(data.members, data.meta)
   const passCheck = checkPassphrase(pass, pass2)
+
+  const highlightCount = summary ? summary.days.reduce((sum, d) => sum + d.highlights, 0) : 0
+  const incompatible = siteStatus?.level === 'incompatible'
 
   /** İşlemi çalıştırır; hata olursa gösterir. Aynı anda tek işlem yürür. */
   const run = async (action: () => Promise<void>) => {
@@ -189,11 +193,15 @@ export default function MemberAdminSection() {
     setPublished(null)
     setConfirming(false)
     if (!publishDay) return setPublishError('Yayınlanacak gün yok: önce CSV yükleyin.')
+    // Üye sitesi bu paketi açamıyorsa paket üretilmez (yeniden yayınlama yolları dahil).
+    if (siteStatus?.level === 'incompatible') return setPublishError(`${siteStatus.text} ${MEMBER_SITE_UPDATE_HINT}`)
     try {
       const publication = await publish(memberAdminRepo, publishSources, publishDay, new Date().toISOString())
       // Dosya yalnızca sızıntı denetimi geçtikten sonra indirilir.
       downloadText(PUBLICATION_FILE_NAME, publication.text, 'application/json')
       setPublished(publication)
+      // Pakete giren öne çıkan seçimler "yayınlandı" oldu: kartlar ve liste yenilenir.
+      await refresh()
     } catch (e) {
       setPublishError(messageOf(e))
     }
@@ -394,7 +402,10 @@ export default function MemberAdminSection() {
       </Card>
 
       <Card title="ÜYE SAYFASI: YAYINLA" testId="member-admin-publish">
-        <p className="mt-1 text-sm text-muted">Seçilen gün ile önceki 6 günün (son 7 gün; önerisi olmayan günler atlanır) listeleri ve istatistikler, izinli alanlardan sıfırdan kurulup aktif üyeler için şifrelenir ve {PUBLICATION_FILE_NAME} olarak indirilir. Ham veri, oranlar ve yapay zekâ kararları pakete girmez.</p>
+        <p className="mt-1 text-sm text-muted">Seçilen gün ile önceki 6 günün (son 7 gün; önerisi olmayan günler atlanır) listeleri ve istatistikler, izinli alanlardan sıfırdan kurulup aktif üyeler için şifrelenir ve {PUBLICATION_FILE_NAME} olarak indirilir. Günlerin “öne çıkan” seçimleri de pakete girer (yüzde ve güvenilirlik olmadan). Ham veri, oranlar ve yapay zekâ kararları pakete girmez.</p>
+        <p className="mt-1 text-xs text-muted" data-testid="publish-order">
+          Yayın sırası: önce üye sitesi (<span className="font-mono">npm run uye-yayinla</span>), sonra paket (<span className="font-mono">npm run yayinla</span>). Üye sitesi eski sürümdeyse yeni paketi açamaz.
+        </p>
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <label className="block text-sm font-semibold">
             Gün
@@ -434,7 +445,7 @@ export default function MemberAdminSection() {
           <ul className="mt-3 space-y-0.5 text-sm text-muted" data-testid="publish-summary">
             {summary.days.map((d) => (
               <li key={d.date}>
-                <span className="font-semibold text-white">{formatPlainDate(d.date)}:</span> {d.matches} maç · {d.items} öneri · {d.lists} dolu kategori
+                <span className="font-semibold text-white">{formatPlainDate(d.date)}:</span> {d.matches} maç · {d.items} öneri · {d.lists} dolu kategori · {d.highlights} öne çıkan
               </li>
             ))}
             <li>Paketin düz boyutu yaklaşık {kilobytes(summary.plainBytes)} (şifreli hâli bunun üçte biri kadar daha büyük olur)</li>
@@ -454,8 +465,18 @@ export default function MemberAdminSection() {
             <p className="text-sm">
               <span className="font-bold">{formatPlainDate(publishDay!)}</span> ve önceki 6 gün (önerisi olanlar), <span className="font-bold">{activeCount} aktif üye</span> için yayın no <span className="font-bold">{data.meta.publishCounter + 1}</span> olarak paketlenecek.
             </p>
+            {highlightCount > 0 && (
+              <p className="mt-1.5 rounded-lg border border-warn-line bg-warn-soft px-2.5 py-1.5 text-sm font-semibold text-warn" data-testid="publish-highlights">
+                Bu yayında {highlightCount} öne çıkan var; yayından sonra kaldırılamaz.
+              </p>
+            )}
+            {incompatible && (
+              <p className="mt-1.5 text-sm font-bold text-loss-text" data-testid="publish-blocked">
+                Üye sitesi bu paketi açamıyor; önce üye sitesini güncelleyin ({MEMBER_SITE_UPDATE_HINT}).
+              </p>
+            )}
             <div className="mt-2 flex flex-wrap gap-2">
-              <button type="button" className={PRIMARY} disabled={busy} onClick={() => void run(doPublish)} data-testid="publish-confirm">
+              <button type="button" className={PRIMARY} disabled={busy || incompatible} onClick={() => void run(doPublish)} data-testid="publish-confirm">
                 Onayla ve {PUBLICATION_FILE_NAME} indir
               </button>
               <button type="button" className={SECONDARY} disabled={busy} onClick={() => setConfirming(false)}>

@@ -1,8 +1,8 @@
 import type { MemberTexts } from '../../config/memberTexts'
-import type { LeagueTable, Match, MatchResult, Pick, SharedPick, TeamAlias, Thresholds } from '../../types'
+import type { Highlight, LeagueTable, Match, MatchResult, Pick, SharedPick, TeamAlias, Thresholds } from '../../types'
 import { shiftDate } from '../../utils/format'
 import { fromBase64, sealPayload, type MemberEnvelope } from '../member/crypto'
-import { buildMemberPayload, type MemberPayload, type MemberPayloadInput } from '../member/payload'
+import { buildMemberPayload, type MemberHighlightInput, type MemberPayload, type MemberPayloadInput } from '../member/payload'
 import { scanForLeaks } from './leakScan'
 import { activeKeys } from './registry'
 import type { MemberMeta, MemberRecord, PublicationRecord } from './types'
@@ -16,6 +16,10 @@ export interface PublishSources {
   listResultsByMatchIds(matchIds: string[]): Promise<MatchResult[]>
   listPicks(): Promise<Pick[]>
   listShared(): Promise<SharedPick[]>
+  /** O günün "öne çıkan" seçimleri */
+  listHighlightsByDate(date: string): Promise<Highlight[]>
+  /** Pakete giren seçimleri yayınlandı olarak işaretler (yayınlanan seçim kaldırılamaz) */
+  markHighlightsPublished(ids: string[], publishedAt: string): Promise<void>
   listLeagueTables(): Promise<LeagueTable[]>
   listAliases(): Promise<TeamAlias[]>
   getThresholds(): Promise<Thresholds>
@@ -36,22 +40,40 @@ export interface PublishDraft {
   payload: MemberPayload
   /** Paketteki günlerin ham maç kayıtları (sızıntı denetimi için; pakete girmez) */
   rawMatches: Match[]
+  /** Pakete giren öne çıkan seçimlerin kayıt kimlikleri (yayından sonra işaretlemek için; pakete girmez) */
+  highlightIds: string[]
 }
+
+/**
+ * Öne çıkan kaydını paket kurucusunun girdisine indirger. Alanlar tek tek yazılır: yüzde,
+ * güvenilirlik, eklenme ve yayın zamanı kurucuya hiç verilmez.
+ */
+export const highlightInputOf = (record: Highlight): MemberHighlightInput => ({
+  matchId: record.matchId,
+  categoryId: record.categoryId,
+  home: record.home,
+  away: record.away,
+  time: record.time,
+  league: record.league ?? null,
+})
 
 /** Pakete giren en fazla gün sayısı: seçilen gün ve ondan önceki günler (şemadaki sınırı aşmaz) */
 export const PUBLISH_DAY_COUNT = 7
 
 /**
- * Seçilen gün + önceki 6 günün verisini okuyup paketi kurar. Önceki günlerden hiç önerisi
- * olmayanlar pakete girmez (üye sayfasında boş gün düğmesi çıkmasın); seçilen gün boş olsa da girer.
+ * Seçilen gün + önceki 6 günün verisini okuyup paketi kurar. Önceki günlerden hiç önerisi ve
+ * hiç öne çıkan seçimi olmayanlar pakete girmez (üye sayfasında boş gün düğmesi çıkmasın);
+ * seçilen gün boş olsa da girer. Her günün öne çıkan seçimleri o günle birlikte pakete girer.
  */
 export async function draftPublication(sources: PublishSources, options: { day: string; n: number; publishedAt: string; texts: MemberTexts }): Promise<PublishDraft> {
   const dates = Array.from({ length: PUBLISH_DAY_COUNT }, (_, back) => shiftDate(options.day, -back))
   const [dayData, picks, shared, leagueTables, teamAliases, thresholds, marketConflictLimit] = await Promise.all([
     Promise.all(
       dates.map(async (date) => {
-        const matches = await sources.listMatchesByDate(date)
-        return { date, matches, results: await sources.listResultsByMatchIds(matches.map((m) => m.id)) }
+        const [matches, records] = await Promise.all([sources.listMatchesByDate(date), sources.listHighlightsByDate(date)])
+        // Seçimin maçı silinmiş olabilir: skoru duruyorsa yine okunur.
+        const resultIds = [...new Set([...matches.map((m) => m.id), ...records.map((r) => r.matchId)])]
+        return { date, matches, results: await sources.listResultsByMatchIds(resultIds), highlights: records.map(highlightInputOf), highlightIds: records.map((r) => r.id) }
       }),
     ),
     sources.listPicks(),
@@ -61,16 +83,17 @@ export async function draftPublication(sources: PublishSources, options: { day: 
     sources.getThresholds(),
     sources.getMarketConflictLimit(),
   ])
-  const input: MemberPayloadInput = { n: options.n, publishedAt: options.publishedAt, texts: options.texts, thresholds, marketConflictLimit, days: dayData, leagueTables, teamAliases, picks, shared }
+  const input: MemberPayloadInput = { n: options.n, publishedAt: options.publishedAt, texts: options.texts, thresholds, marketConflictLimit, days: dayData.map((d) => ({ date: d.date, matches: d.matches, results: d.results, highlights: d.highlights })), leagueTables, teamAliases, picks, shared }
   const full = buildMemberPayload(input)
   // Listeler paket kurulurken hesaplandığı için boş günler ancak şimdi bilinir.
-  const kept = dayData.filter((_, i) => i === 0 || full.days[i].lists.some((list) => list.items.length > 0))
-  const payload = kept.length === dayData.length ? full : buildMemberPayload({ ...input, days: kept })
-  return { payload, rawMatches: kept.flatMap((d) => d.matches) }
+  const keep = dayData.map((d, i) => i === 0 || full.days[i].lists.some((list) => list.items.length > 0) || d.highlights.length > 0)
+  const kept = dayData.filter((_, i) => keep[i])
+  const payload = kept.length === dayData.length ? full : buildMemberPayload({ ...input, days: input.days.filter((_, i) => keep[i]) })
+  return { payload, rawMatches: kept.flatMap((d) => d.matches), highlightIds: kept.flatMap((d) => d.highlightIds) }
 }
 
 export interface PublishSummary {
-  days: { date: string; matches: number; items: number; lists: number }[]
+  days: { date: string; matches: number; items: number; lists: number; highlights: number }[]
   /** Paketin düz hâlinin boyutu (bayt) */
   plainBytes: number
 }
@@ -79,7 +102,7 @@ const byteLength = (text: string): number => new TextEncoder().encode(text).leng
 
 /** Onay ekranındaki paket özeti */
 export const summarizePayload = (payload: MemberPayload): PublishSummary => ({
-  days: payload.days.map((d) => ({ date: d.date, matches: d.matches.length, items: d.lists.reduce((sum, l) => sum + l.items.length, 0), lists: d.lists.filter((l) => l.items.length > 0).length })),
+  days: payload.days.map((d) => ({ date: d.date, matches: d.matches.length, items: d.lists.reduce((sum, l) => sum + l.items.length, 0), lists: d.lists.filter((l) => l.items.length > 0).length, highlights: d.highlights?.length ?? 0 })),
   plainBytes: byteLength(JSON.stringify(payload)),
 })
 

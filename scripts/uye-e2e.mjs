@@ -31,7 +31,8 @@ const sampleDir = mkdtempSync(join(tmpdir(), 'gollazim-uye-ornek-'))
 
 /** Geçici klasörde şifreli örnek paket (ve ilk çağrıda sentetik test kullanıcısı) üretir */
 function generate(dir, env = {}) {
-  execFileSync('npx', ['vitest', 'run', 'src/services/member/sample'], { env: { ...process.env, UYE_ORNEK: dir, ...env }, stdio: ['ignore', 'pipe', 'pipe'] })
+  // Yedekte öne çıkan seçim yoktur; sonuçlanmış her gün için 3 sentetik seçim eklenir.
+  execFileSync('npx', ['vitest', 'run', 'src/services/member/sample'], { env: { ...process.env, UYE_ORNEK: dir, UYE_ONE_CIKAN: '3', ...env }, stdio: ['ignore', 'pipe', 'pipe'] })
 }
 generate(sampleDir, { UYE_N: '1' })
 generate(sampleDir, { UYE_N: '2', UYE_DOSYA: 'paket-2.json' })
@@ -453,7 +454,31 @@ try {
     const body = await page.evaluate(() => document.body.innerText)
     step('Taraf & Gol: "Model tabanlı" etiketi', body.includes('Model tabanlı') && !body.includes('Piyasa'))
   }
+  // Günün öne çıkanları: seçimi olan günde kutu var, olmayan günde hiç yok
+  await page.click(sel('member-day-0'))
+  await sleep(150)
+  step('öne çıkanlar: seçimi olmayan günde kutu hiç görünmüyor', (await page.$(sel('member-highlights'))) === null)
   await page.click(sel('member-day-1'))
+  await page.waitForSelector(sel('member-highlights'))
+  const highlightBox = await page.$eval(sel('member-highlights'), (el) => ({
+    text: el.innerText.replace(/\s+/g, ' ').trim(),
+    rows: [...el.querySelectorAll('[data-testid="member-highlight"]')].map((row) => row.innerText.replace(/\s+/g, ' ').trim()),
+    trial: el.querySelector('[data-testid="member-highlights-trial"]')?.textContent.trim(),
+    note: el.querySelector('[data-testid="member-highlights-note"]')?.textContent.trim(),
+    aboveCategories: el.getBoundingClientRect().bottom <= document.querySelector('[data-testid^="member-category-"]').getBoundingClientRect().top,
+    belowTitle: el.getBoundingClientRect().top >= document.querySelector('[data-testid="member-day-title"]').getBoundingClientRect().bottom,
+  }))
+  step('öne çıkanlar: seçim sayısı kadar satır (saat, maç, kategori)', highlightBox.rows.length === 3 && highlightBox.rows.every((row) => /^\d{2}:\d{2} ?.+ – .+/.test(row)), highlightBox.rows[0])
+  step('öne çıkanlar: skor ve Tuttu / Tutmadı görünüyor', highlightBox.rows.every((row) => /MS \d/.test(row) && /✓ Tuttu|✗ Tutmadı|— Değerlendirilemedi/.test(row)), highlightBox.rows.map((row) => row.split(' ').slice(-2).join(' ')).join(' | '))
+  step('öne çıkanlar: başlıkta "deneme" notu, altta yasal not; kutuda yüzde ve güvenilirlik yok', highlightBox.trial === 'deneme' && highlightBox.note === 'Bu bir istatistik taramasıdır; bahis tavsiyesi değildir.' && !highlightBox.text.includes('%') && !/güvenilirlik/i.test(highlightBox.text))
+  step('öne çıkanlar: gün başlığının altında, kategori düğmelerinin üstünde', highlightBox.aboveCategories && highlightBox.belowTitle)
+  for (const width of [320, 390]) {
+    await page.setViewport({ width, height: 844, deviceScaleFactor: 1 })
+    const size = await overflow(page)
+    const inside = await page.$eval(sel('member-highlights'), (el) => el.getBoundingClientRect().right <= window.innerWidth && el.scrollWidth <= el.clientWidth)
+    step(`öne çıkanlar ${width} px: taşma yok`, size.scroll <= size.inner && inside, `${size.scroll} / ${size.inner}`)
+  }
+  await cardShot(page, 'member-highlights', 'one-cikanlar')
   await shot(page, 'analiz-dun-sonuclar', 390)
   const outcomes = await page.$$eval(sel('member-outcome'), (els) => [...new Set(els.map((el) => el.textContent.trim()))])
   step('önceki günde sonuç işaretleri görünüyor', outcomes.some((o) => o.startsWith('✓')) && outcomes.some((o) => o.startsWith('✗')), outcomes.join(' | '))

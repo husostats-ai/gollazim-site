@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { leagueRepo, matchesRepo, memberAdminRepo, picksRepo, resultsRepo, settingsRepo, sharedRepo } from '../../services/data'
+import { highlightsRepo, leagueRepo, matchesRepo, memberAdminRepo, picksRepo, resultsRepo, settingsRepo, sharedRepo } from '../../services/data'
 import type { PublishSources } from '../../services/memberAdmin/publish'
 import type { MemberMeta, MemberRecord, PublicationRecord } from '../../services/memberAdmin/types'
 
@@ -35,6 +35,8 @@ export const publishSources: PublishSources = {
   listResultsByMatchIds: (ids) => resultsRepo.listByMatchIds(ids),
   listPicks: () => picksRepo.listAll(),
   listShared: () => sharedRepo.listAll(),
+  listHighlightsByDate: (date) => highlightsRepo.listByDate(date),
+  markHighlightsPublished: (ids, publishedAt) => highlightsRepo.markPublished(ids, publishedAt),
   listLeagueTables: () => leagueRepo.listTables(),
   listAliases: () => leagueRepo.listAliases(),
   getThresholds: () => settingsRepo.getThresholds(),

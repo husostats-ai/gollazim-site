@@ -291,7 +291,7 @@ function metaText(ctx: Ctx, row: StoryRow, width: number): string {
   return prefix + fitLeague(row.league, width - measure(prefix), measure)
 }
 
-function drawRank(ctx: Ctx, rank: number, geometry: RowGeometry, mid: number) {
+export function drawRank(ctx: Ctx, rank: number, geometry: RowGeometry, mid: number) {
   ctx.beginPath()
   ctx.arc(geometry.markX, mid, geometry.markR, 0, Math.PI * 2)
   ctx.fillStyle = theme.navy600
