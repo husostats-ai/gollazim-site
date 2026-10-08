@@ -112,7 +112,7 @@ export default function MatchCard({ prediction, rank, sortMode, storySelection, 
 
       {shared && <SharedBadge record={shared.record} onRemove={shared.onRemove} />}
 
-      <AiVerdictBadges matchId={match.id} />
+      <AiVerdictBadges matchId={match.id} categoryId={categoryId} />
 
       <ScoreOdds match={match} />
 

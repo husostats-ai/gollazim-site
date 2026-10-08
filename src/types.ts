@@ -115,14 +115,27 @@ export interface Pick {
   modelDrift?: boolean | 'none'
 }
 
-/** Bir yapay zekânın bir maç için verdiği karar; maç başına her sağlayıcıdan en fazla bir tane */
+/**
+ * Bir yapay zekânın bir maç için verdiği cevap; maç başına her sağlayıcıdan en fazla bir tane.
+ * Kararlar kategori bazındadır (byCategory). Kategori bazlı karara geçilmeden önce kaydedilmiş
+ * cevaplarda yalnızca maç geneli tek karar (decision) vardır: bunlar "maç geneli (eski)" sayılır,
+ * kategori kararına çevrilmez ve üyeye gitmez.
+ */
 export interface AiVerdict {
   /** matchId + provider */
   id: string
   matchId: string
   date: string
   provider: AiProvider
-  decision: AiDecision
+  /**
+   * ESKİ biçim: maçın tüm önerilerini birlikte kapsayan tek karar. Yeni cevaplarda yoktur; eski
+   * kararı olan maça yeni biçimli cevap kaydedilirse eski karar burada saklanmaya devam eder.
+   */
+  decision?: AiDecision
+  /** Kategori bazlı kararlar; alanın bulunması cevabın yeni biçimde olduğunu gösterir */
+  byCategory?: Partial<Record<CategoryId, AiDecision>>
+  /** Bu cevap için sorulan kategoriler (prompttaki "Değerlendir" satırı); kararı olmayan "cevapsız"dır */
+  asked?: CategoryId[]
   reason: string
   risk: string
   savedAt: string
@@ -133,14 +146,16 @@ export interface AiVerdict {
 }
 
 /**
- * "AI öneri güveni" satırı üye paketiyle gönderilen maçın kaydı (maç başına bir tane). Yalnızca
+ * "AI öneri güveni" satırı üye paketiyle gönderilen önerinin kaydı (maç + kategori başına bir tane). Yalnızca
  * kayıttır: ileride "üyeye giden AI onaylı maçlar" ile diğerlerinin isabetini karşılaştırmak için
  * tutulur; hiçbir hesabı ve gösterimi değiştirmez.
  */
 export interface AiShare {
-  /** matchId */
+  /** matchId + categoryId; kategori bazlı karardan önceki kayıtlarda yalnızca matchId */
   id: string
   matchId: string
+  /** Satırın ait olduğu liste. Eski (maç geneli) kayıtlarda yoktur. */
+  categoryId?: CategoryId
   date: string
   /** Satırın ilk gittiği yayın (numara ve an) */
   firstN: number
@@ -166,6 +181,11 @@ export interface AiPromptBatch {
   createdAt: string
   /** Sıra numarası - 1 konumundaki maç kimliği: matchIds[0] = #1 */
   matchIds: string[]
+  /**
+   * Her maç için prompttaki "Değerlendir" satırının kategorileri (matchIds ile aynı sırada).
+   * Kategori bazlı karardan önce kopyalanmış promptlarda yoktur; o kayıtlar geçersiz sayılır.
+   */
+  categories?: CategoryId[][]
 }
 
 /** Bir gün + kategori için Story görseline girmesi seçilen maçlar. Yalnızca görsel içindir. */

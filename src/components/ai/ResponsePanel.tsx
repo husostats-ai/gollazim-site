@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { decisionLabel, type AiProvider } from '../../config/ai'
+import { getCategory, type CategoryId } from '../../config/categories'
 import { parseAiResponse, parseLine, type ParsedVerdict, type ParseError } from '../../services/ai/parser'
 import { aiRepo } from '../../services/data'
+import { useApp } from '../../state/AppContext'
 import { isAfterKickoff } from '../../services/story/shared'
 import type { AiVerdict, Match } from '../../types'
 
@@ -14,6 +16,8 @@ interface Props {
   providerLabel: string
   /** numara -> maç kimliği (kopyalanan prompt'taki numaralandırma) */
   numbers: Map<number, string>
+  /** numara -> o maç için sorulan kategoriler (prompttaki "Değerlendir" satırı) */
+  asked: Map<number, readonly CategoryId[]>
   matchesById: Map<string, Match>
   onSaved: () => Promise<void>
 }
@@ -24,13 +28,14 @@ interface Review {
   ignored: number
 }
 
-export default function ResponsePanel({ date, provider, providerLabel, numbers, matchesById, onSaved }: Props) {
+export default function ResponsePanel({ date, provider, providerLabel, numbers, asked, matchesById, onSaved }: Props) {
+  const { aiVerdicts } = useApp()
   const [text, setText] = useState('')
   const [review, setReview] = useState<Review | null>(null)
   const [message, setMessage] = useState<string | null>(null)
 
   const process = () => {
-    const result = parseAiResponse(text, numbers)
+    const result = parseAiResponse(text, numbers, asked)
     setReview({ ...result, errors: result.errors.map((e, i) => ({ ...e, key: i })) })
     setMessage(null)
   }
@@ -45,7 +50,7 @@ export default function ResponsePanel({ date, provider, providerLabel, numbers, 
     setReview((r) => {
       if (!r) return r
       const error = r.errors.find((e) => e.key === key)!
-      const result = parseLine(error.text, numbers)
+      const result = parseLine(error.text, numbers, asked)
       let failure: string | null = null
       if (result.kind === 'ignored') failure = 'Satır bir karar satırına benzemiyor.'
       else if (result.kind === 'error') failure = result.message
@@ -65,27 +70,44 @@ export default function ResponsePanel({ date, provider, providerLabel, numbers, 
   const save = async () => {
     if (!review) return
     const savedAt = new Date().toISOString()
-    const verdicts: AiVerdict[] = review.verdicts.map((v) => ({
-      id: `${v.matchId}|${provider}`,
-      matchId: v.matchId,
-      // Karar, maçın günüyle saklanır
-      date: matchesById.get(v.matchId)?.date ?? date,
-      provider,
-      decision: v.decision,
-      reason: v.reason,
-      risk: v.risk,
-      savedAt,
-      // Skor tahmini, kaydedildiği anla saklanır; maç başladıktan sonra kaydedilen tahmin ölçüme girmez.
-      ...(v.score && { score: v.score, scoreLate: lateFor(matchesById.get(v.matchId), savedAt) }),
-    }))
+    const verdicts: AiVerdict[] = review.verdicts.map((v) => {
+      // Aynı maç + yapay zekâ için eski (maç geneli) karar varsa silinmez: kayıtta "eski" olarak durmaya devam eder.
+      const legacy = aiVerdicts.find((old) => old.id === `${v.matchId}|${provider}`)?.decision
+      return {
+        id: `${v.matchId}|${provider}`,
+        matchId: v.matchId,
+        // Karar, maçın günüyle saklanır
+        date: matchesById.get(v.matchId)?.date ?? date,
+        provider,
+        ...(legacy && { decision: legacy }),
+        byCategory: v.decisions,
+        asked: v.asked,
+        reason: v.reason,
+        risk: v.risk,
+        savedAt,
+        // Skor tahmini, kaydedildiği anla saklanır; maç başladıktan sonra kaydedilen tahmin ölçüme girmez.
+        ...(v.score && { score: v.score, scoreLate: lateFor(matchesById.get(v.matchId), savedAt) }),
+      }
+    })
     await aiRepo.saveVerdicts(verdicts)
     await onSaved()
-    setMessage(`${verdicts.length} ${providerLabel} kararı kaydedildi.`)
+    setMessage(`${verdicts.length} maç için ${providerLabel} kararları kaydedildi.`)
     setReview(null)
     setText('')
   }
 
   const missing = review ? [...numbers.keys()].filter((n) => !review.verdicts.some((v) => v.number === n)) : []
+  const teams = (matchId: string): string => {
+    const match = matchesById.get(matchId)
+    return match ? `${match.home} – ${match.away}` : 'maç bulunamadı'
+  }
+  /** Kaydedilecek satırlardaki uyarılar ve cevapsız kategoriler, maç ve kategori adıyla */
+  const notes = review
+    ? review.verdicts.flatMap((v) => [
+        ...v.warnings.map((w) => `${w} (${teams(v.matchId)})`),
+        ...v.unanswered.map((id) => `#${v.number} ${teams(v.matchId)}: ${getCategory(id).label} için karar yok; ${providerLabel} bu kategoride cevapsız sayılır.`),
+      ])
+    : []
 
   return (
     <div>
@@ -93,7 +115,7 @@ export default function ResponsePanel({ date, provider, providerLabel, numbers, 
         value={text}
         onChange={(e) => setText(e.target.value)}
         rows={7}
-        placeholder={'#1 | Güçlü | gerekçe | risk | SKOR: 2-1\n#2 | Orta | gerekçe | risk'}
+        placeholder={'#1 | 2.5 ÜST: Güçlü ; KG VAR: Orta | gerekçe | risk | SKOR: 2-1\n#2 | İLK YARI 0.5 ÜST: Zayıf | gerekçe | risk'}
         data-testid="ai-response"
         aria-label={`${providerLabel} cevabı`}
         className="w-full rounded-lg border border-navy-500 bg-navy-800 p-2.5 font-mono text-xs leading-relaxed outline-none focus:border-brand"
@@ -115,7 +137,7 @@ export default function ResponsePanel({ date, provider, providerLabel, numbers, 
       {review && (
         <div className="mt-4 space-y-4" data-testid="ai-review">
           <p className="text-sm">
-            <span className="font-bold">{review.verdicts.length} karar okundu</span>
+            <span className="font-bold">{review.verdicts.length} satır okundu</span>
             <span className="text-muted">
               {' '}
               · {review.errors.length} hatalı satır · {review.ignored} açıklama satırı yok sayıldı
@@ -163,6 +185,23 @@ export default function ResponsePanel({ date, provider, providerLabel, numbers, 
             </div>
           )}
 
+          {notes.length > 0 && (
+            <div className="rounded-xl border border-warn-line bg-warn-soft p-3" data-testid="ai-warnings">
+              <p className="text-sm font-bold text-warn">Dikkat: okunamayan ya da cevapsız kategoriler</p>
+              <p className="mt-0.5 text-xs text-muted">
+                Bu satırların okunabilen kararları kaydedilir. Cevapsız kalan kategoride o yapay zekânın kararı yok sayılır; o kategorinin
+                satırı üyeye gitmez.
+              </p>
+              <ul className="mt-2 space-y-1 text-xs text-warn">
+                {notes.map((note, i) => (
+                  <li key={i} data-testid="ai-warning-row">
+                    {note}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {review.verdicts.length > 0 && (
             <ul className="divide-y divide-line rounded-xl border border-navy-500 bg-navy-800 px-3" data-testid="ai-parsed">
               {review.verdicts.map((v) => {
@@ -172,9 +211,11 @@ export default function ResponsePanel({ date, provider, providerLabel, numbers, 
                     <p>
                       <span className="font-bold">#{v.number}</span>{' '}
                       <span className="font-semibold">{match ? `${match.home} – ${match.away}` : 'Maç bulunamadı'}</span>{' '}
-                      <span className="rounded-full border border-navy-500 px-2 py-0.5 text-[11px] font-bold">
-                        {decisionLabel(v.decision)}
-                      </span>
+                      {v.asked.map((id) => (
+                        <span key={id} className={`mr-1 inline-block rounded-full border border-navy-500 px-2 py-0.5 text-[11px] ${v.decisions[id] ? 'font-bold' : 'text-muted italic'}`} data-testid="ai-parsed-decision">
+                          {getCategory(id).label}: {v.decisions[id] ? decisionLabel(v.decisions[id]) : 'cevapsız'}
+                        </span>
+                      ))}
                       {v.score && (
                         <span className="ml-1 text-[11px] font-bold whitespace-nowrap text-muted" data-testid="ai-parsed-score">
                           Skor {v.score.home}-{v.score.away}
@@ -197,7 +238,7 @@ export default function ResponsePanel({ date, provider, providerLabel, numbers, 
             data-testid="ai-save"
             className="rounded-xl bg-brand px-5 py-2.5 text-sm font-bold text-navy-950 hover:bg-brand-dark disabled:opacity-40"
           >
-            {review.verdicts.length} kararı {providerLabel} adına kaydet
+            {review.verdicts.length} maçın kararlarını {providerLabel} adına kaydet
           </button>
         </div>
       )}

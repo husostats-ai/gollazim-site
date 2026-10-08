@@ -14,7 +14,8 @@ import StatsTable from '../components/stats/StatsTable'
 import TrendChart from '../components/stats/TrendChart'
 import { getCategory, GROUPS } from '../config/categories'
 import { DATA_LABELS } from '../services/analysis/reliability'
-import { buildAiStats } from '../services/ai/aiStats'
+import { AI_CATEGORY_IDS } from '../config/ai'
+import { buildCategoryAiStats, buildLegacyAiStats } from '../services/ai/aiStats'
 import { aiRepo, matchesRepo, picksRepo, resultsRepo, sharedRepo } from '../services/data'
 import { buildStarStats, recomputedNote } from '../services/stats/starStats'
 import { SCOPE_LABELS, sharedPicksOnly, type StatsScope } from '../services/story/shared'
@@ -98,7 +99,9 @@ export default function StatsPage() {
   const starStats = useMemo(() => buildStarStats(scopedPicks), [scopedPicks])
   /** En üstteki kart: yalnızca sabit ana kategoriler (config/mainCategories), seçili ölçüde */
   const main = useMemo(() => buildMainStats(scopedPicks), [scopedPicks])
-  const aiStats = useMemo(() => buildAiStats(picks ?? [], verdicts), [picks, verdicts])
+  // Kategori bazlı kararlar ile eski maç geneli kararlar ayrı ölçülür; aynı orana karışmaz.
+  const aiCategoryStats = useMemo(() => buildCategoryAiStats(picks ?? [], verdicts), [picks, verdicts])
+  const aiLegacyStats = useMemo(() => buildLegacyAiStats(picks ?? [], verdicts), [picks, verdicts])
   const marketStats = useMemo(
     () => buildMarketStats(backfillMarket(picks ?? [], legacyMatches, marketConflictLimit)),
     [picks, legacyMatches, marketConflictLimit],
@@ -265,12 +268,23 @@ export default function StatsPage() {
             </Card>
           )}
 
-          {aiStats && (
+          {aiCategoryStats && (
             <Card
-              title="YAPAY ZEKÂ KARARLARININ BAŞARISI"
-              note="Karar maç bazındadır; başarı o maçın dondurulmuş önerilerinin sonucuyla ölçülür. Skoru girilmemiş maçlar orana girmez."
+              title="YAPAY ZEKÂ KARARLARI: KATEGORİ BAZLI"
+              testId="ai-category-card"
+              note={`Karar yalnızca ${AI_CATEGORY_IDS.map((id) => getCategory(id).label).join(', ')} için alınır ve yalnızca o maçın o kategorideki dondurulmuş önerisinin sonucuyla ölçülür. Skoru girilmemiş maçlar orana girmez.`}
             >
-              <AiStatsCard stats={aiStats} />
+              <AiStatsCard stats={aiCategoryStats} kind="category" />
+            </Card>
+          )}
+
+          {aiLegacyStats && (
+            <Card
+              title="YAPAY ZEKÂ KARARLARI: MAÇ GENELİ (ESKİ)"
+              testId="ai-legacy-card"
+              note="Kategori bazlı karara geçilmeden önceki kayıtlar. Karar maçın tümüne aittir; başarı o maçın bütün dondurulmuş önerilerinin sonucuyla ölçülür. Kategori bazlı kararlarla aynı orana karışmaz."
+            >
+              <AiStatsCard stats={aiLegacyStats} kind="legacy" />
             </Card>
           )}
 

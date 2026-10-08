@@ -320,16 +320,30 @@ export const dayHighlights = (date: string): Highlight[] => HIGHLIGHTS.filter((h
 export const AI_REASON_CANARY = 'kanarya-gerekce'
 export const AI_RISK_CANARY = 'kanarya-risk'
 export const AI_SAVED_AT = '2026-10-04T18:00:00.000Z'
-const verdictsOf = (home: string, decisions: [AiVerdict['decision'], AiVerdict['decision'], AiVerdict['decision']]): AiVerdict[] =>
+type Three = [AiVerdict['decision'] | null, AiVerdict['decision'] | null, AiVerdict['decision'] | null]
+/** Kategori bazlı cevaplar: her kategori için [ChatGPT, Gemini, Claude]; null = o yapay zekâ o kategoriyi atladı */
+const verdictsOf = (home: string, byCategory: Partial<Record<Highlight['categoryId'], Three>>): AiVerdict[] =>
+  (['chatgpt', 'gemini', 'claude'] as const).map((provider, i) => {
+    const match = byHome(home)
+    const asked = Object.keys(byCategory) as Highlight['categoryId'][]
+    const decisions = Object.fromEntries(asked.flatMap((id) => (byCategory[id]![i] ? [[id, byCategory[id]![i]]] : [])))
+    return { id: `${match.id}|${provider}`, matchId: match.id, date: match.date, provider, byCategory: decisions, asked, reason: `${AI_REASON_CANARY} ${home}`, risk: `${AI_RISK_CANARY} ${home}`, savedAt: AI_SAVED_AT, score: { home: 7, away: 6 } }
+  })
+/** Kategori bazlı karardan önceki biçim: maçın tümü için tek karar */
+const legacyVerdictsOf = (home: string, decisions: [AiVerdict['decision'], AiVerdict['decision'], AiVerdict['decision']]): AiVerdict[] =>
   (['chatgpt', 'gemini', 'claude'] as const).map((provider, i) => {
     const match = byHome(home)
     return { id: `${match.id}|${provider}`, matchId: match.id, date: match.date, provider, decision: decisions[i], reason: `${AI_REASON_CANARY} ${home}`, risk: `${AI_RISK_CANARY} ${home}`, savedAt: AI_SAVED_AT, score: { home: 7, away: 6 } }
   })
 export const AI_VERDICTS: AiVerdict[] = [
-  ...verdictsOf('Kuzey Yıldızı', ['medium', 'medium', 'medium']), // 3/3 Orta: üyeye gider
-  ...verdictsOf('Doğu Gençlik', ['strong', 'weak', 'strong']), // 2/3 Güçlü + 1 Zayıf: üyeye gider
-  ...verdictsOf('İç Anadolu FK', ['weak', 'weak', 'medium']), // 2/3 Zayıf: gitmez
-  ...verdictsOf('Ova Belediyespor', ['medium', 'reject', 'medium']), // 2 Orta + 1 Eleme: gitmez
+  // 2.5 ÜST 3/3 Orta: gider · KG VAR 2 Orta + 1 Zayıf: gider (2/3) · İY 0.5 ÜST 2 Zayıf + 1 Orta: gitmez
+  ...verdictsOf('Kuzey Yıldızı', { over25: ['medium', 'medium', 'medium'], btts: ['medium', 'medium', 'weak'], ht05: ['weak', 'weak', 'medium'] }),
+  // 2.5 ÜST 2 Güçlü + 1 Eleme: gitmez · KG VAR 3/3 Güçlü: gider (diğer kategori etkilenmez)
+  ...verdictsOf('Doğu Gençlik', { over25: ['strong', 'strong', 'reject'], btts: ['strong', 'strong', 'strong'] }),
+  // 2.5 ÜST: Claude atladı (cevapsız): gitmez · İY 0.5 ÜST 3/3 Orta: gider
+  ...verdictsOf('İç Anadolu FK', { over25: ['medium', 'medium', null], ht05: ['medium', 'medium', 'medium'] }),
+  // Eski biçim (maç geneli 3/3 Orta): hiçbir kategoride gitmez
+  ...legacyVerdictsOf('Ova Belediyespor', ['medium', 'medium', 'medium']),
 ]
 export const dayVerdicts = (date: string): AiVerdict[] => AI_VERDICTS.filter((v) => v.date === date)
 

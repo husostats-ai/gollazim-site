@@ -26,7 +26,7 @@ export default function CategoryList({ analysis }: { analysis: CategoryAnalysis 
   const category = getCategory(analysis.categoryId)
   const { predictions, qualifiedCount, threshold } = analysis
   const selectedIds = storySelections[category.id] ?? []
-  const approvedIds = majorityApprovedIds(predictions, aiVerdicts)
+  const approvedIds = majorityApprovedIds(predictions, aiVerdicts, category.id)
   const select = (ids: string[]) => setStorySelection(category.id, ids)
   // Açıklama metni görselle aynı maçlardan ve aynı sırayla üretilir.
   const { selected } = resolveSelection(predictions, selectedIds)

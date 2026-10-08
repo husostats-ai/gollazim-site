@@ -2,7 +2,9 @@ import type { MemberTexts } from '../../config/memberTexts'
 import type { AiVerdict, Highlight, LeagueTable, Match, MatchResult, Pick, SharedPick, TeamAlias, Thresholds } from '../../types'
 import { shiftDate } from '../../utils/format'
 import { fromBase64, sealPayload, type MemberEnvelope } from '../member/crypto'
-import { memberShareRow, type MemberShareRow } from '../ai/memberShare'
+import { AI_CATEGORY_IDS } from '../../config/ai'
+import type { CategoryId } from '../../config/categories'
+import { aiShareId, memberShareRow, type MemberShareRow } from '../ai/memberShare'
 import { buildMemberPublication, type MemberAiInput, type MemberHighlightInput, type MemberPayload, type MemberPayloadInput } from '../member/payload'
 import { scanForLeaks } from './leakScan'
 import { activeKeys } from './registry'
@@ -41,9 +43,10 @@ export class PublishError extends Error {
   }
 }
 
-/** "AI öneri güveni" satırı pakete giren maç (kayıt için; pakette maç kimliği yoktur) */
+/** "AI öneri güveni" satırı pakete giren öneri: maç + kategori (kayıt için; pakette kimlik yoktur) */
 export interface SentAiShare {
   matchId: string
+  categoryId: CategoryId
   date: string
   row: MemberShareRow
 }
@@ -59,17 +62,22 @@ export interface PublishDraft {
 }
 
 /**
- * Günün maçlarından satırı üyeye gidebilecek olanlar. Kararın yalnızca sağlayıcısı ve seviyesi
- * kurucuya verilir: gerekçe, risk, skor tahmini ve kayıt zamanı burada kalır.
+ * Günün maçlarının, karar istenen kategorilerde satırı üyeye gidebilecek olanları. Kararın
+ * yalnızca sağlayıcısı ve seviyesi kurucuya verilir: gerekçe, risk, skor tahmini ve kayıt zamanı
+ * burada kalır. Eski maç geneli kararlar hiç hesaba girmez.
  */
 export function aiInputsOf(matches: readonly Match[], verdicts: readonly AiVerdict[]): { inputs: MemberAiInput[]; rows: Map<string, MemberShareRow> } {
   const rows = new Map<string, MemberShareRow>()
   const inputs: MemberAiInput[] = []
   for (const match of matches) {
-    const row = memberShareRow(match, verdicts.filter((v) => v.matchId === match.id))
-    if (!row) continue
-    rows.set(match.id, row)
-    inputs.push({ matchId: match.id, ai: { votes: row.votes.map((vote) => ({ who: vote.provider, level: vote.decision })), count: row.count, level: row.decision } })
+    const own = verdicts.filter((v) => v.matchId === match.id)
+    if (own.length === 0) continue
+    for (const categoryId of AI_CATEGORY_IDS) {
+      const row = memberShareRow(match, own, categoryId)
+      if (!row) continue
+      rows.set(aiShareId(match.id, categoryId), row)
+      inputs.push({ matchId: match.id, categoryId, ai: { votes: row.votes.map((vote) => ({ who: vote.provider, level: vote.decision })), count: row.count, level: row.decision } })
+    }
   }
   return { inputs, rows }
 }
@@ -119,10 +127,13 @@ export async function draftPublication(sources: PublishSources, options: { day: 
   // Listeler paket kurulurken hesaplandığı için boş günler ancak şimdi bilinir.
   const keep = dayData.map((d, i) => i === 0 || full.payload.days[i].lists.some((list) => list.items.length > 0) || d.highlights.length > 0)
   const kept = dayData.filter((_, i) => keep[i])
-  const { payload, aiMatchIds } = kept.length === dayData.length ? full : buildMemberPublication({ ...input, days: input.days.filter((_, i) => keep[i]) })
-  // Satır yalnızca listelerde geçen maçta pakete girer; kayıt kurucunun bildirdiği maçlardan tutulur.
-  const sent = new Set(aiMatchIds)
-  const aiShares = kept.flatMap((d) => [...d.ai.rows].filter(([matchId]) => sent.has(matchId)).map(([matchId, row]) => ({ matchId, date: d.date, row })))
+  const { payload, aiSent } = kept.length === dayData.length ? full : buildMemberPublication({ ...input, days: input.days.filter((_, i) => keep[i]) })
+  // Satır yalnızca o listede yer alan öneride pakete girer; kayıt kurucunun bildirdiklerinden tutulur.
+  const rowOf = new Map(kept.flatMap((d) => [...d.ai.rows].map(([key, row]): [string, { date: string; row: MemberShareRow }] => [key, { date: d.date, row }])))
+  const aiShares = aiSent.flatMap(({ matchId, categoryId }): SentAiShare[] => {
+    const found = rowOf.get(aiShareId(matchId, categoryId))
+    return found ? [{ matchId, categoryId, date: found.date, row: found.row }] : []
+  })
   return { payload, rawMatches: kept.flatMap((d) => d.matches), highlightIds: kept.flatMap((d) => d.highlightIds), aiShares }
 }
 
@@ -136,7 +147,7 @@ const byteLength = (text: string): number => new TextEncoder().encode(text).leng
 
 /** Onay ekranındaki paket özeti */
 export const summarizePayload = (payload: MemberPayload): PublishSummary => ({
-  days: payload.days.map((d) => ({ date: d.date, matches: d.matches.length, items: d.lists.reduce((sum, l) => sum + l.items.length, 0), lists: d.lists.filter((l) => l.items.length > 0).length, highlights: d.highlights?.length ?? 0, ai: d.matches.filter((m) => m.ai !== undefined).length })),
+  days: payload.days.map((d) => ({ date: d.date, matches: d.matches.length, items: d.lists.reduce((sum, l) => sum + l.items.length, 0), lists: d.lists.filter((l) => l.items.length > 0).length, highlights: d.highlights?.length ?? 0, ai: d.lists.reduce((sum, l) => sum + l.items.filter((item) => item.ai !== undefined).length, 0) })),
   plainBytes: byteLength(JSON.stringify(payload)),
 })
 

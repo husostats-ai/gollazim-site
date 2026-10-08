@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { CATEGORIES, defaultThresholds, type CategoryId } from '../../config/categories'
 import type { AiVerdict, Match, Pick, PickOutcome } from '../../types'
 import { formatRate } from '../../utils/format'
-import { buildSummaryAiStats as buildAiStats } from '../ai/aiStats'
+import { buildLegacyAiStats } from '../ai/aiStats'
 import { analyzeCategory } from '../analysis/engine'
 import { makeMatch } from '../analysis/testUtils'
 import { recordShare, sharedPicksOnly } from '../story/shared'
@@ -257,28 +257,54 @@ describe('özet metni', () => {
     expect(row(section(text, 'Kalibrasyon: Taraf & Gol'), 'Tüm Taraf & Gol')).toEqual(['Tüm Taraf & Gol', '%60', rateCell(side.tally), '-10 puan'])
   })
 
-  it('yapay zekâ kararları: kaynak ve karar bazında, her hücrede n', () => {
-    const ai = buildAiStats(picks, verdicts)!
-    const body = section(text, 'Yapay zekâ kararlarının başarısı')
+  it('yapay zekâ kararları: eski maç geneli kararlar kendi bölümünde; kaynak ve karar bazında, her hücrede n', () => {
+    const ai = buildLegacyAiStats(picks, verdicts)!
+    const body = section(text, 'Yapay zekâ kararlarının başarısı: maç geneli kararlar (eski)')
     expect(row(body, 'ChatGPT')).toEqual(['ChatGPT', '2', rateCell(ai.approved.chatgpt)])
-    expect(row(body, 'Ortak karar')).toEqual(['Ortak karar', '1', '%100 · n=1'])
-    expect(row(body, 'Eleme')).toEqual(['Eleme', '%0 · n=1', '— · n=0', '— · n=0'])
-    expect(buildStatsSummary(input({ kind: 'all' }, { verdicts: [] }))).toContain('Kayıtlı yapay zekâ kararı yok.')
+    expect(row(body, 'Claude')).toEqual(['Claude', '0', '— · n=0'])
+    expect(row(body, 'Çoğunluk kararı')).toEqual(['Çoğunluk kararı', '1', '%100 · n=1'])
+    expect(row(body, 'Eleme')).toEqual(['Eleme', '%0 · n=1', '— · n=0', '— · n=0', '— · n=0'])
+    // Bu veride kategori bazlı karar yok: o bölüm boş, eski kararlar oraya karışmıyor.
+    expect(section(text, 'Yapay zekâ kararlarının başarısı: kategori bazlı kararlar')).toContain('Kayıtlı kategori bazlı yapay zekâ kararı yok.')
+    const none = buildStatsSummary(input({ kind: 'all' }, { verdicts: [] }))
+    expect(none).toContain('Kayıtlı kategori bazlı yapay zekâ kararı yok.')
+    expect(none).toContain('Kayıtlı maç geneli (eski) yapay zekâ kararı yok.')
   })
 
-  it('Claude kararları özeti ve ayrıntı CSV\'sini değiştirmez (biçim sabit: ChatGPT, Gemini, Ortak karar)', () => {
-    const claude = [
-      { ...verdict(picks[0].matchId, 'claude', 'reject', '2026-10-09'), score: { home: 3, away: 1 } },
-      verdict(picks[12].matchId, 'claude', 'reject', '2026-10-09'),
-      verdict(picks[1].matchId, 'claude', 'strong', '2026-10-09'),
+  it('kategori bazlı kararlar ayrı bölümde ölçülür ve eski bölümü değiştirmez', () => {
+    // picks[0] ve picks[1]: 2.5 ÜST, tuttu. picks[12]: 2.5 ÜST, tutmadı.
+    const fresh = (matchId: string, provider: AiVerdict['provider'], decision: NonNullable<AiVerdict['decision']>): AiVerdict => ({ id: `${matchId}|${provider}`, matchId, date: '2026-10-09', provider, byCategory: { over25: decision }, asked: ['over25'], reason: 'gizli gerekçe metni', risk: 'gizli risk metni', savedAt: '' })
+    const category = [
+      ...(['chatgpt', 'gemini', 'claude'] as const).map((p) => fresh(picks[1].matchId, p, 'medium')),
+      fresh(picks[13].matchId, 'chatgpt', 'strong'),
+      fresh(picks[13].matchId, 'gemini', 'weak'),
+      fresh(picks[13].matchId, 'claude', 'strong'),
     ]
-    const withClaude = { verdicts: [...verdicts, ...claude], results: matches.slice(0, 3).map((m) => ({ matchId: m.id, status: 'completed', ftHome: 2, ftAway: 1 }) as MatchResult) }
-    const without = { verdicts, results: withClaude.results }
-    expect(buildStatsSummary(input({ kind: 'all' }, withClaude))).toBe(buildStatsSummary(input({ kind: 'all' }, without)))
-    expect(buildDetailCsv(input({ kind: 'all' }, withClaude))).toBe(buildDetailCsv(input({ kind: 'all' }, without)))
-    expect(buildStatsSummary(input({ kind: 'all' }, withClaude))).not.toContain('Claude')
-    expect(DETAIL_CSV_COLUMNS.filter((c) => c.startsWith('ai_'))).toEqual(['ai_chatgpt', 'ai_gemini', 'ai_chatgpt_skor', 'ai_gemini_skor'])
-    expect(buildStatsSummary(input({ kind: 'all' }, { verdicts: claude }))).toContain('Kayıtlı yapay zekâ kararı yok.')
+    const mixed = buildStatsSummary(input({ kind: 'all' }, { verdicts: [...verdicts, ...category] }))
+    const body = section(mixed, 'Yapay zekâ kararlarının başarısı: kategori bazlı kararlar')
+    expect(row(body, 'ChatGPT')).toEqual(['ChatGPT', '2', '%50 · n=2'])
+    expect(row(body, 'Gemini')).toEqual(['Gemini', '2', '%100 · n=1'])
+    expect(row(body, 'Çoğunluk kararı')).toEqual(['Çoğunluk kararı', '2', '%50 · n=2'])
+    expect(row(body, 'Orta')).toEqual(['Orta', '%100 · n=1', '%100 · n=1', '%100 · n=1', '%100 · n=1'])
+    expect(body).toContain('Karar yalnızca şu kategoriler için alınır: 2.5 ÜST, İLK YARI 0.5 ÜST, KG VAR, 2.5 ÜST & KG VAR.')
+    // Eski bölüm, kategori kararları eklenince değişmez.
+    const legacyTitle = 'Yapay zekâ kararlarının başarısı: maç geneli kararlar (eski)'
+    expect(section(mixed, legacyTitle)).toBe(section(text, legacyTitle))
+  })
+
+  it('ayrıntı CSV\'si: üç yapay zekâ sütunu; yeni kararlarda hücre önerinin kendi kategorisinin kararıdır', () => {
+    expect(DETAIL_CSV_COLUMNS.filter((c) => c.startsWith('ai_'))).toEqual(['ai_chatgpt', 'ai_gemini', 'ai_claude', 'ai_chatgpt_skor', 'ai_gemini_skor', 'ai_claude_skor'])
+    const col = (name: (typeof DETAIL_CSV_COLUMNS)[number]) => DETAIL_CSV_COLUMNS.indexOf(name)
+    // Aynı maçın iki kategoride önerisi var: 2.5 ÜST ve 2. YARI 0.5 ÜST (karar istenmeyen kategori).
+    const extra = { ...picks[1], id: 'ek-oneri', categoryId: 'sh05' as const }
+    const fresh: AiVerdict[] = (['chatgpt', 'gemini', 'claude'] as const).map((provider, i) => ({ id: `${picks[1].matchId}|${provider}`, matchId: picks[1].matchId, date: '2026-10-09', provider, byCategory: i === 2 ? {} : { over25: i === 0 ? 'strong' : 'weak' }, asked: ['over25'], reason: 'r', risk: 'k', savedAt: '' }))
+    const rows = buildDetailRows(input({ kind: 'all' }, { picks: [...picks, extra], verdicts: [...verdicts, ...fresh] })).filter((r) => r[col('ev_sahibi')] === 'Ev 1')
+    const cells = (kategori: string) => { const r = rows.find((x) => x[col('kategori')] === kategori)!; return [r[col('ai_chatgpt')], r[col('ai_gemini')], r[col('ai_claude')]] }
+    expect(cells('2.5 ÜST')).toEqual(['Güçlü', 'Zayıf', '']) // Claude bu kategoride cevapsız
+    expect(cells('2. YARI 0.5 ÜST')).toEqual(['', '', '']) // karar istenmeyen kategori: boş
+    // Eski maç geneli karar, maçın her satırında eskisi gibi yazılır.
+    const old = buildDetailRows(input()).find((r) => r[col('ev_sahibi')] === 'Ev 0')!
+    expect([old[col('ai_chatgpt')], old[col('ai_gemini')], old[col('ai_claude')]]).toEqual(['Güçlü', 'Güçlü', ''])
   })
 
   it('paylaşılan ve tüm öneriler yan yana', () => {
@@ -340,7 +366,7 @@ describe('ayrıntılı maç tablosu (CSV)', () => {
     const rows = buildDetailRows(input())
     const col = (name: (typeof DETAIL_CSV_COLUMNS)[number]) => DETAIL_CSV_COLUMNS.indexOf(name)
     const first = rows.find((r) => r[col('ev_sahibi')] === 'Ev 0')!
-    expect(first).toEqual(['2026-10-09', '2.5 ÜST', 'Ev 0', 'Dep 0', 'England · EFL Trophy', '90', '60', '62', '3', 'Düşük', 'Güçlü', 'Güçlü', 'evet', 'tuttu', '', '', '', ''])
+    expect(first).toEqual(['2026-10-09', '2.5 ÜST', 'Ev 0', 'Dep 0', 'England · EFL Trophy', '90', '60', '62', '3', 'Düşük', 'Güçlü', 'Güçlü', '', 'evet', 'tuttu', '', '', '', '', ''])
     const side = rows.find((r) => r[col('kategori')] === 'EV KAZANIR & 1.5 ÜST')!
     expect(side[col('yildiz')]).toBe('')
     expect(side[col('piyasa_yuzde')]).toBe('')

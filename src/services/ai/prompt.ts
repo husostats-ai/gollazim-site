@@ -22,6 +22,9 @@ export interface PromptChunk {
 export const DATA_START = '=== VERİ BAŞLANGICI ==='
 export const DATA_END = '=== VERİ SONU ==='
 
+/** Maç bloğunun son satırı: karar istenen kategoriler */
+export const EVALUATE_LABEL = 'Değerlendir'
+
 const MISSING = 'veri yok'
 const num = (value: number | null): string => (value === null ? MISSING : formatNumber(value))
 const pair = (home: number | null, away: number | null): string =>
@@ -84,6 +87,7 @@ export function matchBlock(item: AiMatchItem, number: number): string {
     `İstatistik: ${stats.join(' ; ')}`,
     `Gol modeli: ${model.join(' ; ')}`,
     ...(market ? [market] : []),
+    `${EVALUATE_LABEL}: ${item.evaluate.map((id) => getCategory(id).label).join(' ; ')}`,
   ].join('\n')
 }
 
@@ -116,15 +120,16 @@ function chunkText(args: {
     `- Önerilerdeki "en az N saha maçı (tahmini)" ifadesi örneklem büyüklüğüdür: ${SAMPLE_HINT}`,
     '',
     'GÖREV',
-    `Her maç için listelenen önerilerin ne kadar güvenilir olduğunu değerlendir ve tek bir KARAR ver. KARAR şunlardan biri olmalı: ${decisions}.`,
+    `Her maç için "${EVALUATE_LABEL}" satırındaki HER kategoriye ayrı bir KARAR ver: ${decisions.replace(/, ([^,]*)$/, ' veya $1')}. Listede olmayan kategoriye karar verme.`,
     '',
     'CEVAP BİÇİMİ',
-    '- Her maç için tek satır yaz: #numara | KARAR | gerekçe | risk | skor',
+    '- Her maç için tek satır yaz: #numara | KATEGORİ: KARAR ; KATEGORİ: KARAR | gerekçe | risk | SKOR: ev-deplasman',
+    `- Kategori adlarını "${EVALUATE_LABEL}" satırındakiyle birebir aynı yaz.`,
     '- Son alan (skor) isteğe bağlıdır: maçın sonucuna dair kendi tahminini "SKOR: ev-deplasman" biçiminde yaz (örnek: SKOR: 2-1). Tahmin yürütmek istemiyorsan bu alanı hiç yazma.',
     '- Markdown tablosu, kalın yazı, başlık ve madde işareti kullanma. Bu satırlar dışında hiçbir şey yazma.',
     '- Gerekçe en fazla iki cümle olsun. Risk kısa bir ifade olsun.',
     '- Verilen numaraları aynen kullan; maçları yeniden numaralama ve satır atlama.',
-    '- Örnek satır: #1 | Orta | Ev sahibi son maçlarında gollü ancak ilk 11 belirsiz (kaynak adı). | Rotasyon ihtimali | SKOR: 2-1',
+    "- Örnek satır: #3 | 2.5 ÜST: Orta ; KG VAR: Orta ; İLK YARI 0.5 ÜST: Zayıf | İki takımın xG'si yüksek, model 2.5 Üst'ü destekliyor (QSL). | Küçük örneklem | SKOR: 2-2",
     '',
     DATA_START,
     blocks.join('\n\n'),

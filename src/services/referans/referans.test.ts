@@ -7,7 +7,7 @@ import { normalizeStoryTexts } from '../../config/storyTexts'
 import type { BackupFile, Match } from '../../types'
 import { toAppDateTime } from '../../utils/date'
 import { formatLongDate } from '../../utils/format'
-import { buildAiStats } from '../ai/aiStats'
+import { buildCategoryAiStats, buildLegacyAiStats } from '../ai/aiStats'
 import { analyzeDay } from '../analysis/engine'
 import { assessReliability } from '../analysis/reliability'
 import { scoreForecast } from '../analysis/scoreForecast'
@@ -96,7 +96,7 @@ it.runIf(process.env.REF_BACKUP)('referans dökümü', () => {
   const statsPage = {
     all: { stats: buildStats(b.picks), stars: buildStarStats(b.picks) },
     shared: { stats: buildStats(sharedOnly), stars: buildStarStats(sharedOnly) },
-    ai: buildAiStats(b.picks, verdicts),
+    ai: { category: buildCategoryAiStats(b.picks, verdicts), legacy: buildLegacyAiStats(b.picks, verdicts) },
     market: buildMarketStats(backfillMarket(b.picks, b.matches, limit)),
     score: buildScoreStats({ matches: b.matches, results: b.results, verdicts }),
     daily: dates.map((date) => ({ date, summary: buildDailySummary(b.picks, date) })),

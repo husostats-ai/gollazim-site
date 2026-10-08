@@ -1,16 +1,16 @@
 import Papa from 'papaparse'
-import { AI_DECISIONS, AI_PROVIDERS, SUMMARY_AI_PROVIDERS, decisionLabel } from '../../config/ai'
+import { AI_CATEGORY_IDS, AI_DECISIONS, AI_PROVIDERS, decisionLabel } from '../../config/ai'
 import { CATEGORIES, categoriesInGroup, getCategory, type CategoryId } from '../../config/categories'
 import type { AiVerdict, Match, MatchResult, Pick, ScoreLine, SharedPick, Thresholds } from '../../types'
 import { toAppDateTime } from '../../utils/date'
 import { formatDay, formatNumber, formatRate, shiftDate } from '../../utils/format'
-import { SUMMARY_AI_SOURCES as AI_SOURCES, buildSummaryAiStats, type SummaryAiSource as AiSource } from '../ai/aiStats'
+import { AI_SOURCES, buildCategoryAiStats, buildLegacyAiStats, type AiSource, type AiStats } from '../ai/aiStats'
 import { MODEL_CONFLICT_LIMIT } from '../analysis/goalModel'
 import { RELIABILITY_LABELS, SAMPLE_HINT } from '../analysis/reliability'
 import { stat } from '../analysis/stat'
 import { findActiveShared, sharedPicksOnly } from '../story/shared'
 import { backfillMarket, buildMarketStats } from './marketStats'
-import { actualScore, buildScoreStats, SCORE_SOURCES } from './scoreStats'
+import { actualScore, buildScoreStats } from './scoreStats'
 import { buildStarStats, frozenStars, recomputedNote, STAR_LEVELS } from './starStats'
 import { buildStats, LOW_SAMPLE_LIMIT, tally, type Tally } from './statsEngine'
 
@@ -65,10 +65,7 @@ export interface SummaryInput {
   marketConflictLimit: number
 }
 
-/** Skor tahmini tablosunun sabit kaynakları: model, özetin iki yapay zekâsı ve referanslar */
-const SUMMARY_SCORE_SOURCES = SCORE_SOURCES.filter((s) => !AI_PROVIDERS.some((p) => p.id === s.id) || SUMMARY_AI_PROVIDERS.some((p) => p.id === s.id))
-
-const SOURCE_LABELS: Record<AiSource, string> = { chatgpt: 'ChatGPT', gemini: 'Gemini', consensus: 'Ortak karar' }
+const SOURCE_LABELS = { ...Object.fromEntries(AI_PROVIDERS.map((p) => [p.id, p.label])), majority: 'Çoğunluk kararı' } as Record<AiSource, string>
 
 const table = (header: string[], rows: (string | number)[][]): string =>
   [`| ${header.join(' | ')} |`, `| ${header.map(() => '---').join(' | ')} |`, ...rows.map((r) => `| ${r.join(' | ')} |`)].join('\n')
@@ -80,16 +77,13 @@ const signed = (value: number | null): string => (value === null ? '—' : `${va
 
 const unique = <T,>(values: T[]): T[] => [...new Set(values)]
 
-/**
- * Kapsama giren öneriler, kararlar ve paylaşım kayıtları. Özet ve ayrıntı CSV'si yalnızca
- * SUMMARY_AI_PROVIDERS kararlarını görür (biçim sabit tutulur); Claude kararları burada elenir.
- */
+/** Kapsama giren öneriler, kararlar ve paylaşım kayıtları */
 export function scopeData(input: Pick_<SummaryInput, 'picks' | 'verdicts' | 'shared' | 'scope' | 'today'>) {
   const bounds = scopeBounds(input.scope, input.today)
   return {
     bounds,
     picks: input.picks.filter((p) => inScope(p.date, bounds)),
-    verdicts: input.verdicts.filter((v) => inScope(v.date, bounds) && SUMMARY_AI_PROVIDERS.some((p) => p.id === v.provider)),
+    verdicts: input.verdicts.filter((v) => inScope(v.date, bounds)),
     shared: input.shared.filter((r) => inScope(r.date, bounds)),
   }
 }
@@ -238,16 +232,30 @@ export function buildStatsSummary(input: SummaryInput): string {
     )
   }
 
-  const ai = buildSummaryAiStats(picks, verdicts)
-  out.push('## Yapay zekâ kararlarının başarısı', '')
-  if (!ai) out.push('Kayıtlı yapay zekâ kararı yok.', '')
+  // Kategori bazlı kararlar ile eski maç geneli kararlar ayrı tablolardadır; aynı orana karışmaz.
+  const aiTables = (stats: AiStats, unit: string): string[] => [
+    table(['Kaynak', `Kararı kayıtlı ${unit}`, 'Onayladığı (Güçlü / Orta) önerilerde başarı'], AI_SOURCES.map((s) => [SOURCE_LABELS[s], stats.units[s], rateCell(stats.approved[s])])),
+    '',
+    table(['Karar', ...AI_SOURCES.map((s) => SOURCE_LABELS[s])], stats.byDecision.map((row) => [decisionLabel(row.decision), ...AI_SOURCES.map((s) => rateCell(row.tallies[s]))])),
+    '',
+  ]
+  const aiCategory = buildCategoryAiStats(picks, verdicts)
+  out.push('## Yapay zekâ kararlarının başarısı: kategori bazlı kararlar', '')
+  if (!aiCategory) out.push('Kayıtlı kategori bazlı yapay zekâ kararı yok.', '')
   else {
     out.push(
-      table(['Kaynak', 'Kararı kayıtlı maç', 'Onayladığı (Güçlü / Orta) maçlarda başarı'], AI_SOURCES.map((s) => [SOURCE_LABELS[s], ai.matches[s], rateCell(ai.approved[s])])),
+      ...aiTables(aiCategory, 'öneri (maç + kategori)'),
+      `Karar yalnızca şu kategoriler için alınır: ${AI_CATEGORY_IDS.map((id) => getCategory(id).label).join(', ')}. Her karar yalnızca o maçın o kategorideki dondurulmuş önerisinin sonucuyla ölçülür. Çoğunluk kararı: o kategoride karar veren yapay zekâların yarısından fazlasının aynı seviyede verdiği karar (ortalama alınmaz).`,
       '',
-      table(['Karar', ...AI_SOURCES.map((s) => SOURCE_LABELS[s])], ai.byDecision.map((row) => [decisionLabel(row.decision), ...AI_SOURCES.map((s) => rateCell(row.tallies[s]))])),
-      '',
-      'Karar maç bazındadır; başarı o maçın dondurulmuş önerilerinin sonucuyla ölçülür. Ortak karar: iki yapay zekânın aynı kararı verdiği maçlar.',
+    )
+  }
+  const aiLegacy = buildLegacyAiStats(picks, verdicts)
+  out.push('## Yapay zekâ kararlarının başarısı: maç geneli kararlar (eski)', '')
+  if (!aiLegacy) out.push('Kayıtlı maç geneli (eski) yapay zekâ kararı yok.', '')
+  else {
+    out.push(
+      ...aiTables(aiLegacy, 'maç'),
+      'Kategori bazlı karara geçilmeden önceki kayıtlar: karar maçın tümüne aittir ve o maçın bütün dondurulmuş önerilerinin sonucuyla ölçülür. Bu tablo kategori bazlı kararlarla karıştırılmaz. Çoğunluk kararı: karar veren yapay zekâların (o günlerde çoğunlukla iki) yarısından fazlasının aynı seviyede verdiği karar.',
       '',
     )
   }
@@ -268,7 +276,7 @@ export function buildStatsSummary(input: SummaryInput): string {
     '',
   )
 
-  const scores = buildScoreStats({ matches: input.matches.filter((m) => inScope(m.date, bounds)), results: input.results ?? [], verdicts }, SUMMARY_SCORE_SOURCES)
+  const scores = buildScoreStats({ matches: input.matches.filter((m) => inScope(m.date, bounds)), results: input.results ?? [], verdicts })
   out.push('## Skor tahminleri (deney)', '')
   out.push(
     table(
@@ -315,12 +323,12 @@ export const DETAIL_CSV_COLUMNS = [
   'piyasa_yuzde',
   'yildiz',
   'guvenilirlik',
-  ...SUMMARY_AI_PROVIDERS.map((p) => `ai_${p.id}`),
+  ...AI_PROVIDERS.map((p) => `ai_${p.id}`),
   'paylasildi',
   'sonuc',
   'mac_skoru',
   'model_skor',
-  ...SUMMARY_AI_PROVIDERS.map((p) => `ai_${p.id}_skor`),
+  ...AI_PROVIDERS.map((p) => `ai_${p.id}_skor`),
 ] as const
 
 const OUTCOME_TEXT = { won: 'tuttu', lost: 'tutmadı', void: 'değerlendirilemedi' } as const
@@ -347,9 +355,12 @@ export function buildDetailRows(
       const match = matchById.get(p.matchId)
       const stars = frozenStars(p)
       const verdictOf = (provider: string) => verdicts.find((v) => v.matchId === p.matchId && v.provider === provider)
+      // Yeni cevaplarda hücre, önerinin KENDİ kategorisinin kararıdır (karar istenmeyen kategorilerde
+      // ve cevapsız kategoride boş). Eski cevaplarda maç geneli karar yazılır.
       const verdict = (provider: string) => {
         const found = verdictOf(provider)
-        return found ? decisionLabel(found.decision) : ''
+        const decision = found?.byCategory ? found.byCategory[p.categoryId] : found?.decision
+        return decision ? decisionLabel(decision) : ''
       }
       // Maç başladıktan sonra kaydedilen skor tahmini ölçüme girmediği için burada da boş kalır.
       const aiScore = (provider: string) => {
@@ -367,12 +378,12 @@ export function buildDetailRows(
         typeof p.marketPercent === 'number' ? String(p.marketPercent) : '',
         stars === null ? '' : String(stars),
         p.reliability ? RELIABILITY_LABELS[p.reliability] : '',
-        ...SUMMARY_AI_PROVIDERS.map((provider) => verdict(provider.id)),
+        ...AI_PROVIDERS.map((provider) => verdict(provider.id)),
         findActiveShared(shared, p.date, p.categoryId, p.matchId) ? 'evet' : 'hayır',
         OUTCOME_TEXT[p.outcome],
         scoreText(actualScore(resultById.get(p.matchId))),
         scoreText(match?.scoreSnapshot?.best),
-        ...SUMMARY_AI_PROVIDERS.map((provider) => aiScore(provider.id)),
+        ...AI_PROVIDERS.map((provider) => aiScore(provider.id)),
       ]
     })
 }

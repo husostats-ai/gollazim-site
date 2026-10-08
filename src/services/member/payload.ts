@@ -31,11 +31,13 @@ import { assertMemberPayload } from './schema'
  * 3: istatistiklerde ana kategorilerin toplu başarısı (main) var.
  * 4: her günde "günün öne çıkanları" seçimleri (highlights) var.
  * 5: önerilerde tahmini maç sayısı (sample) bulunabilir.
- * 6: maçlarda "AI öneri güveni" satırı (ai) bulunabilir.
+ * 6: maçlarda "AI öneri güveni" satırı (ai) bulunabilir (maç geneli; artık üretilmez).
+ * 7: "AI öneri güveni" satırı önerinin kendisindedir (kategori bazlı); maçta bulunmaz.
  * Sürüm 1 (others alanı olmayan), sürüm 2 (main alanı olmayan), sürüm 3 (highlights alanı olmayan),
- * sürüm 4 (sample alanı olmayan) ve sürüm 5 (ai alanı olmayan) paketler üye sayfasında hâlâ açılır.
+ * sürüm 4 (sample alanı olmayan), sürüm 5 (ai alanı olmayan) ve sürüm 6 (ai alanı maçta olan)
+ * paketler üye sayfasında hâlâ açılır; sürüm 6'daki maç geneli satır gösterilmez.
  */
-export const MEMBER_PAYLOAD_VERSION = 6
+export const MEMBER_PAYLOAD_VERSION = 7
 
 /** Günlük dökümde pakete giren en fazla gün sayısı (en yeniler) */
 export const MEMBER_DAILY_LIMIT = 90
@@ -116,9 +118,9 @@ export interface MemberMatch {
   homeStanding: MemberStanding | null
   awayStanding: MemberStanding | null
   /**
-   * "AI öneri güveni" satırı. Yalnızca üç yapay zekânın da maç başlamadan karar verdiği, hiçbirinin
-   * "Eleme" demediği ve çoğunluk kararının Orta ya da Güçlü olduğu maçta vardır; diğerlerinde alan
-   * hiç yazılmaz. Sürüm 1-5 paketlerde bu alan yoktur.
+   * YALNIZCA SÜRÜM 6 paketlerde: maçın tüm önerilerini birlikte kapsayan eski "AI öneri güveni"
+   * satırı. Artık üretilmez ve üye sayfasında gösterilmez; kategori bazlı satır önerinin
+   * kendisindedir (MemberItem.ai).
    */
   ai?: MemberAi
 }
@@ -167,6 +169,13 @@ export interface MemberItem {
    * alan hiç yazılmaz. Sürüm 1-4 paketlerde bu alan yoktur.
    */
   sample?: number
+  /**
+   * "AI öneri güveni" satırı: yapay zekâların BU ÖNERİYE (maçın bu kategorisine) verdiği kararlar.
+   * Yalnızca karar istenen dört listede ve yalnızca üç yapay zekânın da o kategori için maç
+   * başlamadan karar verdiği, hiçbirinin "Eleme" demediği ve çoğunluğun Orta ya da Güçlü olduğu
+   * öneride vardır; diğerlerinde alan hiç yazılmaz. Sürüm 1-6 paketlerde bu alan yoktur.
+   */
+  ai?: MemberAi
   /** Dondurulmuş önerinin sonucu; skor girilmediyse null */
   outcome: PickOutcome | null
   /** Sonucun kategoriye özgü ayrıntısı ("İY 1-0", "Korner 11"); yoksa null */
@@ -215,7 +224,7 @@ export interface MemberDay {
 }
 
 export interface MemberPayload {
-  v: 1 | 2 | 3 | 4 | 5 | typeof MEMBER_PAYLOAD_VERSION
+  v: 1 | 2 | 3 | 4 | 5 | 6 | typeof MEMBER_PAYLOAD_VERSION
   /** Yayın numarası */
   n: number
   /** Yayın anı (ISO) */
@@ -242,13 +251,19 @@ export interface MemberHighlightInput {
 }
 
 /**
- * "AI öneri güveni" satırının paket kurucusuna verilen hâli: maç ve satırın kendisi. Hangi maçın
- * satırının gideceğine çağıran taraf karar verir (services/ai/memberShare); kararların gerekçesi,
+ * "AI öneri güveni" satırının paket kurucusuna verilen hâli: maç, kategori ve satırın kendisi. Hangi
+ * önerinin satırının gideceğine çağıran taraf karar verir (services/ai/memberShare); kararların gerekçesi,
  * riski, skor tahmini ve kayıt zamanı bu tipte YOKTUR, kurucuya hiç ulaşmaz.
  */
 export interface MemberAiInput {
   matchId: string
+  categoryId: CategoryId
   ai: MemberAi
+}
+
+export interface SentAiKey {
+  matchId: string
+  categoryId: CategoryId
 }
 
 export interface MemberDayInput {
@@ -259,7 +274,7 @@ export interface MemberDayInput {
   results: MatchResult[]
   /** O günün öne çıkan seçimleri; verilmezse yok sayılır */
   highlights?: MemberHighlightInput[]
-  /** Üyeye gidecek "AI öneri güveni" satırları; verilmezse yok sayılır. Listelerde geçmeyen maçınki girmez. */
+  /** Üyeye gidecek "AI öneri güveni" satırları; verilmezse yok sayılır. Pakette karşılığı (o listede o maç) olmayan girmez. */
   ai?: MemberAiInput[]
 }
 
@@ -323,13 +338,13 @@ const standingOf = (info: StandingInfo | null): MemberStanding | null => (info ?
 /** Taraf & Gol listelerinde çelişki iki hesabın, diğerlerinde hazır yüzde ile modelin çelişkisidir */
 export const conflictKindOf = (categoryId: CategoryId): MemberConflict => (getCategory(categoryId).group === 'sidegoals' ? 'hesap' : 'model')
 
-function dayOf(input: MemberPayloadInput, day: MemberDayInput, now: Date, sentAi: string[]): MemberDay {
+function dayOf(input: MemberPayloadInput, day: MemberDayInput, now: Date, sentAi: SentAiKey[]): MemberDay {
   // Admin ekranındaki listelerle aynı çağrı; sıra her zaman yüzdeye göredir.
   const analysis = analyzeDay(day.matches, input.thresholds, 'percent', input.marketConflictLimit)
   const resultById = new Map(day.results.map((r) => [r.matchId, r]))
   const pickByKey = new Map(input.picks.filter((p) => p.date === day.date).map((p) => [`${p.matchId}|${p.categoryId}`, p]))
 
-  const aiById = new Map((day.ai ?? []).map((row) => [row.matchId, row.ai]))
+  const aiByKey = new Map((day.ai ?? []).map((row) => [`${row.matchId}|${row.categoryId}`, row.ai]))
   // Yalnızca listelerde geçen maçlar pakete girer; kimlik yerine dizideki sıra kullanılır.
   const indexById = new Map<string, number>()
   const matches: MemberMatch[] = []
@@ -348,12 +363,6 @@ function dayOf(input: MemberPayloadInput, day: MemberDayInput, now: Date, sentAi
       score: formatScore(result),
       homeStanding: standingOf(standings.home),
       awayStanding: standingOf(standings.away),
-    }
-    // "AI öneri güveni" satırı yalnızca çağıranın seçtiği maçta yazılır; alanlar tek tek kopyalanır.
-    const row = aiById.get(match.id)
-    if (row) {
-      entry.ai = { votes: row.votes.map((vote) => ({ who: vote.who, level: vote.level })), count: row.count, level: row.level }
-      sentAi.push(match.id)
     }
     matches.push(entry)
     return matches.length - 1
@@ -376,6 +385,12 @@ function dayOf(input: MemberPayloadInput, day: MemberDayInput, now: Date, sentAi
     }
     // Tahmini maç sayısı yalnızca çıkarılabildiyse yazılır; yoksa alan hiç bulunmaz.
     if (prediction.reliability.sampleSize !== null) item.sample = prediction.reliability.sampleSize
+    // "AI öneri güveni" satırı yalnızca çağıranın seçtiği öneride yazılır; alanlar tek tek kopyalanır.
+    const row = aiByKey.get(`${prediction.match.id}|${prediction.categoryId}`)
+    if (row) {
+      item.ai = { votes: row.votes.map((vote) => ({ who: vote.who, level: vote.level })), count: row.count, level: row.level }
+      sentAi.push({ matchId: prediction.match.id, categoryId: prediction.categoryId })
+    }
     return item
   }
 
@@ -424,22 +439,22 @@ export const buildMemberPayload = (input: MemberPayloadInput): MemberPayload => 
 
 /**
  * buildMemberPayload ile aynı paket; ayrıca "AI öneri güveni" satırı pakete GERÇEKTEN giren
- * maçların kimlikleri (kayıt için; paketin içinde kimlik yoktur).
+ * önerilerin (maç + kategori) kimlikleri (kayıt için; paketin içinde kimlik yoktur).
  */
-export function buildMemberPublication(input: MemberPayloadInput): { payload: MemberPayload; aiMatchIds: string[] } {
+export function buildMemberPublication(input: MemberPayloadInput): { payload: MemberPayload; aiSent: SentAiKey[] } {
   const now = new Date(input.publishedAt)
-  const aiMatchIds: string[] = []
+  const aiSent: SentAiKey[] = []
   const payload: MemberPayload = {
     v: MEMBER_PAYLOAD_VERSION,
     n: input.n,
     publishedAt: input.publishedAt,
     texts: { disclaimer: input.texts.disclaimer, account: input.texts.account },
-    days: input.days.map((day) => dayOf(input, day, now, aiMatchIds)),
+    days: input.days.map((day) => dayOf(input, day, now, aiSent)),
     statistics: {
       all: statsOf(input.picks),
       shared: statsOf(sharedPicksOnly(input.picks, input.shared)),
     },
   }
   assertMemberPayload(payload)
-  return { payload, aiMatchIds }
+  return { payload, aiSent }
 }
