@@ -3,10 +3,11 @@ import { defaultThresholds, type CategoryId } from '../config/categories'
 import { analyzeDay, type DayAnalysis } from '../services/analysis/engine'
 import { DEFAULT_MARKET_CONFLICT_LIMIT } from '../services/analysis/market'
 import type { SortMode } from '../services/analysis/types'
-import { leagueRepo, aiRepo, matchesRepo, picksRepo, resultsRepo, settingsRepo, sharedRepo, storySelectionsRepo } from '../services/data'
+import { leagueRepo, aiRepo, highlightsRepo, matchesRepo, picksRepo, resultsRepo, settingsRepo, sharedRepo, storySelectionsRepo } from '../services/data'
+import { addHighlight, removeHighlight, type HighlightCandidate, type HighlightRefusal } from '../services/highlights/highlights'
 import { findActiveShared, recordShare } from '../services/story/shared'
 import { selectionsForDate, type DaySelections } from '../services/story/selection'
-import type { AiVerdict, LeagueTable, Match, MatchResult, Pick, SharedPick, TeamAlias, Thresholds } from '../types'
+import type { AiVerdict, Highlight, LeagueTable, Match, MatchResult, Pick, SharedPick, TeamAlias, Thresholds } from '../types'
 import { todayInAppZone } from '../utils/date'
 
 interface AppState {
@@ -40,6 +41,12 @@ interface AppState {
   recordShared: (categoryId: CategoryId, shared: Match[]) => Promise<SharedPick[]>
   /** Geçerli kaydı "çıkarıldı" olarak işaretler */
   removeShared: (categoryId: CategoryId, matchId: string) => Promise<void>
+  /** Seçili günün "öne çıkan" seçimleri; yalnızca admin sitesindedir */
+  highlights: Highlight[]
+  /** Öneriyi öne çıkanlara ekler; maç başladıysa ya da saati yoksa reddeder (neden döner) */
+  addHighlight: (candidate: HighlightCandidate) => Promise<HighlightRefusal | null>
+  /** Seçimi kaldırır (kayıt silinir); maç başladıysa reddeder */
+  removeHighlight: (id: string) => Promise<HighlightRefusal | null>
   /** Yapıştırılan lig tabloları ve takım adı eşleştirmeleri; yalnızca kartta gösterim içindir */
   leagueTables: LeagueTable[]
   teamAliases: TeamAlias[]
@@ -80,6 +87,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [aiVerdicts, setAiVerdicts] = useState<AiVerdict[]>([])
   const [storySelections, setStorySelections] = useState<DaySelections>({})
   const [sharedPicks, setSharedPicks] = useState<SharedPick[]>([])
+  const [highlights, setHighlights] = useState<Highlight[]>([])
   const [leagueTables, setLeagueTables] = useState<LeagueTable[]>([])
   const [teamAliases, setTeamAliases] = useState<TeamAlias[]>([])
   // Seçim yazmaları sırayla yapılır ki art arda işaretlemelerde son durum kalsın.
@@ -103,12 +111,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (cancelled) return
       const date = selectedDate && nextDates.includes(selectedDate) ? selectedDate : pickDefaultDate(nextDates, today)
       const nextMatches = date ? await matchesRepo.listByDate(date) : []
-      const [nextResults, nextPicks, nextVerdicts, nextSelections, nextShared] = await Promise.all([
+      const [nextResults, nextPicks, nextVerdicts, nextSelections, nextShared, nextHighlights] = await Promise.all([
         resultsRepo.listByMatchIds(nextMatches.map((m) => m.id)),
         date ? picksRepo.listByDate(date) : [],
         date ? aiRepo.listVerdictsByDate(date) : [],
         date ? selectionWrites.current.then(() => storySelectionsRepo.listByDate(date)) : [],
         date ? sharedRepo.listByDate(date) : [],
+        date ? highlightsRepo.listByDate(date) : [],
       ])
       if (cancelled) return
       setDates(nextDates)
@@ -123,6 +132,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAiVerdicts(nextVerdicts)
       setStorySelections(date ? selectionsForDate(nextSelections, date) : {})
       setSharedPicks(nextShared)
+      setHighlights(nextHighlights)
       setLoading(false)
     })()
     return () => {
@@ -179,6 +189,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [selectedDate],
   )
 
+  // Kilit burada, kayıttan hemen önce ve güncel saatle denetlenir: buton pasif olmasa da
+  // başlamış maçın seçimi eklenemez ve silinemez.
+  const addHighlightAction = useCallback(
+    async (candidate: HighlightCandidate) => {
+      const date = candidate.match.date
+      const result = addHighlight(await highlightsRepo.listByDate(date), candidate, new Date())
+      if (result.ok) await highlightsRepo.put(result.record)
+      if (date === selectedDate) setHighlights(await highlightsRepo.listByDate(date))
+      return result.ok ? null : result.reason
+    },
+    [selectedDate],
+  )
+
+  const removeHighlightAction = useCallback(
+    async (id: string) => {
+      if (!selectedDate) return 'missing' as const
+      const result = removeHighlight(await highlightsRepo.listByDate(selectedDate), id, new Date())
+      if (result.ok) await highlightsRepo.remove(id)
+      setHighlights(await highlightsRepo.listByDate(selectedDate))
+      return result.ok ? null : result.reason
+    },
+    [selectedDate],
+  )
+
   const setSortMode = useCallback((mode: SortMode) => {
     setSortModeState(mode)
     try {
@@ -215,6 +249,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveMarketConflictLimit,
     storySelections,
     setStorySelection,
+    highlights,
+    addHighlight: addHighlightAction,
+    removeHighlight: removeHighlightAction,
     leagueTables,
     teamAliases,
     sharedPicks,

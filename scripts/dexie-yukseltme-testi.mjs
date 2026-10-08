@@ -33,6 +33,11 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '
 let dist = oldDist
 const server = createServer((req, res) => {
   const path = new URL(req.url, 'http://x').pathname
+  // Admin sayfası üye sitesinin sürüm bilgisini aynı alan adından okur; burada sabit bir yanıt verilir.
+  if (path === '/gollazim-uye/surum.json') {
+    res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+    return res.end('{"commit":"deneme","payloadVersion":3}\n')
+  }
   const file = path.startsWith('/gollazim-site/') ? normalize(join(dist, path.slice('/gollazim-site/'.length) || 'index.html')) : null
   if (!file || !file.startsWith(dist) || !existsSync(file)) {
     res.writeHead(404)
@@ -133,9 +138,9 @@ try {
     return raw
   })
   const oldSummary = summarize(before)
-  step('eski sürümün veritabanı sürümü 6', before.version === 60, `IndexedDB sürümü ${before.version} (Dexie sürümü x10)`)
+  step('eski sürümün veritabanı sürümü 7', before.version === 70, `IndexedDB sürümü ${before.version} (Dexie sürümü x10)`)
   const oldTables = Object.keys(before.tables)
-  step('eski sürümde 11 tablo', oldTables.length === 11, oldTables.join(', '))
+  step('eski sürümde 14 tablo', oldTables.length === 14, oldTables.join(', '))
 
   // 2) YENİ sürüm: aynı profil
   dist = newDist
@@ -152,7 +157,7 @@ try {
     return { raw, rate, exported }
   })
   const newSummary = summarize(after.raw)
-  step('yeni sürümün veritabanı sürümü 7', after.raw.version === 70, `IndexedDB sürümü ${after.raw.version}`)
+  step('yeni sürümün veritabanı sürümü 8', after.raw.version === 80, `IndexedDB sürümü ${after.raw.version}`)
 
   let same = true
   for (const name of oldTables) {
@@ -162,9 +167,9 @@ try {
     same &&= equal
     report.tablolar.push({ tablo: name, kayit: a.count, once: a.sha256.slice(0, 16), sonra: b?.sha256.slice(0, 16) ?? '-', sonuc: equal ? 'AYNI' : 'FARKLI' })
   }
-  step('eski 11 tablonun kayıt sayısı, içerik özeti, anahtarı ve indeksleri birebir aynı', same, report.tablolar.map((t) => `${t.tablo} ${t.kayit}`).join(' · '))
+  step('eski 14 tablonun kayıt sayısı, içerik özeti, anahtarı ve indeksleri birebir aynı', same, report.tablolar.map((t) => `${t.tablo} ${t.kayit}`).join(' · '))
   const added = Object.keys(after.raw.tables).filter((n) => !oldTables.includes(n))
-  step('üç yeni tablo eklendi ve boş', added.join() === 'memberMeta,members,publications' && added.every((n) => after.raw.tables[n].count === 0), added.map((n) => `${n}: ${after.raw.tables[n].count}`).join(', '))
+  step('bir yeni tablo eklendi ve boş', added.join() === 'highlights' && added.every((n) => after.raw.tables[n].count === 0), added.map((n) => `${n}: ${after.raw.tables[n].count}`).join(', '))
   step('dondurulmuş öneriler birebir aynı', before.tables.picks.json === after.raw.tables.picks.json, `${before.tables.picks.count} öneri`)
   step('istatistik sayfası dolu', /^%\d/.test(after.rate), after.rate)
 
@@ -189,7 +194,7 @@ try {
   })
   report.geriDonus = rollback
   console.log(`\nGERİ DÖNÜŞ DENEMESİ (yükseltilmiş profil + eski sürüm):\n  konsol/sayfa hatası: ${rollback.errors.length ? rollback.errors.join(' | ').slice(0, 300) : 'yok'}\n  eski sürüm veriyi gösteriyor mu: ana sayfada ${rollback.rows} öneri satırı, istatistik ${rollback.rate ?? 'YOK'}\n  veritabanı sürümü: ${rollback.version}, dondurulmuş öneri: ${rollback.picks} (içerik ${rollback.samePicks ? 'aynı' : 'FARKLI'})`)
-  step('geri dönüş denemesinde veri silinmedi (veritabanı yerinde ve aynı)', rollback.version === 70 && rollback.samePicks === true)
+  step('geri dönüş denemesinde veri silinmedi (veritabanı yerinde ve aynı)', rollback.version === 80 && rollback.samePicks === true)
 } catch (error) {
   failed = true
   step('beklenmeyen hata', false, error?.stack?.split('\n').slice(0, 2).join(' ') ?? String(error))

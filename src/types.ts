@@ -173,6 +173,30 @@ export interface SharedPick {
   removedAt?: string
 }
 
+/**
+ * "Günün öne çıkanları" seçimi: admin'in maç başlamadan önce elle işaretlediği bir öneri.
+ * Yalnızca admin sitesindedir; üye paketine girmez. Maç başladıktan sonra eklenemez ve silinemez.
+ */
+export interface Highlight {
+  /** date + matchId + categoryId */
+  id: string
+  date: string
+  matchId: string
+  categoryId: CategoryId
+  /** Eklenme anı (ISO) */
+  addedAt: string
+  // Eklenme anındaki görünüm: maç verisi sonradan silinse de liste bu alanlardan gösterilir.
+  home: string
+  away: string
+  /** HH:mm (Türkiye saati); saati bilinmeyen maç eklenemez */
+  time: string
+  league?: string
+  /** Eklenme anındaki hazır yüzde (0-100) */
+  percent: number
+  /** Eklenme anındaki güvenilirlik seviyesi */
+  reliability?: ReliabilityLevel
+}
+
 /** Yapıştırılan lig tablosundan saklanan satır (yalnızca gösterim içindir) */
 export interface LeagueTableRow {
   team: string
@@ -229,4 +253,6 @@ export interface BackupFile {
   /** Yapıştırılan lig tabloları ve takım adı eşleştirmeleri; eski yedeklerde bulunmaz */
   leagueTables?: LeagueTable[]
   teamAliases?: TeamAlias[]
+  /** "Günün öne çıkanları" seçimleri; eski yedeklerde ve hiç seçim yokken bulunmaz */
+  highlights?: Highlight[]
 }

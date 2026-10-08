@@ -8,6 +8,7 @@ import type { SharedPick } from '../types'
 import { formatScore } from '../utils/score'
 import AiVerdictBadges from './ai/AiVerdictBadges'
 import CautiousBadge from './CautiousBadge'
+import HighlightButton from './HighlightButton'
 import NoteBadges from './NoteBadges'
 import OutcomeBadge from './OutcomeBadge'
 import ReliabilityBadge from './ReliabilityBadge'
@@ -104,6 +105,10 @@ export default function MatchCard({ prediction, rank, sortMode, storySelection, 
           )}
         </div>
       )}
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        <HighlightButton prediction={prediction} />
+      </div>
 
       {shared && <SharedBadge record={shared.record} onRemove={shared.onRemove} />}
 
