@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { isCategoryId } from '../../config/categories'
 import type { Highlight, MatchResult, Pick } from '../../types'
 import { assembleBackup, isBackupFile } from '../data/backupFormat'
+import { OUTCOME_LABELS } from '../results/evaluator'
 import {
   addHighlight,
   byKickoffTime,
+  HIGHLIGHT_OUTCOME_LABELS,
   highlightId,
   highlightOutcome,
   kickoffOf,
@@ -136,6 +138,11 @@ describe('sonuç ve özet', () => {
     const removed = removeHighlight([a, b], a.id, BEFORE)
     const left = [a, b].filter((h) => !(removed.ok && h.id === removed.record.id))
     expect(summarizeHighlights(left.map((h) => highlightOutcome(h, undefined, undefined)))).toMatchObject({ selected: 1, pending: 1 })
+  })
+
+  it('bu bölümün sonuç etiketleri "Tuttu / Tutmadı"dır; admin\'in diğer rozet metinleri değişmedi', () => {
+    expect(HIGHLIGHT_OUTCOME_LABELS).toEqual({ won: 'Tuttu', lost: 'Tutmadı', void: 'Değerlendirilemedi', pending: 'Bekliyor' })
+    expect(OUTCOME_LABELS).toEqual({ won: 'KAZANDI ✅', lost: 'KAYBETTİ ❌', void: 'DEĞERLENDİRİLEMEDİ', pending: 'BEKLİYOR' })
   })
 
   it('liste saat sırasındadır', () => {
