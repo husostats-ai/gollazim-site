@@ -416,7 +416,9 @@ try {
   let leaks = []
   // Sayfa uzun ve üst menü yapışkan: fare tıklaması menüye denk gelebildiği için burada DOM tıklaması kullanılır.
   const tap = (id) => page.$eval(sel(id), (el) => el.click())
-  for (const day of [0, 1]) {
+  const dayCount = (await page.$$('[data-testid^="member-day-"][role="tab"]')).length
+  let hiddenDays = []
+  for (let day = 0; day < dayCount; day++) {
     await tap(`member-day-${day}`)
     await page.waitForFunction((s) => document.querySelector(s)?.getAttribute('aria-selected') === 'true', {}, sel(`member-day-${day}`))
     for (const chip of await page.$$eval('[data-testid^="member-category-"]', (els) => els.map((el) => el.dataset.testid))) {
@@ -427,12 +429,19 @@ try {
         const size = await overflow(page)
         if (size.scroll > size.inner) overflowing.push(`${day}/${chip}/${width}`)
       }
+      // Gün şeridi kendi içinde yatay kayar; seçili günün düğmesi her zaman ekranda kalır.
+      const inView = await page.$eval(sel(`member-day-${day}`), (el) => {
+        const box = el.getBoundingClientRect()
+        return box.left >= 0 && box.right <= window.innerWidth
+      })
+      if (!inView) hiddenDays.push(`${day}/${chip}`)
       const found = FORBIDDEN.exec(await visibleText(page))
       if (found) leaks.push(`${day}/${chip}: ${found[0]}`)
     }
   }
   step('her günün her kategorisi 320 ve 390 px taşma yok', overflowing.length === 0, overflowing.join(' ') || `${chips.length} kategori (bugün)`)
   step('kartlarda yasak terim yok (canlı sayfa)', leaks.length === 0, leaks.join(' '))
+  step('gün şeridi: seçili gün her genişlikte görünür (şerit yatay kayar)', hiddenDays.length === 0, hiddenDays.join(' ') || `${dayCount} gün`)
   await page.click(sel('member-day-1'))
   const yesterdayTitle = await text(page, 'member-day-title')
   await page.click(sel('member-day-0'))

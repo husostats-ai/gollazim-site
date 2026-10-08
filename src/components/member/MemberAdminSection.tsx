@@ -394,7 +394,7 @@ export default function MemberAdminSection() {
       </Card>
 
       <Card title="ÜYE SAYFASI: YAYINLA" testId="member-admin-publish">
-        <p className="mt-1 text-sm text-muted">Seçilen gün ile bir önceki günün listeleri ve istatistikler, izinli alanlardan sıfırdan kurulup aktif üyeler için şifrelenir ve {PUBLICATION_FILE_NAME} olarak indirilir. Ham veri, oranlar ve yapay zekâ kararları pakete girmez.</p>
+        <p className="mt-1 text-sm text-muted">Seçilen gün ile önceki 6 günün (son 7 gün; önerisi olmayan günler atlanır) listeleri ve istatistikler, izinli alanlardan sıfırdan kurulup aktif üyeler için şifrelenir ve {PUBLICATION_FILE_NAME} olarak indirilir. Ham veri, oranlar ve yapay zekâ kararları pakete girmez.</p>
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <label className="block text-sm font-semibold">
             Gün
@@ -452,7 +452,7 @@ export default function MemberAdminSection() {
         ) : (
           <div className="mt-3 rounded-xl border border-navy-500 bg-navy-800 p-3" data-testid="publish-confirm-box">
             <p className="text-sm">
-              <span className="font-bold">{formatPlainDate(publishDay!)}</span> ve önceki gün, <span className="font-bold">{activeCount} aktif üye</span> için yayın no <span className="font-bold">{data.meta.publishCounter + 1}</span> olarak paketlenecek.
+              <span className="font-bold">{formatPlainDate(publishDay!)}</span> ve önceki 6 gün (önerisi olanlar), <span className="font-bold">{activeCount} aktif üye</span> için yayın no <span className="font-bold">{data.meta.publishCounter + 1}</span> olarak paketlenecek.
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               <button type="button" className={PRIMARY} disabled={busy} onClick={() => void run(doPublish)} data-testid="publish-confirm">

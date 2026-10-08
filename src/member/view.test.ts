@@ -247,7 +247,7 @@ describe('üye düzeni', () => {
 describe('kategori listeleri ve üye kartı', () => {
   const cards = (markup: string) => markup.split(/data-testid="member-card"[^>]*>/).slice(1).map(textOf)
 
-  it('gün seçici: seçilen gün ve önceki gün; seçilen günün başlığı ve listesi çizilir', () => {
+  it('gün seçici: paketteki her gün için bir düğme; seçilen günün başlığı ve listesi çizilir', () => {
     const today = html(analysis(0))
     expect(textOf(today)).toContain('Bugün')
     expect(textOf(today)).toContain('Dün')

@@ -36,7 +36,7 @@ export interface MemberMeta {
 export interface PublicationRecord {
   n: number
   publishedAt: string
-  /** Seçilen gün (paket bu günü ve önceki günü içerir) */
+  /** Seçilen gün (paket bu günü ve önerisi olan önceki 6 günü içerir) */
   day: string
   memberCount: number
   /** Şifreli paketin boyutu (bayt) */

@@ -3,15 +3,17 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_MEMBER_TEXTS, normalizeMemberTexts } from '../../config/memberTexts'
 import { MEMBER_SITE_URL } from '../../config/member'
 import type { Match } from '../../types'
+import { shiftDate } from '../../utils/format'
 import { assembleBackup } from '../data/backupFormat'
 import type { MemberAdminRepo } from '../data/types'
 import { DAY, dayMatches, LEAGUE_TABLES, MARKET_LIMIT, MATCHES, PICKS, PREVIOUS_DAY, RESULTS, SHARED, THRESHOLDS } from '../member/__fixtures__/rawData'
 import { generatePassword, MemberAccessError, openEnvelope, openWithKeys, PASSWORD_ALPHABET, type MemberKeys } from '../member/crypto'
 import type { MemberPayload } from '../member/payload'
+import { assertMemberPayload } from '../member/schema'
 import { addMembers, backupMemberKeys, previewPublication, publish, removeMemberByName, renewMemberPassword, restoreMemberKeys, saveMemberTexts } from './actions'
 import { checkPassphrase, KEY_BACKUP_FORMAT, KeyBackupError, openKeyBackup, parseKeyBackup, sealKeyBackup, type KeyBackupFile } from './keyBackup'
 import { scanForLeaks } from './leakScan'
-import { PublishError, summarizePayload, type PublishSources } from './publish'
+import { PUBLISH_DAY_COUNT, PublishError, summarizePayload, type PublishSources } from './publish'
 import { accountMessage, activeKeys, activeMembers, checkNewUsername, distributionCsv, distributionFileName, parseBulkUsernames, removeMember, USERNAME_PROBLEM_TEXTS, type IssuedLogin } from './registry'
 import { keyBackupStatus } from './reminder'
 import type { MemberMeta, MemberRecord, MemberSnapshot, PublicationRecord } from './types'
@@ -144,7 +146,7 @@ describe('üye ekleme', () => {
     for (const line of ['*.csv', 'gollazim-uye-*', 'dagitim*', 'paket.json']) expect(ignore, line).toContain(line)
   })
 
-  it('yayın: paket seçilen gün + önceki günü içerir; üyeler kendi şifreleriyle açar', async () => {
+  it('yayın: paket seçilen günü ve önerisi olan önceki günleri içerir; üyeler kendi şifreleriyle açar', async () => {
     const draft = await previewPublication(repo, sources(), DAY, T1)
     expect(draft.payload.n).toBe(1)
     expect(summarizePayload(draft.payload).days.map((d) => d.date)).toEqual([DAY, PREVIOUS_DAY])
@@ -161,6 +163,46 @@ describe('üye ekleme', () => {
     // İndirilen dosyanın açık kısmında içerik ve kullanıcı adı yoktur.
     for (const word of ['ayse', 'mehmet', 'Kuzey', 'percent']) expect(first.text).not.toContain(word)
   }, SLOW)
+
+  describe('son 7 gün', () => {
+    /** Seçilen günün maçları, verilen kadar gün geriye taşınmış hâliyle (kimlik tarihi içerir) */
+    const shifted = (back: number): Match[] => {
+      const date = shiftDate(DAY, -back)
+      return dayMatches(DAY).map((m) => ({ ...m, id: m.id.replace(DAY, date), date }))
+    }
+    const datesOf = (payload: MemberPayload) => payload.days.map((d) => d.date)
+    const itemsOf = (payload: MemberPayload) => payload.days.map((d) => d.lists.reduce((sum, l) => sum + l.items.length, 0))
+
+    it('her günde öneri varsa seçilen gün ve önceki 6 gün girer, daha eskisi girmez; paket şemadan ve sızıntı denetiminden geçer', async () => {
+      const matches = [0, 1, 2, 3, 4, 5, 6, 7, 8].flatMap(shifted)
+      expect(new Set(matches.map((m) => m.id)).size).toBe(matches.length)
+      const draft = await previewPublication(memoryRepo(), sources(matches), DAY, T1)
+      expect(PUBLISH_DAY_COUNT).toBe(7)
+      expect(datesOf(draft.payload)).toEqual([0, 1, 2, 3, 4, 5, 6].map((back) => shiftDate(DAY, -back)))
+      for (const count of itemsOf(draft.payload)) expect(count).toBeGreaterThan(40)
+      expect(() => assertMemberPayload(JSON.parse(JSON.stringify(draft.payload)))).not.toThrow()
+      expect(scanForLeaks(draft.payload, draft.rawMatches).problems).toEqual([])
+      expect(new Set(draft.rawMatches.map((m) => m.date))).toEqual(new Set(datesOf(draft.payload)))
+    })
+
+    it('hiç önerisi olmayan önceki günler atlanır (maçı olmayan gün ve maçı olup önerisi çıkmayan gün)', async () => {
+      // 3 gün önce: maç var ama hiçbir listeye girmiyor (önceki günün tek maçından yüzdeler silinmiş hâli).
+      const bare: Match[] = dayMatches(PREVIOUS_DAY).map((m) => ({ ...m, id: m.id.replace(PREVIOUS_DAY, shiftDate(DAY, -3)), date: shiftDate(DAY, -3), stats: {} }))
+      const draft = await previewPublication(memoryRepo(), sources([...shifted(0), ...shifted(2), ...bare, ...shifted(5)]), DAY, T1)
+      expect(datesOf(draft.payload)).toEqual([DAY, shiftDate(DAY, -2), shiftDate(DAY, -5)])
+      expect(itemsOf(draft.payload).every((count) => count > 0)).toBe(true)
+      expect(new Set(draft.rawMatches.map((m) => m.date))).toEqual(new Set([DAY, shiftDate(DAY, -2), shiftDate(DAY, -5)]))
+    })
+
+    it('seçilen gün boş olsa da pakete girer ve ilk sırada kalır', async () => {
+      const tomorrow = shiftDate(DAY, 1)
+      const draft = await previewPublication(memoryRepo(), sources(), tomorrow, T1)
+      expect(datesOf(draft.payload)).toEqual([tomorrow, DAY, PREVIOUS_DAY])
+      expect(itemsOf(draft.payload)[0]).toBe(0)
+      // Hiç veri yokken de: yalnızca seçilen gün.
+      expect(datesOf((await previewPublication(memoryRepo(), sources([]), DAY, T1)).payload)).toEqual([DAY])
+    })
+  })
 
   it('yayın numarası artar ve geçmişe yalnızca özet yazılır (içerik tutulmaz)', async () => {
     const second = await publish(repo, sources(), DAY, T2)

@@ -3,10 +3,9 @@ import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { DEFAULT_MEMBER_TEXTS } from '../../config/memberTexts'
 import { toAppDateTime } from '../../utils/date'
-import { shiftDate } from '../../utils/format'
 import { isBackupFile } from '../data/backupFormat'
 import { deriveMemberKeys, fromBase64, generatePassword, newSiteSalt, openEnvelope, randomBytes, sealPayload, toBase64, type MemberKeys } from './crypto'
-import { buildMemberPayload } from './payload'
+import { draftPublication } from '../memberAdmin/publish'
 
 // Geliştirme aracı, normal test çalıştırmasında atlanır. Üye sayfasını yerelde denemek
 // için JSON yedekten ŞİFRELİ bir örnek yayın paketi ve sentetik bir test kullanıcısı üretir:
@@ -34,21 +33,20 @@ it.runIf(process.env.UYE_ORNEK && process.env.UYE_BACKUP)(
     const siteSalt = fromBase64(login.siteSalt, 'siteSalt', 16)
 
     const day = toAppDateTime(new Date(backup.exportedAt)).date
-    const payload = buildMemberPayload({
-      n: Number(process.env.UYE_N ?? 1),
-      publishedAt: process.env.UYE_AT ?? new Date().toISOString(),
-      texts: DEFAULT_MEMBER_TEXTS,
-      thresholds: backup.thresholds,
-      marketConflictLimit: backup.marketConflictLimit ?? 25,
-      days: [day, shiftDate(day, -1)].map((date) => {
-        const matches = backup.matches.filter((m) => m.date === date)
-        return { date, matches, results: backup.results.filter((r) => matches.some((m) => m.id === r.matchId)) }
-      }),
-      leagueTables: backup.leagueTables ?? [],
-      teamAliases: backup.teamAliases ?? [],
-      picks: backup.picks,
-      shared: backup.sharedPicks ?? [],
-    })
+    // Admin'deki "Yayınla" ile aynı kurucu: seçilen gün + önerisi olan önceki 6 gün.
+    const { payload } = await draftPublication(
+      {
+        listMatchesByDate: async (date) => backup.matches.filter((m) => m.date === date),
+        listResultsByMatchIds: async (ids) => backup.results.filter((r) => ids.includes(r.matchId)),
+        listPicks: async () => backup.picks,
+        listShared: async () => backup.sharedPicks ?? [],
+        listLeagueTables: async () => backup.leagueTables ?? [],
+        listAliases: async () => backup.teamAliases ?? [],
+        getThresholds: async () => backup.thresholds,
+        getMarketConflictLimit: async () => backup.marketConflictLimit ?? 25,
+      },
+      { day, n: Number(process.env.UYE_N ?? 1), publishedAt: process.env.UYE_AT ?? new Date().toISOString(), texts: DEFAULT_MEMBER_TEXTS },
+    )
 
     const keys = await deriveMemberKeys({ username: login.username, password: login.password, siteSalt })
     const others: MemberKeys[] = Array.from({ length: 49 }, () => ({ kek: randomBytes(32), idKey: randomBytes(32) }))

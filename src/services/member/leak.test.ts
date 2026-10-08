@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { AiVerdict, BackupFile, Match } from '../../types'
 import { toAppDateTime } from '../../utils/date'
 import { shiftDate } from '../../utils/format'
+import { PUBLISH_DAY_COUNT } from '../memberAdmin/publish'
 import { analyzeDay } from '../analysis/engine'
 import { CATEGORIES } from '../../config/categories'
 import { TEXT_FIELDS } from '../../config/columnAliases'
@@ -438,7 +439,7 @@ describe.runIf(process.env.UYE_BACKUP)('yayın paketi: gerçek yedekle', () => {
   it('listeler analizle aynı; ham değerlerin hiçbiri pakette yok', async () => {
     const b = load()
     const day = toAppDateTime(new Date(b.exportedAt)).date
-    const dates = [day, shiftDate(day, -1)]
+    const dates = Array.from({ length: PUBLISH_DAY_COUNT }, (_, back) => shiftDate(day, -back))
     const limit = b.marketConflictLimit ?? 25
     const real = buildMemberPayload({
       n: 1,
