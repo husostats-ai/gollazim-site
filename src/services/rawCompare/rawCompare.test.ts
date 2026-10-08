@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { compareAnswers, matchTitle, warningsText, type MatchComparison, type TeamComparison } from './compare'
 import { cleanText, extractUrl, parseAnswer, parseDate, parseScore } from './parser'
 import { checkTotal, computeRates, leagueRows, venueRates, type Rate } from './rates'
-import { sameTeam, teamDistance } from './teams'
+import { sameOpponent, sameTeam, teamDistance } from './teams'
 
 // Ham veri karşılaştırma: ayrıştırıcı, oran hesabı ve iki cevabın karşılaştırması.
 // Buradaki iki cevap SENTETİKTİR (uydurma takımlar); yalnızca biçimi ve kuralları sınar.
@@ -137,6 +137,16 @@ describe('takım adı eşleştirme', () => {
       ['Kuzey Yıldızı', 'Kuzey Yıldızı U21'],
     ])
       expect(sameTeam(x, y), `${x} / ${y}`).toBe(false)
+  })
+})
+
+describe('rakip adı karşılaştırması', () => {
+  it('adlardan biri ötekinin başıysa aynı sayılır; farklı adlar sayılmaz', () => {
+    expect(sameOpponent('Lusail City', 'Lusail')).toBe(true)
+    expect(sameOpponent('Lusail SC', 'Lusail City')).toBe(true)
+    expect(sameOpponent('Al-Sadd', 'Al Sadd')).toBe(true)
+    expect(sameOpponent('Al Sadd', 'Al Sailiya')).toBe(false)
+    expect(sameOpponent('Lusail City', 'Doha City')).toBe(false)
   })
 })
 
@@ -275,14 +285,19 @@ describe.runIf(existsSync(REAL.a) && existsSync(REAL.b))('gerçek örnek cevapla
   const load = () => compareAnswers({ a: parseAnswer(readFileSync(REAL.a, 'utf8')), b: parseAnswer(readFileSync(REAL.b, 'utf8')), labels: { A: 'ChatGPT', B: 'Claude' }, fixtures: [] })
   const find = (name: string): TeamComparison => load().flatMap((m) => m.teams).find((t) => sameTeam(t.name, name))!
 
+  // Sırayla 2.5 ÜST, KG VAR, birlikte, İY golü. İY paydasına yalnızca devre skoru bilinen satırlar girer:
+  // Claude cevabında Al Duhail 12.09 ve Al Gharafa 21.08 satırlarının devre skoru "?" olduğu için o
+  // sütunda ve doğrulanmış sütunda payda 3'tür; elle doğrulanmış 1/4 ve 2/4, devre skorlarının
+  // tamamını veren ChatGPT cevabının değeridir.
   it.each([
-    ['Al Shamal', ['3/4', '4/4', '3/4', '2/4']],
-    ['Al Duhail', ['0/4', '3/4', '0/4', '1/4']],
-    ['Al Wakrah', ['3/4', '3/4', '2/4', '4/4']],
-    ['Al Gharafa', ['3/4', '3/4', '3/4', '2/4']],
-  ])('%s: genel lig oranları', (name, expected) => {
+    ['Al Shamal', ['3/4', '4/4', '3/4'], { a: '2/4', b: '2/4', verified: '2/4' }],
+    ['Al Duhail', ['0/4', '3/4', '0/4'], { a: '1/4', b: '1/3', verified: '1/3' }],
+    ['Al Wakrah', ['3/4', '3/4', '2/4'], { a: '4/4', b: '4/4', verified: '4/4' }],
+    ['Al Gharafa', ['3/4', '3/4', '3/4'], { a: '2/4', b: '1/3', verified: '1/3' }],
+  ])('%s: genel lig oranları', (name, expected, half) => {
     const team = find(name)
-    for (const view of [team.a!.overall, team.b!.overall, team.verified!.overall]) expect(four(view)).toEqual(expected)
+    for (const view of [team.a!.overall, team.b!.overall, team.verified!.overall]) expect(four(view).slice(0, 3)).toEqual(expected)
+    expect({ a: rate(team.a!.overall.ht05), b: rate(team.b!.overall.ht05), verified: rate(team.verified!.overall.ht05) }).toEqual(half)
   })
 
   it.each([
@@ -299,6 +314,7 @@ describe.runIf(existsSync(REAL.a) && existsSync(REAL.b))('gerçek örnek cevapla
     const warnings = load().flatMap((m) => m.warnings)
     expect(warnings.filter((w) => w.level === 'red' && w.text.includes('maç sonu skoru farklı') && !w.text.startsWith('H2H'))).toEqual([])
     expect(warnings.some((w) => w.level === 'blue' && w.text.startsWith('H2H'))).toBe(true)
+    expect(warnings.filter((w) => w.text.includes('rakip adı farklı'))).toEqual([])
     expect(warnings.some((w) => w.level === 'yellow' && sameTeam(w.text.split(' TOPLAM')[0], 'Al Duhail') && w.text.includes('lig sırası farklı'))).toBe(true)
   })
 })
