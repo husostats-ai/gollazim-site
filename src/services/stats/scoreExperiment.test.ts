@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { defaultThresholds } from '../../config/categories'
 import type { AiVerdict, BackupFile, Match, MatchResult, ScoreLine } from '../../types'
 import { collectAiMatches } from '../ai/collect'
-import { numberMap, parseAiResponse, parseLine, parseScore } from '../ai/parser'
+import { askedMap, numberMap, parseAiResponse, parseLine, parseScore } from '../ai/parser'
 import { buildPrompts, matchBlock } from '../ai/prompt'
 import { analyzeDay } from '../analysis/engine'
 import { buildScoreSnapshot, scoreForecast, snapshotToSave, sourceLabel } from '../analysis/scoreForecast'
@@ -100,8 +100,9 @@ describe('anlık görüntü', () => {
 
 describe('ayrıştırıcı: skor alanı', () => {
   const numbers = numberMap(['mA', 'mB', 'mC'])
+  const asked = askedMap([['over25'], ['over25'], ['over25']])
   const verdict = (line: string) => {
-    const result = parseLine(line, numbers)
+    const result = parseLine(line, numbers, asked)
     if (result.kind !== 'verdict') throw new Error(`${result.kind}: ${line}`)
     return result.verdict
   }
@@ -117,7 +118,7 @@ describe('ayrıştırıcı: skor alanı', () => {
     ['**SKOR: 1-1**', { home: 1, away: 1 }],
     ['10-0', { home: 10, away: 0 }],
   ] as [string, ScoreLine][])('"%s" okunur', (text, expected) => {
-    expect(verdict(`#1 | Güçlü | gerekçe. | risk | ${text}`).score).toEqual(expected)
+    expect(verdict(`#1 | 2.5 ÜST: Güçlü | gerekçe. | risk | ${text}`).score).toEqual(expected)
   })
 
   it('skor olmayan metin skor sayılmaz', () => {
@@ -125,43 +126,46 @@ describe('ayrıştırıcı: skor alanı', () => {
   })
 
   it('beş alanlı cevapta gerekçe ve risk yerinde kalır', () => {
-    expect(verdict('#2 | Orta | Ev sahibi formda. | Rotasyon | SKOR: 2-1')).toEqual({
+    expect(verdict('#2 | 2.5 ÜST: Orta | Ev sahibi formda. | Rotasyon | SKOR: 2-1')).toEqual({
       number: 2,
       matchId: 'mB',
-      decision: 'medium',
+      decisions: { over25: 'medium' },
+      asked: ['over25'],
+      unanswered: [],
+      warnings: [],
       reason: 'Ev sahibi formda.',
       risk: 'Rotasyon',
       score: { home: 2, away: 1 },
     })
   })
 
-  it('dört alanlı eski cevap bozulmaz ve skor alanı hiç oluşmaz', () => {
-    const old = verdict('#1 | Güçlü | Ev sahibi formda. | Rotasyon')
-    expect(old).toEqual({ number: 1, matchId: 'mA', decision: 'strong', reason: 'Ev sahibi formda.', risk: 'Rotasyon' })
+  it('dört alanlı (skorsuz) cevapta skor alanı hiç oluşmaz', () => {
+    const old = verdict('#1 | 2.5 ÜST: Güçlü | Ev sahibi formda. | Rotasyon')
+    expect(old).toEqual({ number: 1, matchId: 'mA', decisions: { over25: 'strong' }, asked: ['over25'], unanswered: [], warnings: [], reason: 'Ev sahibi formda.', risk: 'Rotasyon' })
     expect('score' in old).toBe(false)
     // Risk alanı skora benzese de dört alanlı cevapta risk olarak kalır
-    expect(verdict('#1 | Güçlü | Gerekçe. | 2-1')).toMatchObject({ risk: '2-1' })
-    expect('score' in verdict('#1 | Güçlü | Gerekçe. | 2-1')).toBe(false)
+    expect(verdict('#1 | 2.5 ÜST: Güçlü | Gerekçe. | 2-1')).toMatchObject({ risk: '2-1' })
+    expect('score' in verdict('#1 | 2.5 ÜST: Güçlü | Gerekçe. | 2-1')).toBe(false)
   })
 
   it('gerekçede fazladan | olsa da skor ve risk doğru ayrılır', () => {
-    expect(verdict('#3 | Zayıf | Birinci kısım | ikinci kısım. | Sakatlık | 0-0')).toMatchObject({ reason: 'Birinci kısım | ikinci kısım.', risk: 'Sakatlık', score: { home: 0, away: 0 } })
+    expect(verdict('#3 | 2.5 ÜST: Zayıf | Birinci kısım | ikinci kısım. | Sakatlık | 0-0')).toMatchObject({ reason: 'Birinci kısım | ikinci kısım.', risk: 'Sakatlık', score: { home: 0, away: 0 } })
     // Skor yoksa eski kural: son alan risktir
-    expect(verdict('#3 | Zayıf | Birinci kısım | ikinci kısım. | Sakatlık')).toMatchObject({ reason: 'Birinci kısım | ikinci kısım.', risk: 'Sakatlık' })
+    expect(verdict('#3 | 2.5 ÜST: Zayıf | Birinci kısım | ikinci kısım. | Sakatlık')).toMatchObject({ reason: 'Birinci kısım | ikinci kısım.', risk: 'Sakatlık' })
   })
 
   it('skor bilerek boş bırakıldıysa o maç için boş kalır', () => {
     for (const empty of ['-', 'yok', 'SKOR: yok', 'bilinmiyor', 'Skor: -']) {
-      const v = verdict(`#1 | Güçlü | Gerekçe. | Risk | ${empty}`)
+      const v = verdict(`#1 | 2.5 ÜST: Güçlü | Gerekçe. | Risk | ${empty}`)
       expect(v).toMatchObject({ reason: 'Gerekçe.', risk: 'Risk' })
       expect('score' in v, empty).toBe(false)
     }
     // Sonda boş alan (tablo biçimi)
-    expect(verdict('| #1 | Güçlü | Gerekçe. | Risk | |')).toMatchObject({ risk: 'Risk' })
+    expect(verdict('| #1 | 2.5 ÜST: Güçlü | Gerekçe. | Risk | |')).toMatchObject({ risk: 'Risk' })
   })
 
   it('karışık cevap: bazı maçlarda skor var, bazılarında yok', () => {
-    const result = parseAiResponse('#1 | Güçlü | a. | b | SKOR: 2-0\n#2 | Orta | c. | d\n#3 | Eleme | e. | f | 1:1', numbers)
+    const result = parseAiResponse('#1 | 2.5 ÜST: Güçlü | a. | b | SKOR: 2-0\n#2 | 2.5 ÜST: Orta | c. | d\n#3 | 2.5 ÜST: Eleme | e. | f | 1:1', numbers, asked)
     expect(result.errors).toEqual([])
     expect(result.verdicts.map((v) => v.score ?? null)).toEqual([{ home: 2, away: 0 }, null, { home: 1, away: 1 }])
   })
@@ -173,7 +177,7 @@ describe('prompt: skor alanı', () => {
   const [chunk] = buildPrompts(items, 'chatgpt', '6 Ekim 2026 Salı')
 
   it('cevap biçiminde isteğe bağlı skor alanı istenir', () => {
-    expect(chunk.text).toContain('#numara | KARAR | gerekçe | risk | skor')
+    expect(chunk.text).toContain('#numara | KATEGORİ: KARAR ; KATEGORİ: KARAR | gerekçe | risk | SKOR: ev-deplasman')
     expect(chunk.text).toContain('"SKOR: ev-deplasman"')
     expect(chunk.text).toContain('isteğe bağlıdır')
   })
@@ -315,10 +319,10 @@ describe('skor tahmini ölçümü', () => {
 
     const rows = buildDetailRows(input)
     const col = (name: (typeof DETAIL_CSV_COLUMNS)[number]) => DETAIL_CSV_COLUMNS.indexOf(name)
-    expect(DETAIL_CSV_COLUMNS.slice(-4)).toEqual(['mac_skoru', 'model_skor', 'ai_chatgpt_skor', 'ai_gemini_skor'])
-    expect(rows[0].slice(-4)).toEqual(['2-1', '2-1', '2-1', '1-1'])
+    expect(DETAIL_CSV_COLUMNS.slice(-5)).toEqual(['mac_skoru', 'model_skor', 'ai_chatgpt_skor', 'ai_gemini_skor', 'ai_claude_skor'])
+    expect(rows[0].slice(-5)).toEqual(['2-1', '2-1', '2-1', '1-1', ''])
     // b: ChatGPT tahmini maç başladıktan sonra kaydedildi, boş kalır
-    expect(rows[1].slice(-4)).toEqual(['0-0', '1-0', '', ''])
+    expect(rows[1].slice(-5)).toEqual(['0-0', '1-0', '', '', ''])
     expect(rows[1][col('sonuc')]).toBe('tutmadı')
   })
 })

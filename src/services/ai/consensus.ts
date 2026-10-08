@@ -1,10 +1,9 @@
 import { decisionLabel, type AiDecision } from '../../config/ai'
-import type { AiVerdict } from '../../types'
 
-// Bir maçın yapay zekâ kararlarının özeti. Ortalama alınmaz: kararlar tam seviyeleriyle
-// (Güçlü / Orta / Zayıf / Eleme) sayılır ve yalnızca cevap veren yapay zekâlar hesaba girer.
-// Claude eklenmeden önceki günlerde maç başına en fazla iki karar vardır; o günlerde
-// iki aynı karar "2/2 aynı" olur ve çoğunluk sayılır.
+// Bir kararlar kümesinin özeti (bir maçın bir kategorideki kararları ya da eski maç geneli kararları).
+// Ortalama alınmaz: kararlar tam seviyeleriyle (Güçlü / Orta / Zayıf / Eleme) sayılır ve yalnızca
+// cevap veren yapay zekâlar hesaba girer. İki karar varsa iki aynı karar "2/2 aynı" olur ve
+// çoğunluk sayılır (Claude eklenmeden önceki günler; bir yapay zekânın kategoriyi atladığı durum).
 
 export type AgreementKind =
   /** Cevap verenlerin hepsi aynı kararı verdi */
@@ -25,13 +24,13 @@ export interface Agreement {
 }
 
 /** Çoğunluk satırının dayandığı yapay zekâ sayısı günden güne değişir; kartta ve istatistikte gösterilir */
-export const MAJORITY_NOTE = 'Çoğunluk satırı eski günlerde 2, yeni günlerde 3 yapay zekâya dayanır.'
+export const MAJORITY_NOTE = 'Çoğunluk, karar veren yapay zekâlar üzerinden hesaplanır: eski günlerde 2, yeni günlerde çoğunlukla 3 yapay zekâya dayanır.'
 
 /**
  * Bir maçın kararlarının özeti (her yapay zekâdan en fazla bir karar). Tek karar ya da
  * hiç karar varsa özet yoktur (null).
  */
-export function summarizeVerdicts(verdicts: readonly Pick<AiVerdict, 'decision'>[]): Agreement | null {
+export function summarizeVerdicts(verdicts: readonly { decision: AiDecision }[]): Agreement | null {
   const voters = verdicts.length
   if (voters < 2) return null
   const counts = new Map<AiDecision, number>()
@@ -44,7 +43,7 @@ export function summarizeVerdicts(verdicts: readonly Pick<AiVerdict, 'decision'>
 }
 
 /** Maçın çoğunluk kararı; yoksa null */
-export const majorityDecision = (verdicts: readonly Pick<AiVerdict, 'decision'>[]): AiDecision | null =>
+export const majorityDecision = (verdicts: readonly { decision: AiDecision }[]): AiDecision | null =>
   summarizeVerdicts(verdicts)?.decision ?? null
 
 /** Rozet metni: "3/3 aynı", "2/3 çoğunluk", "3 farklı" (eski günlerde "2/2 aynı", "2 farklı") */

@@ -311,16 +311,25 @@ describe('üye ekleme', () => {
       return r
     }
 
-    it('önizleme: gidecek satırlar özete girer, hiçbir şey kaydedilmez', async () => {
+    /** Beklenen gönderimler: [maç, kategori, çoğunluk oyu, seviye] */
+    const EXPECTED: [string, string, number, string][] = [
+      ['Kuzey Yıldızı', 'over25', 3, 'medium'],
+      ['Kuzey Yıldızı', 'btts', 2, 'medium'],
+      ['Doğu Gençlik', 'btts', 3, 'strong'],
+      ['İç Anadolu FK', 'ht05', 3, 'medium'],
+    ]
+    const keys = EXPECTED.map(([home, categoryId]) => `${idOf(home)}|${categoryId}`).sort()
+
+    it('önizleme: gidecek satırlar (maç + kategori) özete girer, hiçbir şey kaydedilmez', async () => {
       const store = sourcesWithAi()
       const draft = await previewPublication(memoryRepo(), store, DAY, T1)
-      expect(summarizePayload(draft.payload).days.map((d) => [d.date, d.ai])).toEqual([[DAY, 2], [PREVIOUS_DAY, 0]])
-      expect(draft.aiShares.map((s) => s.matchId).sort()).toEqual([idOf('Kuzey Yıldızı'), idOf('Doğu Gençlik')].sort())
+      expect(summarizePayload(draft.payload).days.map((d) => [d.date, d.ai])).toEqual([[DAY, 4], [PREVIOUS_DAY, 0]])
+      expect(draft.aiShares.map((s) => `${s.matchId}|${s.categoryId}`).sort()).toEqual(keys)
       expect(store.shares).toEqual([])
       expect(scanForLeaks(draft.payload, draft.rawMatches).problems).toEqual([])
     })
 
-    it('yayın: şifreli paket açılınca satır yalnızca iki maçta; gerekçe ve skor tahmini yok; gönderilenler kaydedilir', async () => {
+    it('yayın: şifreli paket açılınca satır yalnızca kendi kategorisinin önerisinde; gerekçe ve skor tahmini yok; gönderilenler kategori başına kaydedilir', async () => {
       const r = memoryRepo()
       const [login] = await addMembers(r, ['zeynep'], T0)
       const store = sourcesWithAi()
@@ -328,35 +337,39 @@ describe('üye ekleme', () => {
       expect(publication.text).not.toContain(AI_REASON_CANARY)
       const opened = (await openEnvelope(publication.text, login.username, login.password)).payload
       const plain = JSON.stringify(opened)
-      expect(opened.v).toBe(6)
-      expect(opened.days[0].matches.filter((m) => m.ai).map((m) => m.home).sort()).toEqual(['Doğu Gençlik', 'Kuzey Yıldızı'])
-      for (const forbidden of [AI_REASON_CANARY, 'kanarya-risk', 'reason', 'risk', 'savedAt', '"score":{', '7-6']) expect(plain).not.toContain(forbidden)
-      expect(store.shares.map((s) => [s.matchId, s.date, s.firstN, s.lastN, s.count, s.decision]).sort()).toEqual(
-        [
-          [idOf('Kuzey Yıldızı'), DAY, 1, 1, 3, 'medium'],
-          [idOf('Doğu Gençlik'), DAY, 1, 1, 2, 'strong'],
-        ].sort(),
-      )
-      expect(store.shares.every((s) => s.firstAt === T1 && s.lastAt === T1 && s.votes.length === 3)).toBe(true)
+      expect(opened.v).toBe(7)
+      const day = opened.days[0]
+      expect(day.lists.flatMap((l) => l.items.filter((i) => i.ai).map((i) => `${day.matches[i.match].home}|${l.categoryId}|${i.ai!.count}|${i.ai!.level}`)).sort()).toEqual(EXPECTED.map((e) => e.join('|')).sort())
+      expect(day.matches.some((m) => 'ai' in m)).toBe(false)
+      for (const forbidden of [AI_REASON_CANARY, 'kanarya-risk', 'reason', 'risk', 'savedAt', '"score":{', '7-6', 'reject', '"asked"']) expect(plain).not.toContain(forbidden)
+      expect(store.shares.map((s) => [s.id, s.date, s.firstN, s.lastN, s.count, s.decision]).sort()).toEqual(EXPECTED.map(([home, categoryId, count, level]) => [`${idOf(home)}|${categoryId}`, DAY, 1, 1, count, level]).sort())
+      expect(store.shares.every((s) => s.firstAt === T1 && s.lastAt === T1 && s.votes.length === 3 && s.id === `${s.matchId}|${s.categoryId}`)).toBe(true)
       // Kayıtta da yalnızca karar seviyeleri var.
       expect(JSON.stringify(store.shares)).not.toContain('kanarya')
-      // İkinci yayın: ilk gönderim korunur, son gönderim güncellenir; maç başına tek kayıt.
+      // İkinci yayın: ilk gönderim korunur, son gönderim güncellenir; maç + kategori başına tek kayıt.
       await publish(r, store, DAY, T2)
-      expect(store.shares).toHaveLength(2)
+      expect(store.shares).toHaveLength(4)
       expect(store.shares.every((s) => s.firstN === 1 && s.firstAt === T1 && s.lastN === 2 && s.lastAt === T2)).toBe(true)
     }, SLOW)
 
-    it('karar sonradan değişirse satır sonraki yayında gitmez; eski kayıt yerinde kalır', async () => {
+    it('bir kategorinin kararı sonradan değişirse yalnızca o kategorinin satırı düşer; eski (maç geneli) kayıtlar korunur', async () => {
       const r = await repoWithMembers()
       const store = sourcesWithAi()
+      // Kategori bazlı karardan önce tutulmuş bir kayıt: kimliği maç, kategorisi yok.
+      const legacy: AiShare = { id: idOf('Ova Belediyespor'), matchId: idOf('Ova Belediyespor'), date: DAY, firstN: 9, firstAt: T0, lastN: 9, lastAt: T0, votes: (['chatgpt', 'gemini', 'claude'] as const).map((provider) => ({ provider, decision: 'medium' as const })), count: 3, decision: 'medium' }
+      store.shares = [legacy]
       await publish(r, store, DAY, T1)
-      const changed = sourcesWithAi(AI_VERDICTS.map((v) => (v.matchId === idOf('Kuzey Yıldızı') && v.provider === 'claude' ? { ...v, decision: 'reject' as const } : v)))
+      expect(store.shares).toHaveLength(5)
+      // Claude, Kuzey Yıldızı'nın 2.5 ÜST kararını Eleme'ye çeviriyor; KG VAR kararı aynı.
+      const changed = sourcesWithAi(AI_VERDICTS.map((v) => (v.matchId === idOf('Kuzey Yıldızı') && v.provider === 'claude' ? { ...v, byCategory: { ...v.byCategory, over25: 'reject' as const } } : v)))
       changed.shares = store.shares
       const second = await publish(r, changed, DAY, T2)
-      expect(second.summary.days[0].ai).toBe(1)
-      const kuzey = changed.shares.find((s) => s.matchId === idOf('Kuzey Yıldızı'))!
-      expect([kuzey.firstN, kuzey.lastN]).toEqual([1, 1])
-      expect(changed.shares.find((s) => s.matchId === idOf('Doğu Gençlik'))!.lastN).toBe(2)
+      expect(second.summary.days[0].ai).toBe(3)
+      const last = (home: string, categoryId: string) => changed.shares.find((s) => s.id === `${idOf(home)}|${categoryId}`)!.lastN
+      expect(last('Kuzey Yıldızı', 'over25')).toBe(1)
+      expect(last('Kuzey Yıldızı', 'btts')).toBe(2)
+      expect(last('Doğu Gençlik', 'btts')).toBe(2)
+      expect(changed.shares.find((s) => s.id === legacy.id)).toEqual(legacy)
     }, SLOW)
 
     it('karar yoksa paket satırsız kurulur ve kayıt yazılmaz', async () => {

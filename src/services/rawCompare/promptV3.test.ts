@@ -12,7 +12,7 @@ import { buildRawPrompts, PROMPT_V3_DATE_MARK, PROMPT_V3_GROUP_SIZE, PROMPT_V3_H
 
 const START = '=== MAÇLAR ==='
 const END = '=== MAÇLAR SONU ==='
-const fake = (n: number): AiMatchItem => ({ match: { id: `m${n}`, uploadId: 'u', date: DAY, time: `${String(10 + Math.floor(n / 6)).padStart(2, '0')}:${String((n % 6) * 10).padStart(2, '0')}`, league: 'Testland · Deneme Ligi', home: `Ev ${n}`, away: `Dep ${n}`, stats: {} } as Match, predictions: [] })
+const fake = (n: number): AiMatchItem => ({ match: { id: `m${n}`, uploadId: 'u', date: DAY, time: `${String(10 + Math.floor(n / 6)).padStart(2, '0')}:${String((n % 6) * 10).padStart(2, '0')}`, league: 'Testland · Deneme Ligi', home: `Ev ${n}`, away: `Dep ${n}`, stats: {} } as Match, predictions: [], evaluate: ['over25'] })
 const fakes = (count: number) => Array.from({ length: count }, (_, i) => fake(i + 1))
 /** "=== MAÇLAR ===" ile "=== MAÇLAR SONU ===" arasındaki satırlar */
 const listOf = (text: string): string[] => text.slice(text.indexOf(`${START}\n`) + START.length + 1, text.indexOf(`\n${END}`)).split('\n')
@@ -32,7 +32,7 @@ describe('sabit metin', () => {
     const items = listOf(source).map((line): AiMatchItem => {
       const [, time, league, teams] = line.split(' | ')
       const [home, away] = teams.split(' - ')
-      return { match: { id: line, uploadId: 'u', date: '2026-10-08', time, league, home, away, stats: {} }, predictions: [] }
+      return { match: { id: line, uploadId: 'u', date: '2026-10-08', time, league, home, away, stats: {} }, predictions: [], evaluate: ['over25'] }
     })
     expect(items).toHaveLength(3)
     expect(buildRawPrompts(items, PROMPT_V3_DATE_MARK)).toEqual([{ index: 1, total: 1, from: 1, to: 3, text: source }])

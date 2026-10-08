@@ -9,6 +9,7 @@ import { DAY, dayHighlights, HIGHLIGHT_PERCENT, memberInput, PREVIOUS_DAY, PUBLI
 import type { MemberErrorKind } from '../services/member/controller'
 import { MEMBER_ERROR_TEXTS, MEMBER_HIGHLIGHT_TEXTS, MEMBER_NOTICE_TEXTS, STALE_DATA_TEXT } from '../services/member/labels'
 import { buildMemberPayload } from '../services/member/payload'
+import { assertMemberPayload } from '../services/member/schema'
 import { formatRate } from '../utils/format'
 import { HOW_TO_READ, HOW_TO_READ_TITLE } from './howToRead'
 import MemberAnalysis from './MemberAnalysis'
@@ -356,28 +357,45 @@ describe('kategori listeleri ve üye kartı', () => {
     expect(html(createElement(MemberAnalysis, { payload: buildMemberPayload(memberInput({ days: [{ date: '2026-10-09', matches: [], results: [] }] })), today: DAY }))).not.toContain('member-percent-note')
   })
 
-  it('"AI öneri güveni" satırı yalnızca satırı gelen maçın kartında görünür; skor tahmini, gerekçe ve risk yoktur', () => {
+  it('"AI öneri güveni" satırı yalnızca kendi kategorisinin kartında görünür; başlık kategoriyi taşır; skor tahmini, gerekçe ve risk yoktur', () => {
+    const card = (categoryId: (typeof CATEGORIES)[number]['id'], home: string) => cards(html(analysis(0, categoryId))).find((c) => c.includes(home))!
+    // Örnek maç: 2.5 ÜST 3/3 Orta · KG VAR 2 Orta + 1 Zayıf · İLK YARI 0.5 ÜST 2 Zayıf + 1 Orta
+    expect(card('over25', 'Kuzey Yıldızı')).toContain('AI öneri güveni (2.5 Üst): ChatGPT: Orta Gemini: Orta Claude: Orta 3/3 · Orta')
+    expect(card('btts', 'Kuzey Yıldızı')).toContain('AI öneri güveni (KG Var): ChatGPT: Orta Gemini: Orta Claude: Zayıf 2/3 · Orta')
+    expect(card('ht05', 'Kuzey Yıldızı')).not.toContain('AI öneri güveni')
+    // Aynı maçın 2.5 ÜST kararı KG VAR kartında, KG VAR kararı 2.5 ÜST kartında görünmez.
+    expect(card('btts', 'Kuzey Yıldızı')).not.toContain('(2.5 Üst)')
+    expect(card('over25', 'Kuzey Yıldızı')).not.toContain('(KG Var)')
+    // 2 Güçlü + 1 Eleme: o kategoride yok, diğer kategori etkilenmez.
+    expect(card('over25', 'Doğu Gençlik')).not.toContain('AI öneri güveni')
+    expect(card('btts', 'Doğu Gençlik')).toContain('AI öneri güveni (KG Var): ChatGPT: Güçlü Gemini: Güçlü Claude: Güçlü 3/3 · Güçlü')
+    // Bir yapay zekâ kategoriyi atladı: o kategoride yok, cevapladığında var.
+    expect(card('over25', 'İç Anadolu FK')).not.toContain('AI öneri güveni')
+    expect(card('ht05', 'İç Anadolu FK')).toContain('AI öneri güveni (İlk Yarı 0.5 Üst): ChatGPT: Orta Gemini: Orta Claude: Orta 3/3 · Orta')
+    // Karar istenmeyen listelerin (2. yarı, korner, kart, Taraf & Gol…) kartlarında satır hiç yok; maç orada duruyor.
+    const others = payload.days[0].lists.filter((l) => l.items.length > 0 && !['over25', 'ht05', 'btts', 'over25btts'].includes(l.categoryId))
+    expect(others.length).toBeGreaterThan(5)
+    for (const list of others) expect(html(analysis(0, list.categoryId)), list.categoryId).not.toContain('data-testid="member-ai"')
+    expect(cards(html(analysis(0, 'sh05'))).some((c) => c.includes('Kuzey Yıldızı'))).toBe(true)
     const markup = html(analysis(0, 'over25'))
-    const byTeam = (home: string) => cards(markup).find((c) => c.includes(home))!
-    // 3/3 Orta
-    expect(byTeam('Kuzey Yıldızı')).toContain('AI öneri güveni: ChatGPT: Orta Gemini: Orta Claude: Orta 3/3 · Orta')
-    // 2 Güçlü + 1 Zayıf: zayıf diyen de dürüstçe görünür
-    expect(byTeam('Doğu Gençlik')).toContain('AI öneri güveni: ChatGPT: Güçlü Gemini: Zayıf Claude: Güçlü 2/3 · Güçlü')
-    // 2/3 Zayıf ve 2 Orta + 1 Eleme: maç listede durur, satır yoktur
-    const without = cards(markup).filter((c) => !c.includes('AI öneri güveni'))
-    expect(without.some((c) => c.includes('İç Anadolu FK'))).toBe(true)
-    expect(cards(markup).filter((c) => c.includes('AI öneri güveni')).length).toBe(markup.split('data-testid="member-ai"').length - 1)
     expect(markup).not.toMatch(/Eleme|Skor olasılıkları|kanarya|Risk/)
     // "Geçmiş veri" etiketi satır çıksa da yerinde durur.
-    expect(byTeam('Kuzey Yıldızı')).toContain('Geçmiş veri:')
+    expect(card('over25', 'Kuzey Yıldızı')).toContain('Geçmiş veri:')
     expect(markup.split('data-testid="member-reliability"').length).toBe(markup.split('data-testid="member-card"').length)
-    // Aynı maç başka listede de varsa satır orada da görünür.
-    const other = payload.days[0].lists.find((l) => l.categoryId !== 'over25' && l.items.some((i) => payload.days[0].matches[i.match].home === 'Kuzey Yıldızı'))!
-    expect(cards(html(analysis(0, other.categoryId))).find((c) => c.includes('Kuzey Yıldızı'))).toContain('3/3 · Orta')
-    // Sürüm 5 paket (satır yok): kart eskisi gibi çizilir.
-    const v5 = JSON.parse(JSON.stringify(payload)) as MemberPayload
-    for (const d of v5.days) for (const m of d.matches) delete m.ai
-    expect(html(createElement(MemberAnalysis, { payload: v5, today: DAY, initialCategory: 'over25' }))).not.toContain('data-testid="member-ai"')
+  })
+
+  it('sürüm 6 paketteki maç geneli satır gösterilmez; paket yine açılır', () => {
+    const v6 = JSON.parse(JSON.stringify(payload)) as MemberPayload
+    ;(v6 as { v: number }).v = 6
+    const row = v6.days[0].lists.find((l) => l.categoryId === 'over25')!.items.find((i) => i.ai)!.ai!
+    for (const d of v6.days) for (const l of d.lists) for (const i of l.items) delete i.ai
+    for (const m of v6.days[0].matches) m.ai = row
+    expect(() => assertMemberPayload(v6)).not.toThrow()
+    for (const id of ['over25', 'btts', 'sh05'] as const) {
+      const markup = html(createElement(MemberAnalysis, { payload: v6, today: DAY, initialCategory: id }))
+      expect(markup).toContain('data-testid="member-card"')
+      expect(markup).not.toContain('data-testid="member-ai"')
+    }
   })
 
   it('%100 ve geçmiş veri Az ise yüzde sönük, rozet belirgin; başka durumda değil', () => {
@@ -484,9 +502,9 @@ describe('kategori listeleri ve üye kartı', () => {
     expect(JSON.stringify(payload)).not.toContain('Nasıl okunur')
     expect(all.toLocaleLowerCase('tr')).not.toMatch(/oran|piyasa|xg|csv|kaynak|footystats|bağlantı|odds|ortalama|https?:/)
     // Sayı olarak yalnızca yıldız ölçeği (1–5), örnek yüzde (%100), örnek maç sayısı ("en az 4 maç"),
-    // liste adlarındaki çizgiler, "AI öneri güveni" özet örnekleri ("3/3 · Orta", "2/3 · Güçlü") ve "18+" geçer;
+    // liste adları ("2.5 Üst", "İlk Yarı 0.5 Üst"), "AI öneri güveni" özet örnekleri ("3/3 · Orta", "2/3 · Güçlü") ve "18+" geçer;
     // eşik sayıları (8, 16) geçmez.
-    expect(all.replace(/1–5|%100|en az 4 maç|2\.5 Üst|3\/3 · Orta|2\/3 · Güçlü|18\+/g, '').match(/\d/g)).toBeNull()
+    expect(all.replace(/1–5|%100|en az 4 maç|2\.5 Üst|0\.5 Üst|3\/3 · Orta|2\/3 · Güçlü|18\+/g, '').match(/\d/g)).toBeNull()
     // Etiketin ne OLMADIĞI açıkça yazılıdır.
     const data = HOW_TO_READ.find((i) => i.title === 'Geçmiş veri')!.paragraphs.join(' ')
     expect(data).toContain('maçın sonucuna duyulan güveni DEĞİL, yalnızca eldeki veri miktarını anlatır')

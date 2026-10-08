@@ -2,6 +2,7 @@ import { isApproved } from '../../config/ai'
 import type { CategoryId } from '../../config/categories'
 import type { AiVerdict, StorySelection } from '../../types'
 import { majorityDecision } from '../ai/consensus'
+import { categoryVotes, legacyVotes } from '../ai/verdicts'
 import { comparePredictions } from '../analysis/engine'
 import type { Prediction } from '../analysis/types'
 
@@ -42,12 +43,18 @@ export const toggleSelection = (selectedIds: readonly string[] = [], matchId: st
 
 export const selectAll = (predictions: Prediction[]): string[] => predictions.map((p) => p.match.id)
 
-/** Listede, yapay zekâların çoğunluk kararı "onay" (Güçlü / Orta) olan maçlar */
-export function majorityApprovedIds(predictions: Prediction[], verdicts: AiVerdict[]): string[] {
+/**
+ * Listede, yapay zekâların çoğunluk kararı "onay" (Güçlü / Orta) olan maçlar. Karar bu listenin
+ * kendi kategorisine bakılarak okunur; maçın o kategoride hiç kararı yoksa (eski günler ya da
+ * karar istenmeyen kategori) eski maç geneli kararlara bakılır.
+ */
+export function majorityApprovedIds(predictions: Prediction[], verdicts: AiVerdict[], categoryId: CategoryId): string[] {
   return predictions
     .map((p) => p.match.id)
     .filter((matchId) => {
-      const decision = majorityDecision(verdicts.filter((v) => v.matchId === matchId))
+      const own = verdicts.filter((v) => v.matchId === matchId)
+      const votes = categoryVotes(own, categoryId)
+      const decision = majorityDecision(votes.length > 0 ? votes : legacyVotes(own))
       return decision !== null && isApproved(decision)
     })
 }

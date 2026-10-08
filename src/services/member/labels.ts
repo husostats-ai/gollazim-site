@@ -28,8 +28,16 @@ export const MEMBER_CONFLICT_LABELS: Record<MemberConflict, string> = {
   hesap: 'Hesaplar çelişiyor',
 }
 
-/** "AI öneri güveni" satırı: üç yapay zekânın, maçın önerilerine duyduğu güven (maçın sonucu değil) */
+/** "AI öneri güveni" satırı: üç yapay zekânın, kartın kendi kategorisindeki öneriye duyduğu güven (maçın sonucu değil) */
 export const MEMBER_AI_TITLE = 'AI öneri güveni'
+/** Kategori adı başlıkta küçük harfle yazılır: "2.5 ÜST & KG VAR" -> "2.5 Üst & KG Var" */
+const titleCase = (label: string): string =>
+  label
+    .split(' ')
+    .map((word) => (word === 'KG' ? word : word.charAt(0).toLocaleUpperCase('tr') + word.slice(1).toLocaleLowerCase('tr')))
+    .join(' ')
+/** "AI öneri güveni (2.5 Üst)": satır yalnızca bu kategoriye aittir */
+export const memberAiTitle = (categoryLabel: string): string => `${MEMBER_AI_TITLE} (${titleCase(categoryLabel)})`
 export const MEMBER_AI_PROVIDER_LABELS: Record<MemberAiProvider, string> = { chatgpt: 'ChatGPT', gemini: 'Gemini', claude: 'Claude' }
 export const MEMBER_AI_LEVEL_LABELS: Record<MemberAiVote['level'], string> = { strong: 'Güçlü', medium: 'Orta', weak: 'Zayıf' }
 /** "3/3 · Orta", "2/3 · Güçlü": kaç yapay zekânın aynı seviyeyi verdiği; ortalama değildir */

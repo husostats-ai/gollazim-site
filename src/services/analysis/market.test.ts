@@ -333,13 +333,14 @@ describe('AI prompt: piyasa satırı', () => {
     // KG Var hazır %85, piyasa %55: fark 30
     expect(block).toContain('KG VAR %85 (güvenilirlik: Bilinmiyor; Piyasa çelişkisi)')
     const plain = matchBlock(items.find((i) => i.match.id === bare.id)!, 2)
-    expect(plain.split('\n')).toHaveLength(4)
+    // Başlık, Öneriler, İstatistik, Gol modeli ve Değerlendir satırları
+    expect(plain.split('\n')).toHaveLength(5)
     expect(plain).not.toContain('Piyasa')
   })
 
-  it('cevap biçimi değişmez', () => {
+  it('cevap biçimi kategori bazlıdır; piyasa kuralı yerinde', () => {
     const [chunk] = buildPrompts(items, 'chatgpt', '5 Ekim 2026 Pazartesi')
-    expect(chunk.text).toContain('- Her maç için tek satır yaz: #numara | KARAR | gerekçe | risk')
+    expect(chunk.text).toContain('- Her maç için tek satır yaz: #numara | KATEGORİ: KARAR ; KATEGORİ: KARAR | gerekçe | risk | SKOR: ev-deplasman')
     expect(chunk.text).toContain('"Piyasa" satırı')
   })
 })

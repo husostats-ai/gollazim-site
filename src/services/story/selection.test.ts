@@ -84,7 +84,7 @@ describe('seçim işlemleri', () => {
     expect(selectAll(list())).toEqual(['b', 'c', 'a'])
   })
 
-  it('ortak karar Onay: iki yapay zekâ da aynı ve olumlu karar vermişse', () => {
+  it('çoğunluk kararı Onay (eski maç geneli kararlar): kategoride karar yoksa eski kararlara bakılır', () => {
     const verdict = (matchId: string, provider: AiVerdict['provider'], decision: AiVerdict['decision']): AiVerdict => ({
       id: `${matchId}|${provider}`,
       matchId,
@@ -105,9 +105,9 @@ describe('seçim işlemleri', () => {
       verdict('weak', 'chatgpt', 'strong'),
       verdict('weak', 'gemini', 'strong'), // listede değil
     ]
-    expect(majorityApprovedIds(list(), verdicts)).toEqual(['a'])
-    expect(majorityApprovedIds(list(), [verdict('a', 'chatgpt', 'strong')])).toEqual([])
-    expect(majorityApprovedIds(list(), [])).toEqual([])
+    expect(majorityApprovedIds(list(), verdicts, 'over25')).toEqual(['a'])
+    expect(majorityApprovedIds(list(), [verdict('a', 'chatgpt', 'strong')], 'over25')).toEqual([])
+    expect(majorityApprovedIds(list(), [], 'over25')).toEqual([])
     // Claude'lu gün: 2/3 çoğunluk onaysa seçilir; çoğunluk onay değilse ya da üç karar farklıysa seçilmez
     const three = [
       ...verdicts,
@@ -115,8 +115,26 @@ describe('seçim işlemleri', () => {
       verdict('b', 'claude', 'medium'), // 2/3 Orta
       verdict('c', 'claude', 'strong'), // 2/3 Eleme
     ]
-    expect(majorityApprovedIds(list(), three).sort()).toEqual(['a', 'b'])
-    expect(majorityApprovedIds(list(), [verdict('a', 'chatgpt', 'strong'), verdict('a', 'gemini', 'medium'), verdict('a', 'claude', 'weak')])).toEqual([])
+    expect(majorityApprovedIds(list(), three, 'over25').sort()).toEqual(['a', 'b'])
+    expect(majorityApprovedIds(list(), [verdict('a', 'chatgpt', 'strong'), verdict('a', 'gemini', 'medium'), verdict('a', 'claude', 'weak')], 'over25')).toEqual([])
+  })
+
+  it('çoğunluk kararı Onay (kategori bazlı): listenin kendi kategorisinin kararına bakılır', () => {
+    const fresh = (matchId: string, provider: AiVerdict['provider'], byCategory: AiVerdict['byCategory']): AiVerdict => ({ id: `${matchId}|${provider}`, matchId, date: '2026-10-05', provider, byCategory, reason: '', risk: '', savedAt: '' })
+    const all = (matchId: string, byCategory: AiVerdict['byCategory']) => (['chatgpt', 'gemini', 'claude'] as const).map((p) => fresh(matchId, p, byCategory))
+    const verdicts = [
+      ...all('a', { over25: 'strong', btts: 'reject' }), // 2.5 ÜST onay, KG VAR eleme
+      ...all('b', { over25: 'weak', btts: 'medium' }), // 2.5 ÜST onay değil, KG VAR onay
+      fresh('c', 'chatgpt', { over25: 'strong' }), // tek karar: çoğunluk yok
+    ]
+    expect(majorityApprovedIds(list(), verdicts, 'over25')).toEqual(['a'])
+    expect(majorityApprovedIds(list(), verdicts, 'btts')).toEqual(['b'])
+    // Karar istenmeyen listede kategori kararı yoktur.
+    expect(majorityApprovedIds(list(), verdicts, 'corners85')).toEqual([])
+    // Kategoride karar varken, saklanan eski maç geneli karar dikkate alınmaz.
+    const kept = all('b', { over25: 'weak' }).map((v) => ({ ...v, decision: 'strong' as const }))
+    expect(majorityApprovedIds(list(), kept, 'over25')).toEqual([])
+    expect(majorityApprovedIds(list(), kept, 'btts')).toEqual(['b'])
   })
 })
 

@@ -5,22 +5,23 @@ import NoData from '../components/NoData'
 import NoteBadges from '../components/NoteBadges'
 import PageTitle from '../components/PageTitle'
 import ReliabilityBadge from '../components/ReliabilityBadge'
-import { AgreementBadge, MemberShareBadge } from '../components/ai/AiVerdictBadges'
+import { AgreementBadge, LegacyVerdicts, MemberShareBadge } from '../components/ai/AiVerdictBadges'
 import PromptPanel from '../components/ai/PromptPanel'
 import ResponsePanel from '../components/ai/ResponsePanel'
-import { AI_PROVIDERS, decisionLabel, providerLabel, type AiProvider } from '../config/ai'
+import { AI_CATEGORY_IDS, AI_PROVIDERS, decisionLabel, providerLabel, type AiProvider } from '../config/ai'
 import { getCategory } from '../config/categories'
 import { collectAiMatches } from '../services/ai/collect'
 import { MAJORITY_NOTE, summarizeVerdicts } from '../services/ai/consensus'
-import { numberMap } from '../services/ai/parser'
+import { askedMap, numberMap } from '../services/ai/parser'
 import { buildPrompts } from '../services/ai/prompt'
+import { categoryVotes, isUnanswered, orderedVerdicts } from '../services/ai/verdicts'
 import { analyzeDay } from '../services/analysis/engine'
 import { aiRepo } from '../services/data'
 import { useApp } from '../state/AppContext'
-import type { AiPromptBatch, AiVerdict } from '../types'
+import type { AiPromptBatch } from '../types'
 import { formatLongDate } from '../utils/format'
 
-const sameIds = (a: string[], b: string[]) => a.length === b.length && a.every((id, i) => id === b[i])
+const sameIds = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((id, i) => id === b[i])
 const copiedAtFmt = new Intl.DateTimeFormat('tr-TR', { dateStyle: 'medium', timeStyle: 'short' })
 
 export default function AiPage() {
@@ -36,7 +37,8 @@ export default function AiPage() {
     let cancelled = false
     setBatch(null)
     if (selectedDate) {
-      void aiRepo.getPromptBatch(selectedDate, provider).then((b) => !cancelled && setBatch(b ?? null))
+      // Kategori bazlı karardan önce kopyalanmış prompt kayıtlarında "Değerlendir" listesi yoktur: geçersiz sayılır.
+      void aiRepo.getPromptBatch(selectedDate, provider).then((b) => !cancelled && setBatch(b?.categories ? b : null))
     }
     return () => {
       cancelled = true
@@ -57,13 +59,13 @@ export default function AiPage() {
   // Cevap, kopyalanan son prompt'un numaralarına göre eşleştirilir; hiç kopyalanmadıysa güncel listeye göre.
   const numberedIds = batch?.matchIds ?? liveIds
   const numbers = numberMap(numberedIds)
-  const stale = batch !== null && !sameIds(batch.matchIds, liveIds)
+  const liveCategories = items.map((i) => i.evaluate)
+  // Her maç için sorulan kategoriler de kopyalama anındaki hâliyle kullanılır.
+  const asked = askedMap(batch?.categories ?? liveCategories)
+  const stale = batch !== null && (!sameIds(batch.matchIds, liveIds) || !(batch.categories ?? []).every((ids, i) => sameIds(ids, liveCategories[i] ?? [])))
   const chunks = buildPrompts(items, provider, formatLongDate(selectedDate))
   const matchesById = new Map(matches.map((m) => [m.id, m]))
-  const verdictsOf = (matchId: string): AiVerdict[] =>
-    AI_PROVIDERS.map((p) => aiVerdicts.find((v) => v.matchId === matchId && v.provider === p.id)).filter(
-      (v): v is AiVerdict => v !== undefined,
-    )
+  const verdictsOf = (matchId: string) => orderedVerdicts(aiVerdicts.filter((v) => v.matchId === matchId))
 
   const onCopied = async () => {
     const next: AiPromptBatch = {
@@ -72,6 +74,7 @@ export default function AiPage() {
       provider,
       createdAt: new Date().toISOString(),
       matchIds: liveIds,
+      categories: liveCategories,
     }
     await aiRepo.savePromptBatch(next)
     setBatch(next)
@@ -128,7 +131,10 @@ export default function AiPage() {
           <section className="min-w-0 rounded-2xl border border-line bg-navy-700 p-4">
             <h2 className="font-extrabold tracking-wide">2. {label.toUpperCase()} CEVABINI YAPIŞTIR</h2>
             <p className="mt-1 mb-3 text-sm text-muted">
-              Beklenen biçim, her maç için tek satır: <code className="text-white">#numara | KARAR | gerekçe | risk</code>
+              Beklenen biçim, her maç için tek satır:{' '}
+              <code className="text-white">#numara | KATEGORİ: KARAR ; KATEGORİ: KARAR | gerekçe | risk | SKOR: ev-deplasman</code>. Karar
+              yalnızca {AI_CATEGORY_IDS.map((id) => getCategory(id).label).join(', ')} için alınır; her maçta prompttaki “Değerlendir”
+              satırındaki kategoriler beklenir.
             </p>
             {batch && (
               <p className="mb-3 text-xs text-muted" data-testid="batch-info">
@@ -149,6 +155,7 @@ export default function AiPage() {
               provider={provider}
               providerLabel={label}
               numbers={numbers}
+              asked={asked}
               matchesById={matchesById}
               onSaved={refresh}
             />
@@ -157,13 +164,14 @@ export default function AiPage() {
           <section className="min-w-0 rounded-2xl border border-line bg-navy-700 p-4">
             <h2 className="font-extrabold tracking-wide">MAÇLAR VE KARARLAR</h2>
             <p className="mt-1 text-xs text-muted" data-testid="ai-majority-note">
-              Karar özeti ortalama değil çoğunluktur: “3/3 aynı”, “2/3 çoğunluk”, “3 farklı”. {MAJORITY_NOTE}
+              Kararlar kategori bazındadır; özet her kategori için ayrı hesaplanır ve ortalama değil çoğunluktur: “3/3 aynı”, “2/3
+              çoğunluk”, “3 farklı”. {MAJORITY_NOTE} Yalnızca başka kategorilerde (2. yarı, korner, kart…) görünen maçlar bu listede yer
+              almaz.
             </p>
             <ul className="mt-2 divide-y divide-line">
               {items.map((item) => {
                 const number = numberedIds.indexOf(item.match.id) + 1
                 const verdicts = verdictsOf(item.match.id)
-                const agreement = summarizeVerdicts(verdicts)
                 return (
                   <li key={item.match.id} className="py-3" data-testid="ai-match">
                     <div className="flex items-start gap-2.5">
@@ -189,43 +197,67 @@ export default function AiPage() {
                         </ul>
 
                         {verdicts.length > 0 && (
-                          <ul className="mt-2 space-y-1.5" data-testid="ai-verdicts">
-                            {verdicts.map((v) => (
-                              <li key={v.id} className="rounded-lg bg-navy-800 px-2.5 py-2 text-xs" data-ai={v.provider}>
-                                <p className="flex flex-wrap items-center justify-between gap-2">
-                                  <span>
-                                    <span className="font-bold text-muted">{providerLabel(v.provider)}:</span>{' '}
-                                    <span className="font-extrabold">{decisionLabel(v.decision)}</span>
-                                    {v.score && (
-                                      <span className="ml-1.5 font-semibold text-muted" data-testid="ai-verdict-score">
-                                        · Skor {v.score.home}-{v.score.away}
-                                        {v.scoreLate && ' (başladıktan sonra; ölçüme girmez)'}
-                                      </span>
-                                    )}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => void removeVerdict(v.id)}
-                                    className="rounded-md border border-navy-500 px-2 py-0.5 text-[11px] font-bold text-muted hover:bg-navy-600"
-                                  >
-                                    Kararı sil
-                                  </button>
-                                </p>
-                                <p className="mt-1 text-muted">{v.reason}</p>
-                                {v.risk && (
-                                  <p className="mt-0.5 text-muted">
-                                    <span className="font-semibold text-white">Risk:</span> {v.risk}
-                                  </p>
-                                )}
-                              </li>
-                            ))}
-                            {agreement && (
-                              <li className="flex flex-wrap gap-1.5">
-                                <AgreementBadge agreement={agreement} />
-                                <MemberShareBadge match={item.match} verdicts={verdicts} share={aiShares.find((s) => s.matchId === item.match.id)} />
-                              </li>
+                          <div className="mt-2 space-y-1.5" data-testid="ai-verdicts">
+                            {/* Kategori bazlı kararlar: her kategori kendi satırında, kendi özeti ve üye işaretiyle */}
+                            {verdicts.some((v) => v.byCategory) && (
+                              <ul className="space-y-1" data-testid="ai-category-rows">
+                                {item.evaluate.map((categoryId) => (
+                                  <li key={categoryId} className="flex flex-wrap items-center gap-1.5 text-xs" data-testid="ai-category-row" data-category={categoryId}>
+                                    <span className="font-bold text-brand">{getCategory(categoryId).label}:</span>
+                                    {verdicts
+                                      .filter((v) => v.byCategory)
+                                      .map((v) => {
+                                        const decision = v.byCategory?.[categoryId]
+                                        return (
+                                          <span key={v.id} className="whitespace-nowrap" data-ai={v.provider}>
+                                            <span className="text-muted">{providerLabel(v.provider)}</span>{' '}
+                                            {decision ? <span className="font-extrabold">{decisionLabel(decision)}</span> : <span className="text-muted italic">{isUnanswered(v, categoryId) ? 'cevapsız' : '—'}</span>}
+                                          </span>
+                                        )
+                                      })}
+                                    <AgreementBadge agreement={summarizeVerdicts(categoryVotes(verdicts, categoryId))} />
+                                    <MemberShareBadge match={item.match} verdicts={verdicts} categoryId={categoryId} shares={aiShares} />
+                                  </li>
+                                ))}
+                              </ul>
                             )}
-                          </ul>
+                            <LegacyVerdicts verdicts={verdicts} />
+                            <ul className="space-y-1.5">
+                              {verdicts.map((v) => (
+                                <li key={v.id} className="rounded-lg bg-navy-800 px-2.5 py-2 text-xs" data-ai={v.provider}>
+                                  <p className="flex flex-wrap items-center justify-between gap-2">
+                                    <span>
+                                      <span className="font-bold text-muted">{providerLabel(v.provider)}</span>
+                                      {!v.byCategory && v.decision && (
+                                        <span className="ml-1.5 text-muted">
+                                          maç geneli (eski): <span className="font-extrabold text-white">{decisionLabel(v.decision)}</span>
+                                        </span>
+                                      )}
+                                      {v.score && (
+                                        <span className="ml-1.5 font-semibold text-muted" data-testid="ai-verdict-score">
+                                          · Skor {v.score.home}-{v.score.away}
+                                          {v.scoreLate && ' (başladıktan sonra; ölçüme girmez)'}
+                                        </span>
+                                      )}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => void removeVerdict(v.id)}
+                                      className="rounded-md border border-navy-500 px-2 py-0.5 text-[11px] font-bold text-muted hover:bg-navy-600"
+                                    >
+                                      Kararı sil
+                                    </button>
+                                  </p>
+                                  <p className="mt-1 text-muted">{v.reason}</p>
+                                  {v.risk && (
+                                    <p className="mt-0.5 text-muted">
+                                      <span className="font-semibold text-white">Risk:</span> {v.risk}
+                                    </p>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
                         )}
                       </div>
                     </div>

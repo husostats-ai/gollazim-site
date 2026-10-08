@@ -1,6 +1,6 @@
 import Stars from '../components/Stars'
 import type { ReliabilityLevel } from '../services/analysis/types'
-import { MEMBER_AI_LEVEL_LABELS, MEMBER_AI_PROVIDER_LABELS, MEMBER_AI_TITLE, memberAiSummary, MEMBER_CONFLICT_LABELS, MEMBER_DATA_TERM, MEMBER_OUTCOMES, MEMBER_RELIABILITY_LABELS, memberSampleText, MEMBER_STATUS_LABELS, STALE_TABLE_LABEL, standingText } from '../services/member/labels'
+import { MEMBER_AI_LEVEL_LABELS, MEMBER_AI_PROVIDER_LABELS, memberAiSummary, memberAiTitle, MEMBER_CONFLICT_LABELS, MEMBER_DATA_TERM, MEMBER_OUTCOMES, MEMBER_RELIABILITY_LABELS, memberSampleText, MEMBER_STATUS_LABELS, STALE_TABLE_LABEL, standingText } from '../services/member/labels'
 import type { MemberItem, MemberMatch, MemberStanding } from '../services/member/payload'
 import type { PickOutcome } from '../types'
 import { categoryLabel as labelOf, isOverstated, percentKind } from './view'
@@ -128,18 +128,19 @@ export default function MemberCard({ rank, match, item, categoryLabel, percentLa
         )}
       </div>
 
-      {match.ai && (
-        // Yalnızca üç yapay zekânın da değerlendirdiği ve çoğunluğun Orta ya da Güçlü dediği maçta gelir.
+      {item.ai && (
+        // Yalnızca BU KATEGORİYE ait kararlar: üç yapay zekâ da bu öneriyi değerlendirdiyse ve çoğunluk Orta ya da
+        // Güçlü dediyse gelir. Sürüm 6 paketlerdeki maç geneli satır (match.ai) bilerek gösterilmez.
         <div className="flex flex-wrap items-center gap-1.5 text-xs" data-testid="member-ai">
-          <span className="font-bold text-muted">{MEMBER_AI_TITLE}:</span>
-          {match.ai.votes.map((vote) => (
+          <span className="font-bold text-muted">{memberAiTitle(categoryLabel)}:</span>
+          {item.ai.votes.map((vote) => (
             <span key={vote.who} className={`${BADGE} border-navy-500 whitespace-nowrap`} data-testid="member-ai-vote" data-ai={vote.who}>
               <span className="font-normal text-muted">{MEMBER_AI_PROVIDER_LABELS[vote.who]}:</span>
               {MEMBER_AI_LEVEL_LABELS[vote.level]}
             </span>
           ))}
           <span className={`${BADGE} border-[#7dd3fc] font-bold whitespace-nowrap text-[#7dd3fc]`} data-testid="member-ai-summary">
-            {memberAiSummary(match.ai)}
+            {memberAiSummary(item.ai)}
           </span>
         </div>
       )}

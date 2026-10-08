@@ -1,6 +1,8 @@
 // Yapay zekâ analizi ayarları. Site hiçbir yapay zekâ servisine bağlanmaz:
 // prompt üretir, kullanıcı onu kendi uygulamasına yapıştırır ve cevabı geri getirir.
 
+import type { CategoryId } from './categories'
+
 export type AiProvider = 'chatgpt' | 'gemini' | 'claude'
 export type AiDecision = 'strong' | 'medium' | 'weak' | 'reject'
 
@@ -26,10 +28,11 @@ export const AI_PROVIDERS: { id: AiProvider; label: string; instruction: string 
 ]
 
 /**
- * "Analiz için özet" metni ve ayrıntı CSV'si yapay zekâya girdi olduğu için biçimi sabit
- * tutulur: Claude eklenmeden önceki iki sağlayıcıyı ve iki yapay zekâlı "Ortak karar"ı yazar.
+ * Yapay zekâya kategori bazında karar sorulan listeler. Diğer listelerdeki (2. yarı, korner,
+ * kart, Taraf & Gol…) öneriler için karar istenmez ve o kartlarda karar gösterilmez.
  */
-export const SUMMARY_AI_PROVIDERS = AI_PROVIDERS.filter((p) => p.id === 'chatgpt' || p.id === 'gemini')
+export const AI_CATEGORY_IDS: readonly CategoryId[] = ['over25', 'ht05', 'btts', 'over25btts']
+export const isAiCategory = (id: CategoryId): boolean => AI_CATEGORY_IDS.includes(id)
 
 /** approved: yapay zekâ maçı oynanabilir buldu (istatistikte "onay" sayılır) */
 export const AI_DECISIONS: { id: AiDecision; label: string; approved: boolean }[] = [
