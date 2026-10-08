@@ -4,15 +4,17 @@ import { describe, expect, it } from 'vitest'
 import type { AiVerdict, BackupFile, Match } from '../../types'
 import { toAppDateTime } from '../../utils/date'
 import { shiftDate } from '../../utils/format'
-import { highlightInputOf, PUBLISH_DAY_COUNT } from '../memberAdmin/publish'
+import { aiInputsOf, highlightInputOf, PUBLISH_DAY_COUNT } from '../memberAdmin/publish'
 import { analyzeDay } from '../analysis/engine'
 import { estimateSampleSize, levelForSample, RELIABILITY_LIMITS } from '../analysis/reliability'
 import { CATEGORIES } from '../../config/categories'
 import { TEXT_FIELDS } from '../../config/columnAliases'
 import { isBackupFile } from '../data/backupFormat'
-import { DAY, dayHighlights, dayMatches, HIGHLIGHT_PERCENT, HIGHLIGHTS, MATCHES, memberInput, PICKS, PREVIOUS_DAY, RAW_CANARIES, RAW_HEADERS, RAW_STAT_KEYS, RESULTS, URL_CANARY } from './__fixtures__/rawData'
-import { buildMemberPayload, type MemberPayload, type MemberPayloadInput } from './payload'
-import { assertMemberPayload, MEMBER_KEYS, MemberPayloadError, SAMPLE_LEVEL_LIMITS, SAMPLE_RANGE } from './schema'
+import { AI_REASON_CANARY, AI_RISK_CANARY, AI_SAVED_AT, AI_VERDICTS, dayVerdicts, DAY, dayHighlights, dayMatches, HIGHLIGHT_PERCENT, HIGHLIGHTS, MATCHES, memberInput, PICKS, PREVIOUS_DAY, RAW_CANARIES, RAW_HEADERS, RAW_STAT_KEYS, RESULTS, URL_CANARY } from './__fixtures__/rawData'
+import { AI_DECISIONS, AI_PROVIDERS, decisionLabel } from '../../config/ai'
+import { MEMBER_AI_LEVEL_LABELS, MEMBER_AI_PROVIDER_LABELS, memberAiSummary } from './labels'
+import { buildMemberPayload, buildMemberPublication, type MemberPayload, type MemberPayloadInput } from './payload'
+import { MEMBER_AI_MAJORITY_LEVELS, MEMBER_AI_PROVIDERS, MEMBER_AI_VOTE_LEVELS, assertMemberPayload, MEMBER_KEYS, MemberPayloadError, SAMPLE_LEVEL_LIMITS, SAMPLE_RANGE } from './schema'
 
 // SIZINTI TESTLERİ: yayın paketinin düz hâlinde ham veriden hiçbir iz bulunmamalı.
 // Veri (bkz. __fixtures__/rawData.ts) gerçek dışa aktarımın 107 kolonunu taşır ve ham
@@ -151,6 +153,9 @@ describe('yayın paketi: ham veri sızıntısı', () => {
       dayV3: ['date', 'matches', 'lists'],
       highlight: ['home', 'away', 'league', 'time', 'categoryId', 'status', 'score', 'outcome'],
       match: ['home', 'away', 'league', 'time', 'status', 'score', 'homeStanding', 'awayStanding'],
+      matchOptional: ['ai'],
+      ai: ['votes', 'count', 'level'],
+      aiVote: ['who', 'level'],
       standing: ['rank', 'played', 'stale'],
       list: ['categoryId', 'items'],
       item: ['match', 'percent', 'model', 'conflict', 'stars', 'reliability', 'outcome', 'detail', 'others'],
@@ -173,7 +178,7 @@ describe('yayın paketi: ham veri sızıntısı', () => {
 describe('yayın paketi: şema denetimi fazladan ya da eksik alanı reddeder', () => {
   // Her nesneyi tek tek değiştiren bu testler küçük bir paketle çalışır (iki maç); paket yine
   // her tür nesneyi içerir: maç, lig sırası, liste, öneri, diğer öneriler, istatistik dökümleri.
-  const small = buildMemberPayload(memberInput({ days: [{ date: DAY, matches: dayMatches(DAY).filter((m) => ['Kuzey Yıldızı', 'Doğu Gençlik'].includes(m.home)), results: RESULTS }] }))
+  const small = buildMemberPayload(memberInput({ days: [{ date: DAY, matches: dayMatches(DAY).filter((m) => ['Kuzey Yıldızı', 'Doğu Gençlik'].includes(m.home)), results: RESULTS, ai: aiInputsOf(dayMatches(DAY), dayVerdicts(DAY)).inputs }] }))
   const smallText = JSON.stringify(small)
 
   /** Paketteki her nesne için: o nesneye uygulanacak değişikliği yapıp kopyayı döner */
@@ -239,7 +244,7 @@ describe('yayın paketi: şema denetimi fazladan ya da eksik alanı reddeder', (
     expect(broken((p) => void ((firstItem(p) as { conflict: unknown }).conflict = 'piyasa'))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days[0].lists[0].items[0].conflict = 'hesap'))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days[0].lists.find((l) => l.categoryId === 'homeWin15')!.items[0].conflict = 'model'))).toThrow(MemberPayloadError)
-    expect(broken((p) => void ((p as { v: number }).v = 6))).toThrow(MemberPayloadError)
+    expect(broken((p) => void ((p as { v: number }).v = 7))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days = []))).toThrow(MemberPayloadError)
     expect(broken((p) => void p.days[0].lists.reverse())).toThrow(MemberPayloadError)
   })
@@ -271,7 +276,7 @@ describe('yayın paketi: "aynı maçın diğer önerileri" yalnızca paketteki �
           entries += item.others!.length
         }
     expect(entries).toBeGreaterThan(100)
-    expect(payload.v).toBe(5)
+    expect(payload.v).toBe(6)
   })
 
   it('pakete girmeyen (ilk 15 dışında kalan) öneri bu satıra da girmez', () => {
@@ -308,6 +313,7 @@ describe('yayın paketi: "aynı maçın diğer önerileri" yalnızca paketteki �
     for (const day of v1.days) for (const list of day.lists) for (const item of list.items) delete item.others
     for (const day of v1.days) for (const list of day.lists) for (const item of list.items) delete item.sample
     for (const day of v1.days) delete day.highlights
+    for (const day of v1.days) for (const match of day.matches) delete match.ai
     expect(() => assertMemberPayload(v1)).not.toThrow()
     // Sürüm 1 pakette bu alan bulunamaz; sürüm 2 pakette bulunmak zorundadır.
     expect(rejects((p) => void ((p as { v: number }).v = 1))).toThrow(MemberPayloadError)
@@ -348,6 +354,7 @@ describe('yayın paketi: ana kategorilerin toplu başarısı (sürüm 3)', () =>
     for (const scope of ['all', 'shared'] as const) delete v2.statistics[scope].main
     for (const day of v2.days) delete day.highlights
     for (const day of v2.days) for (const list of day.lists) for (const item of list.items) delete item.sample
+    for (const day of v2.days) for (const match of day.matches) delete match.ai
     expect(() => assertMemberPayload(v2)).not.toThrow()
     // Sürüm 2 pakette bu alan bulunamaz; sürüm 3 pakette bulunmak zorundadır.
     expect(rejects((p) => void ((p as { v: number }).v = 2))).toThrow(MemberPayloadError)
@@ -441,6 +448,7 @@ describe('yayın paketi: günün öne çıkanları (sürüm 4)', () => {
     ;(v3 as { v: number }).v = 3
     for (const day of v3.days) delete day.highlights
     for (const day of v3.days) for (const list of day.lists) for (const item of list.items) delete item.sample
+    for (const day of v3.days) for (const match of day.matches) delete match.ai
     expect(() => assertMemberPayload(v3)).not.toThrow()
     // Sürüm 3 pakette bu alan bulunamaz; sürüm 4 pakette bulunmak zorundadır.
     expect(rejects((p) => void ((p as { v: number }).v = 3))).toThrow(MemberPayloadError)
@@ -533,8 +541,14 @@ describe('yayın paketi: tahmini maç sayısı (sürüm 5)', () => {
     const v4 = copy()
     ;(v4 as { v: number }).v = 4
     for (const day of v4.days) for (const list of day.lists) for (const item of list.items) delete item.sample
+    for (const day of v4.days) for (const match of day.matches) delete match.ai
     expect(() => assertMemberPayload(v4)).not.toThrow()
-    expect(rejects((p) => void ((p as { v: number }).v = 4))).toThrow('izinli olmayan alan: sample')
+    expect(
+      rejects((p) => {
+        ;(p as { v: number }).v = 4
+        for (const day of p.days) for (const match of day.matches) delete match.ai
+      }),
+    ).toThrow('izinli olmayan alan: sample')
     // Sürüm 5 pakette alan zorunlu değildir (sayı çıkarılamayan öneriler).
     const v5 = JSON.parse(JSON.stringify(v4)) as MemberPayload
     ;(v5 as { v: number }).v = 5
@@ -692,3 +706,94 @@ describe.runIf(process.env.UYE_BACKUP)('yayın paketi: gerçek yedekle', () => {
 
 // PREVIOUS_DAY yalnızca girdide ikinci günün bulunduğunu belgelemek için kullanılır.
 it('veride iki gün vardır', () => expect(payload.days.map((d) => d.date)).toEqual([DAY, PREVIOUS_DAY]))
+
+describe('yayın paketi: "AI öneri güveni" satırı', () => {
+  const copy = (): MemberPayload => JSON.parse(text) as MemberPayload
+  const rejects = (change: (p: MemberPayload) => void) => {
+    const p = copy()
+    change(p)
+    expect(() => assertMemberPayload(p)).toThrow(MemberPayloadError)
+  }
+  const matchOf = (p: MemberPayload, home: string) => p.days[0].matches.find((m) => m.home === home)!
+  const withAi = (p: MemberPayload) => matchOf(p, 'Kuzey Yıldızı').ai!
+
+  it('dört örnek: 3/3 Orta ve 2/3 Güçlü + 1 Zayıf gider; 2/3 Zayıf ve 2 Orta + 1 Eleme gitmez', () => {
+    // Dört maç da pakette (listelerde) duruyor: değişen yalnızca satırın varlığı.
+    for (const home of ['Kuzey Yıldızı', 'Doğu Gençlik', 'İç Anadolu FK', 'Ova Belediyespor']) expect(matchOf(payload, home), home).toBeDefined()
+    expect(matchOf(payload, 'Kuzey Yıldızı').ai).toEqual({ votes: [{ who: 'chatgpt', level: 'medium' }, { who: 'gemini', level: 'medium' }, { who: 'claude', level: 'medium' }], count: 3, level: 'medium' })
+    expect(matchOf(payload, 'Doğu Gençlik').ai).toEqual({ votes: [{ who: 'chatgpt', level: 'strong' }, { who: 'gemini', level: 'weak' }, { who: 'claude', level: 'strong' }], count: 2, level: 'strong' })
+    expect('ai' in matchOf(payload, 'İç Anadolu FK')).toBe(false)
+    expect('ai' in matchOf(payload, 'Ova Belediyespor')).toBe(false)
+    expect(payload.days.flatMap((d) => d.matches).filter((m) => m.ai).length).toBe(2)
+  })
+
+  it('gerekçe, risk, skor tahmini ve kayıt zamanı pakette yok', () => {
+    expect(AI_VERDICTS.every((v) => v.reason.includes(AI_REASON_CANARY) && v.risk.includes(AI_RISK_CANARY) && v.score?.home === 7)).toBe(true)
+    for (const canary of [AI_REASON_CANARY, AI_RISK_CANARY, AI_SAVED_AT, '7-6', '"score":{']) expect(text).not.toContain(canary)
+    // Satırdaki tek veriler: kim, hangi seviye, kaç oy.
+    const { strings, numbers } = collect(payload.days.flatMap((d) => d.matches.flatMap((m) => (m.ai ? [m.ai] : []))))
+    expect([...new Set(strings)].sort()).toEqual(['chatgpt', 'claude', 'gemini', 'medium', 'strong', 'weak'])
+    expect([...new Set(numbers)].sort()).toEqual([2, 3])
+  })
+
+  it('satır olmayan maçın kaydı, satır olan maçınkiyle aynı anahtarları taşır (yalnızca ai eksik)', () => {
+    expect(Object.keys(matchOf(payload, 'İç Anadolu FK'))).toEqual([...MEMBER_KEYS.match])
+    expect(Object.keys(matchOf(payload, 'Kuzey Yıldızı'))).toEqual([...MEMBER_KEYS.match, 'ai'])
+  })
+
+  it('kararlar verilmezse paket satırsız kurulur; diğer her şey aynıdır', () => {
+    const without = buildMemberPayload(memberInput({ days: memberInput().days.map((d) => ({ date: d.date, matches: d.matches, results: d.results, highlights: d.highlights })) }))
+    expect(without.days.flatMap((d) => d.matches).some((m) => 'ai' in m)).toBe(false)
+    const stripped = copy()
+    for (const d of stripped.days) for (const m of d.matches) delete m.ai
+    expect(without).toEqual(stripped)
+  })
+
+  it('listelerde geçmeyen maçın satırı pakete girmez ve gönderildi sayılmaz', () => {
+    const ghost = { matchId: 'listede-olmayan-mac', ai: withAi(payload) }
+    const built = buildMemberPublication(memberInput({ days: memberInput().days.map((d, i) => (i === 0 ? { ...d, ai: [...(d.ai ?? []), ghost] } : d)) }))
+    expect(JSON.stringify(built.payload)).toBe(text)
+    expect(built.aiMatchIds).toHaveLength(2)
+    expect(built.aiMatchIds).not.toContain('listede-olmayan-mac')
+  })
+
+  it('şema: tutarsız ya da kural dışı satır reddedilir', () => {
+    rejects((p) => void (withAi(p).count = 2)) // oylarla tutmuyor
+    rejects((p) => void ((withAi(p) as { level: string }).level = 'weak')) // çoğunluk Zayıf olamaz
+    rejects((p) => void ((withAi(p).votes[1] as { level: string }).level = 'reject')) // Eleme oyu olamaz
+    rejects((p) => void withAi(p).votes.pop()) // üç karar şart
+    rejects((p) => void withAi(p).votes.reverse()) // sabit sıra
+    rejects((p) => void ((withAi(p).votes[0] as { who: string }).who = 'baska'))
+    rejects((p) => void ((withAi(p) as unknown as Record<string, unknown>).reason = 'gerekçe'))
+    rejects((p) => void ((withAi(p).votes[0] as unknown as Record<string, unknown>).score = '2-1'))
+    rejects((p) => void (matchOf(p, 'Kuzey Yıldızı').time = null)) // saati bilinmeyen maçta satır olamaz
+    // 2 Orta + 1 Zayıf geçerlidir; 1 Orta + 2 Zayıf (çoğunluk Zayıf) geçersizdir.
+    const ok = copy()
+    withAi(ok).votes[2].level = 'weak'
+    withAi(ok).count = 2
+    expect(() => assertMemberPayload(ok)).not.toThrow()
+    rejects((p) => {
+      withAi(p).votes[1].level = 'weak'
+      withAi(p).votes[2].level = 'weak'
+      withAi(p).count = 1
+    })
+  })
+
+  it('sürüm 5 pakette satır bulunamaz; satırsız sürüm 5 paket hâlâ açılır', () => {
+    rejects((p) => void ((p as { v: number }).v = 5))
+    const v5 = copy()
+    ;(v5 as { v: number }).v = 5
+    for (const d of v5.days) for (const m of d.matches) delete m.ai
+    expect(() => assertMemberPayload(v5)).not.toThrow()
+  })
+
+  it('üye sitesindeki sabitler admin tarafındaki yapay zekâ ayarlarıyla aynıdır', () => {
+    expect([...MEMBER_AI_PROVIDERS]).toEqual(AI_PROVIDERS.map((p) => p.id))
+    expect([...MEMBER_AI_VOTE_LEVELS]).toEqual(AI_DECISIONS.filter((d) => d.id !== 'reject').map((d) => d.id))
+    expect([...MEMBER_AI_MAJORITY_LEVELS]).toEqual(AI_DECISIONS.filter((d) => d.approved).map((d) => d.id))
+    for (const p of AI_PROVIDERS) expect(MEMBER_AI_PROVIDER_LABELS[p.id]).toBe(p.label)
+    for (const level of MEMBER_AI_VOTE_LEVELS) expect(MEMBER_AI_LEVEL_LABELS[level]).toBe(decisionLabel(level))
+    expect(memberAiSummary(withAi(payload))).toBe('3/3 · Orta')
+    expect(memberAiSummary(matchOf(payload, 'Doğu Gençlik').ai!)).toBe('2/3 · Güçlü')
+  })
+})

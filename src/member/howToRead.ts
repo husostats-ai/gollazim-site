@@ -37,6 +37,14 @@ export const HOW_TO_READ: HowToReadItem[] = [
     ],
   },
   {
+    title: 'AI öneri güveni',
+    paragraphs: [
+      'Bazı kartlarda “AI öneri güveni” satırı görünür: üç yapay zekânın (ChatGPT, Gemini, Claude) o maçtaki önerileri ne kadar güvenilir bulduğudur: Güçlü, Orta ya da Zayıf. Sonundaki “3/3 · Orta” ya da “2/3 · Güçlü”, üçünden kaçının aynı seviyeyi verdiğini gösterir; seviyeler birbirine karıştırılmaz.',
+      'Satır her maçta çıkmaz: yalnızca üçü de maç başlamadan değerlendirme yaptıysa ve çoğunluk Orta ya da Güçlü dediyse görünür. Satırın olmaması tek başına olumsuz bir işaret değildir; değerlendirme yapılmamış da olabilir.',
+      'Bu da bir görüş özetidir, sonucun garantisi değildir.',
+    ],
+  },
+  {
     title: 'Çelişki rozetleri',
     paragraphs: [
       '“Model çelişkisi”: geçmişteki sıklık ile modelin hesabı arasında büyük fark var.',

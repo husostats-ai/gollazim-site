@@ -133,6 +133,28 @@ export interface AiVerdict {
 }
 
 /**
+ * "AI öneri güveni" satırı üye paketiyle gönderilen maçın kaydı (maç başına bir tane). Yalnızca
+ * kayıttır: ileride "üyeye giden AI onaylı maçlar" ile diğerlerinin isabetini karşılaştırmak için
+ * tutulur; hiçbir hesabı ve gösterimi değiştirmez.
+ */
+export interface AiShare {
+  /** matchId */
+  id: string
+  matchId: string
+  date: string
+  /** Satırın ilk gittiği yayın (numara ve an) */
+  firstN: number
+  firstAt: string
+  /** Satırın en son gittiği yayın; sonraki yayınlarda yoksa bu değer eski kalır */
+  lastN: number
+  lastAt: string
+  /** Son gönderimdeki kararların kopyası (yalnızca seviye) */
+  votes: { provider: AiProvider; decision: Exclude<AiDecision, 'reject'> }[]
+  count: number
+  decision: 'strong' | 'medium'
+}
+
+/**
  * Kopyalanan son prompt'taki numaralandırma. Cevap, kopyalama anındaki
  * numaralara göre eşleştirilir; sonradan eşik değişse de karışmaz.
  */
@@ -260,4 +282,6 @@ export interface BackupFile {
   teamAliases?: TeamAlias[]
   /** "Günün öne çıkanları" seçimleri; eski yedeklerde ve hiç seçim yokken bulunmaz */
   highlights?: Highlight[]
+  /** "AI öneri güveni" satırı üyeye giden maçların kaydı; eski yedeklerde ve hiç kayıt yokken bulunmaz */
+  aiShares?: AiShare[]
 }

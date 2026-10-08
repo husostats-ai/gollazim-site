@@ -1,9 +1,9 @@
 import { COLUMN_ALIASES, TEXT_FIELDS, type FieldKey } from '../../../config/columnAliases'
 import { defaultThresholds } from '../../../config/categories'
-import type { Highlight, LeagueTable, Match, MatchResult, Pick, SharedPick, TeamAlias } from '../../../types'
+import type { AiVerdict, Highlight, LeagueTable, Match, MatchResult, Pick, SharedPick, TeamAlias } from '../../../types'
 import { importCsv } from '../../csv/importer'
 import { addHighlight } from '../../highlights/highlights'
-import { highlightInputOf } from '../../memberAdmin/publish'
+import { aiInputsOf, highlightInputOf } from '../../memberAdmin/publish'
 import { buildPicksForResult } from '../../results/freeze'
 import { recordShare } from '../../story/shared'
 import type { MemberPayloadInput } from '../payload'
@@ -313,6 +313,26 @@ export const HIGHLIGHTS: Highlight[] = [
 ]
 export const dayHighlights = (date: string): Highlight[] => HIGHLIGHTS.filter((h) => h.date === date)
 
+/**
+ * Yapay zekâ kararları (maçlar başlamadan önce kaydedilmiş). Gerekçe, risk ve skor tahmini
+ * ayırt edici değerler taşır: biri pakette görünürse karar kaydı sızmış demektir.
+ */
+export const AI_REASON_CANARY = 'kanarya-gerekce'
+export const AI_RISK_CANARY = 'kanarya-risk'
+export const AI_SAVED_AT = '2026-10-04T18:00:00.000Z'
+const verdictsOf = (home: string, decisions: [AiVerdict['decision'], AiVerdict['decision'], AiVerdict['decision']]): AiVerdict[] =>
+  (['chatgpt', 'gemini', 'claude'] as const).map((provider, i) => {
+    const match = byHome(home)
+    return { id: `${match.id}|${provider}`, matchId: match.id, date: match.date, provider, decision: decisions[i], reason: `${AI_REASON_CANARY} ${home}`, risk: `${AI_RISK_CANARY} ${home}`, savedAt: AI_SAVED_AT, score: { home: 7, away: 6 } }
+  })
+export const AI_VERDICTS: AiVerdict[] = [
+  ...verdictsOf('Kuzey Yıldızı', ['medium', 'medium', 'medium']), // 3/3 Orta: üyeye gider
+  ...verdictsOf('Doğu Gençlik', ['strong', 'weak', 'strong']), // 2/3 Güçlü + 1 Zayıf: üyeye gider
+  ...verdictsOf('İç Anadolu FK', ['weak', 'weak', 'medium']), // 2/3 Zayıf: gitmez
+  ...verdictsOf('Ova Belediyespor', ['medium', 'reject', 'medium']), // 2 Orta + 1 Eleme: gitmez
+]
+export const dayVerdicts = (date: string): AiVerdict[] => AI_VERDICTS.filter((v) => v.date === date)
+
 export const LEAGUE_TABLES: LeagueTable[] = [
   {
     id: LEAGUE,
@@ -333,7 +353,7 @@ export const memberInput = (overrides: Partial<MemberPayloadInput> = {}): Member
   texts: { disclaimer: 'Bu bir istatistik taramasıdır; bahis tavsiyesi değildir ve sonuç garantisi vermez. 18+', account: 'Hesap kişiye özeldir, paylaşılamaz.' },
   thresholds: THRESHOLDS,
   marketConflictLimit: MARKET_LIMIT,
-  days: [DAY, PREVIOUS_DAY].map((date) => ({ date, matches: dayMatches(date), results: RESULTS.filter((r) => dayMatches(date).some((m) => m.id === r.matchId)), highlights: dayHighlights(date).map(highlightInputOf) })),
+  days: [DAY, PREVIOUS_DAY].map((date) => ({ date, matches: dayMatches(date), results: RESULTS.filter((r) => dayMatches(date).some((m) => m.id === r.matchId)), highlights: dayHighlights(date).map(highlightInputOf), ai: aiInputsOf(dayMatches(date), dayVerdicts(date)).inputs })),
   leagueTables: LEAGUE_TABLES,
   teamAliases: TEAM_ALIASES,
   picks: PICKS,

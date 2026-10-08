@@ -5,7 +5,7 @@ import NoData from '../components/NoData'
 import NoteBadges from '../components/NoteBadges'
 import PageTitle from '../components/PageTitle'
 import ReliabilityBadge from '../components/ReliabilityBadge'
-import { AgreementBadge } from '../components/ai/AiVerdictBadges'
+import { AgreementBadge, MemberShareBadge } from '../components/ai/AiVerdictBadges'
 import PromptPanel from '../components/ai/PromptPanel'
 import ResponsePanel from '../components/ai/ResponsePanel'
 import { AI_PROVIDERS, decisionLabel, providerLabel, type AiProvider } from '../config/ai'
@@ -24,7 +24,7 @@ const sameIds = (a: string[], b: string[]) => a.length === b.length && a.every((
 const copiedAtFmt = new Intl.DateTimeFormat('tr-TR', { dateStyle: 'medium', timeStyle: 'short' })
 
 export default function AiPage() {
-  const { matches, thresholds, selectedDate, dates, loading, aiVerdicts, refresh, dataVersion } = useApp()
+  const { matches, thresholds, selectedDate, dates, loading, aiVerdicts, aiShares, refresh, dataVersion } = useApp()
   const [provider, setProvider] = useState<AiProvider>('chatgpt')
   const [batch, setBatch] = useState<AiPromptBatch | null>(null)
 
@@ -220,8 +220,9 @@ export default function AiPage() {
                               </li>
                             ))}
                             {agreement && (
-                              <li>
+                              <li className="flex flex-wrap gap-1.5">
                                 <AgreementBadge agreement={agreement} />
+                                <MemberShareBadge match={item.match} verdicts={verdicts} share={aiShares.find((s) => s.matchId === item.match.id)} />
                               </li>
                             )}
                           </ul>

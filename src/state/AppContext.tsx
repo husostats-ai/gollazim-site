@@ -3,11 +3,11 @@ import { defaultThresholds, type CategoryId } from '../config/categories'
 import { analyzeDay, type DayAnalysis } from '../services/analysis/engine'
 import { DEFAULT_MARKET_CONFLICT_LIMIT } from '../services/analysis/market'
 import type { SortMode } from '../services/analysis/types'
-import { leagueRepo, aiRepo, highlightsRepo, matchesRepo, picksRepo, resultsRepo, settingsRepo, sharedRepo, storySelectionsRepo } from '../services/data'
+import { leagueRepo, aiRepo, aiSharesRepo, highlightsRepo, matchesRepo, picksRepo, resultsRepo, settingsRepo, sharedRepo, storySelectionsRepo } from '../services/data'
 import { addHighlight, removeHighlight, type HighlightCandidate, type HighlightRefusal } from '../services/highlights/highlights'
 import { findActiveShared, recordShare } from '../services/story/shared'
 import { selectionsForDate, type DaySelections } from '../services/story/selection'
-import type { AiVerdict, Highlight, LeagueTable, Match, MatchResult, Pick, SharedPick, TeamAlias, Thresholds } from '../types'
+import type { AiShare, AiVerdict, Highlight, LeagueTable, Match, MatchResult, Pick, SharedPick, TeamAlias, Thresholds } from '../types'
 import { todayInAppZone } from '../utils/date'
 
 interface AppState {
@@ -41,6 +41,8 @@ interface AppState {
   recordShared: (categoryId: CategoryId, shared: Match[]) => Promise<SharedPick[]>
   /** Geçerli kaydı "çıkarıldı" olarak işaretler */
   removeShared: (categoryId: CategoryId, matchId: string) => Promise<void>
+  /** Seçili günde "AI öneri güveni" satırı üye paketiyle gönderilmiş maçların kaydı */
+  aiShares: AiShare[]
   /** Seçili günün "öne çıkan" seçimleri; yalnızca admin sitesindedir */
   highlights: Highlight[]
   /** Öneriyi öne çıkanlara ekler; maç başladıysa ya da saati yoksa reddeder (neden döner) */
@@ -88,6 +90,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [storySelections, setStorySelections] = useState<DaySelections>({})
   const [sharedPicks, setSharedPicks] = useState<SharedPick[]>([])
   const [highlights, setHighlights] = useState<Highlight[]>([])
+  const [aiShares, setAiShares] = useState<AiShare[]>([])
   const [leagueTables, setLeagueTables] = useState<LeagueTable[]>([])
   const [teamAliases, setTeamAliases] = useState<TeamAlias[]>([])
   // Seçim yazmaları sırayla yapılır ki art arda işaretlemelerde son durum kalsın.
@@ -111,13 +114,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (cancelled) return
       const date = selectedDate && nextDates.includes(selectedDate) ? selectedDate : pickDefaultDate(nextDates, today)
       const nextMatches = date ? await matchesRepo.listByDate(date) : []
-      const [nextResults, nextPicks, nextVerdicts, nextSelections, nextShared, nextHighlights] = await Promise.all([
+      const [nextResults, nextPicks, nextVerdicts, nextSelections, nextShared, nextHighlights, nextAiShares] = await Promise.all([
         resultsRepo.listByMatchIds(nextMatches.map((m) => m.id)),
         date ? picksRepo.listByDate(date) : [],
         date ? aiRepo.listVerdictsByDate(date) : [],
         date ? selectionWrites.current.then(() => storySelectionsRepo.listByDate(date)) : [],
         date ? sharedRepo.listByDate(date) : [],
         date ? highlightsRepo.listByDate(date) : [],
+        date ? aiSharesRepo.listByDate(date) : [],
       ])
       if (cancelled) return
       setDates(nextDates)
@@ -133,6 +137,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setStorySelections(date ? selectionsForDate(nextSelections, date) : {})
       setSharedPicks(nextShared)
       setHighlights(nextHighlights)
+      setAiShares(nextAiShares)
       setLoading(false)
     })()
     return () => {
@@ -249,6 +254,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveMarketConflictLimit,
     storySelections,
     setStorySelection,
+    aiShares,
     highlights,
     addHighlight: addHighlightAction,
     removeHighlight: removeHighlightAction,

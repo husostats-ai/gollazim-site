@@ -1,7 +1,8 @@
 import { AI_PROVIDERS, decisionLabel } from '../../config/ai'
+import { memberShareRow } from '../../services/ai/memberShare'
 import { agreementText, MAJORITY_NOTE, summarizeVerdicts, type Agreement } from '../../services/ai/consensus'
 import { useApp } from '../../state/AppContext'
-import type { AiVerdict } from '../../types'
+import type { AiShare, AiVerdict, Match } from '../../types'
 
 const chip = 'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] whitespace-nowrap'
 
@@ -21,9 +22,26 @@ export function AgreementBadge({ agreement }: { agreement: Agreement | null }) {
   )
 }
 
+/**
+ * "AI öneri güveni" satırının üyeye gidip gitmediği. Gitti: satır bir yayınla üyelere gönderildi.
+ * Gider: şartlar şu an sağlanıyor, bir sonraki "Yayınla" ile gidecek (maç üye listelerindeyse).
+ */
+export function MemberShareBadge({ match, verdicts, share }: { match: Pick<Match, 'date' | 'time'> | undefined; verdicts: AiVerdict[]; share: AiShare | undefined }) {
+  const eligible = match !== undefined && memberShareRow(match, verdicts) !== null
+  if (!share && !eligible) return null
+  const title = share
+    ? `“AI öneri güveni” satırı üyelere gönderildi (ilk yayın no ${share.firstN}, son yayın no ${share.lastN}).${eligible ? '' : ' Şartlar artık sağlanmıyor: bir sonraki yayında satır üyeden kalkar.'}`
+    : 'Şartlar sağlanıyor: bir sonraki “Yayınla” ile “AI öneri güveni” satırı üyelere gider (yalnızca karar seviyeleri).'
+  return (
+    <span className={`${chip} border-win-line bg-win-soft font-bold text-win`} data-testid="ai-member-share" data-share={share ? 'sent' : 'pending'} title={title}>
+      {share ? 'Üyeye gitti' : 'Üyeye gider'}
+    </span>
+  )
+}
+
 /** Maçın kayıtlı yapay zekâ kararları; her karar hangi yapay zekâdan geldiğiyle etiketlidir. */
 export default function AiVerdictBadges({ matchId }: { matchId: string }) {
-  const { aiVerdicts } = useApp()
+  const { aiVerdicts, aiShares, matches } = useApp()
   const verdicts = AI_PROVIDERS.map((p) => aiVerdicts.find((v) => v.matchId === matchId && v.provider === p.id)).filter(
     (v): v is AiVerdict => v !== undefined,
   )
@@ -49,6 +67,7 @@ export default function AiVerdictBadges({ matchId }: { matchId: string }) {
         </span>
       ))}
       <AgreementBadge agreement={summarizeVerdicts(verdicts)} />
+      <MemberShareBadge match={matches.find((m) => m.id === matchId)} verdicts={verdicts} share={aiShares.find((s) => s.matchId === matchId)} />
     </div>
   )
 }
