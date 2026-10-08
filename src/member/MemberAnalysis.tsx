@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import EmptyState from '../components/EmptyState'
 import type { CategoryId } from '../config/categories'
 import type { MemberPayload } from '../services/member/payload'
@@ -25,12 +25,17 @@ export default function MemberAnalysis({ payload, today, initialDay = 0, initial
   const day = payload.days[Math.min(dayIndex, payload.days.length - 1)]
   const choices = categoryChoices(day)
   const list = listFor(day, categoryId)
+  // Günler dar ekrana sığmayınca şerit yatay kayar; seçili gün görünür kalır.
+  const selectedDay = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    selectedDay.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [day.date])
 
   return (
     <>
       <div className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4" role="tablist" aria-label="Gün">
         {payload.days.map((d, i) => (
-          <button key={d.date} type="button" role="tab" aria-selected={d === day} onClick={() => setDayIndex(i)} data-testid={`member-day-${i}`} className={`${CHIP} ${chipTone(d === day)}`}>
+          <button key={d.date} ref={d === day ? selectedDay : undefined} type="button" role="tab" aria-selected={d === day} onClick={() => setDayIndex(i)} data-testid={`member-day-${i}`} className={`${CHIP} ${chipTone(d === day)}`}>
             {dayChip(d.date, today)}
           </button>
         ))}

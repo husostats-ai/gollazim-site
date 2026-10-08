@@ -7,7 +7,7 @@ import { scanForLeaks } from './leakScan'
 import { activeKeys } from './registry'
 import type { MemberMeta, MemberRecord, PublicationRecord } from './types'
 
-// "Yayınla": seçilen gün ve önceki gün için paketi SIFIRDAN kurar (payload.ts), ham veriye
+// "Yayınla": seçilen gün ve önceki 6 gün (son 7 gün) için paketi SIFIRDAN kurar (payload.ts), ham veriye
 // karşı sızıntı denetiminden geçirir ve aktif üyeler için şifreler (crypto.ts).
 
 /** Paketin kurulması için okunan veriler (veri deposunun gereken kısmı) */
@@ -38,9 +38,15 @@ export interface PublishDraft {
   rawMatches: Match[]
 }
 
-/** Seçilen gün + önceki günün verisini okuyup paketi kurar. */
+/** Pakete giren en fazla gün sayısı: seçilen gün ve ondan önceki günler (şemadaki sınırı aşmaz) */
+export const PUBLISH_DAY_COUNT = 7
+
+/**
+ * Seçilen gün + önceki 6 günün verisini okuyup paketi kurar. Önceki günlerden hiç önerisi
+ * olmayanlar pakete girmez (üye sayfasında boş gün düğmesi çıkmasın); seçilen gün boş olsa da girer.
+ */
 export async function draftPublication(sources: PublishSources, options: { day: string; n: number; publishedAt: string; texts: MemberTexts }): Promise<PublishDraft> {
-  const dates = [options.day, shiftDate(options.day, -1)]
+  const dates = Array.from({ length: PUBLISH_DAY_COUNT }, (_, back) => shiftDate(options.day, -back))
   const [dayData, picks, shared, leagueTables, teamAliases, thresholds, marketConflictLimit] = await Promise.all([
     Promise.all(
       dates.map(async (date) => {
@@ -56,7 +62,11 @@ export async function draftPublication(sources: PublishSources, options: { day: 
     sources.getMarketConflictLimit(),
   ])
   const input: MemberPayloadInput = { n: options.n, publishedAt: options.publishedAt, texts: options.texts, thresholds, marketConflictLimit, days: dayData, leagueTables, teamAliases, picks, shared }
-  return { payload: buildMemberPayload(input), rawMatches: dayData.flatMap((d) => d.matches) }
+  const full = buildMemberPayload(input)
+  // Listeler paket kurulurken hesaplandığı için boş günler ancak şimdi bilinir.
+  const kept = dayData.filter((_, i) => i === 0 || full.days[i].lists.some((list) => list.items.length > 0))
+  const payload = kept.length === dayData.length ? full : buildMemberPayload({ ...input, days: kept })
+  return { payload, rawMatches: kept.flatMap((d) => d.matches) }
 }
 
 export interface PublishSummary {
