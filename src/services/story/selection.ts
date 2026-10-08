@@ -1,7 +1,7 @@
 import { isApproved } from '../../config/ai'
 import type { CategoryId } from '../../config/categories'
 import type { AiVerdict, StorySelection } from '../../types'
-import { isConsensus } from '../ai/consensus'
+import { majorityDecision } from '../ai/consensus'
 import { comparePredictions } from '../analysis/engine'
 import type { Prediction } from '../analysis/types'
 
@@ -42,13 +42,13 @@ export const toggleSelection = (selectedIds: readonly string[] = [], matchId: st
 
 export const selectAll = (predictions: Prediction[]): string[] => predictions.map((p) => p.match.id)
 
-/** Listede, iki yapay zekânın da aynı ve "onay" (Güçlü / Orta) kararı verdiği maçlar */
-export function consensusApprovedIds(predictions: Prediction[], verdicts: AiVerdict[]): string[] {
+/** Listede, yapay zekâların çoğunluk kararı "onay" (Güçlü / Orta) olan maçlar */
+export function majorityApprovedIds(predictions: Prediction[], verdicts: AiVerdict[]): string[] {
   return predictions
     .map((p) => p.match.id)
     .filter((matchId) => {
-      const own = verdicts.filter((v) => v.matchId === matchId)
-      return isConsensus(own) && isApproved(own[0].decision)
+      const decision = majorityDecision(verdicts.filter((v) => v.matchId === matchId))
+      return decision !== null && isApproved(decision)
     })
 }
 

@@ -1,16 +1,16 @@
 import Papa from 'papaparse'
-import { AI_DECISIONS, AI_PROVIDERS, decisionLabel } from '../../config/ai'
+import { AI_DECISIONS, AI_PROVIDERS, SUMMARY_AI_PROVIDERS, decisionLabel } from '../../config/ai'
 import { CATEGORIES, categoriesInGroup, getCategory, type CategoryId } from '../../config/categories'
 import type { AiVerdict, Match, MatchResult, Pick, ScoreLine, SharedPick, Thresholds } from '../../types'
 import { toAppDateTime } from '../../utils/date'
 import { formatDay, formatNumber, formatRate, shiftDate } from '../../utils/format'
-import { AI_SOURCES, buildAiStats, type AiSource } from '../ai/aiStats'
+import { SUMMARY_AI_SOURCES as AI_SOURCES, buildSummaryAiStats, type SummaryAiSource as AiSource } from '../ai/aiStats'
 import { MODEL_CONFLICT_LIMIT } from '../analysis/goalModel'
 import { RELIABILITY_LABELS, SAMPLE_HINT } from '../analysis/reliability'
 import { stat } from '../analysis/stat'
 import { findActiveShared, sharedPicksOnly } from '../story/shared'
 import { backfillMarket, buildMarketStats } from './marketStats'
-import { actualScore, buildScoreStats } from './scoreStats'
+import { actualScore, buildScoreStats, SCORE_SOURCES } from './scoreStats'
 import { buildStarStats, frozenStars, recomputedNote, STAR_LEVELS } from './starStats'
 import { buildStats, LOW_SAMPLE_LIMIT, tally, type Tally } from './statsEngine'
 
@@ -65,6 +65,9 @@ export interface SummaryInput {
   marketConflictLimit: number
 }
 
+/** Skor tahmini tablosunun sabit kaynakları: model, özetin iki yapay zekâsı ve referanslar */
+const SUMMARY_SCORE_SOURCES = SCORE_SOURCES.filter((s) => !AI_PROVIDERS.some((p) => p.id === s.id) || SUMMARY_AI_PROVIDERS.some((p) => p.id === s.id))
+
 const SOURCE_LABELS: Record<AiSource, string> = { chatgpt: 'ChatGPT', gemini: 'Gemini', consensus: 'Ortak karar' }
 
 const table = (header: string[], rows: (string | number)[][]): string =>
@@ -77,13 +80,16 @@ const signed = (value: number | null): string => (value === null ? '—' : `${va
 
 const unique = <T,>(values: T[]): T[] => [...new Set(values)]
 
-/** Kapsama giren öneriler, kararlar ve paylaşım kayıtları */
+/**
+ * Kapsama giren öneriler, kararlar ve paylaşım kayıtları. Özet ve ayrıntı CSV'si yalnızca
+ * SUMMARY_AI_PROVIDERS kararlarını görür (biçim sabit tutulur); Claude kararları burada elenir.
+ */
 export function scopeData(input: Pick_<SummaryInput, 'picks' | 'verdicts' | 'shared' | 'scope' | 'today'>) {
   const bounds = scopeBounds(input.scope, input.today)
   return {
     bounds,
     picks: input.picks.filter((p) => inScope(p.date, bounds)),
-    verdicts: input.verdicts.filter((v) => inScope(v.date, bounds)),
+    verdicts: input.verdicts.filter((v) => inScope(v.date, bounds) && SUMMARY_AI_PROVIDERS.some((p) => p.id === v.provider)),
     shared: input.shared.filter((r) => inScope(r.date, bounds)),
   }
 }
@@ -232,7 +238,7 @@ export function buildStatsSummary(input: SummaryInput): string {
     )
   }
 
-  const ai = buildAiStats(picks, verdicts)
+  const ai = buildSummaryAiStats(picks, verdicts)
   out.push('## Yapay zekâ kararlarının başarısı', '')
   if (!ai) out.push('Kayıtlı yapay zekâ kararı yok.', '')
   else {
@@ -262,7 +268,7 @@ export function buildStatsSummary(input: SummaryInput): string {
     '',
   )
 
-  const scores = buildScoreStats({ matches: input.matches.filter((m) => inScope(m.date, bounds)), results: input.results ?? [], verdicts })
+  const scores = buildScoreStats({ matches: input.matches.filter((m) => inScope(m.date, bounds)), results: input.results ?? [], verdicts }, SUMMARY_SCORE_SOURCES)
   out.push('## Skor tahminleri (deney)', '')
   out.push(
     table(
@@ -309,12 +315,12 @@ export const DETAIL_CSV_COLUMNS = [
   'piyasa_yuzde',
   'yildiz',
   'guvenilirlik',
-  ...AI_PROVIDERS.map((p) => `ai_${p.id}`),
+  ...SUMMARY_AI_PROVIDERS.map((p) => `ai_${p.id}`),
   'paylasildi',
   'sonuc',
   'mac_skoru',
   'model_skor',
-  ...AI_PROVIDERS.map((p) => `ai_${p.id}_skor`),
+  ...SUMMARY_AI_PROVIDERS.map((p) => `ai_${p.id}_skor`),
 ] as const
 
 const OUTCOME_TEXT = { won: 'tuttu', lost: 'tutmadı', void: 'değerlendirilemedi' } as const
@@ -361,12 +367,12 @@ export function buildDetailRows(
         typeof p.marketPercent === 'number' ? String(p.marketPercent) : '',
         stars === null ? '' : String(stars),
         p.reliability ? RELIABILITY_LABELS[p.reliability] : '',
-        ...AI_PROVIDERS.map((provider) => verdict(provider.id)),
+        ...SUMMARY_AI_PROVIDERS.map((provider) => verdict(provider.id)),
         findActiveShared(shared, p.date, p.categoryId, p.matchId) ? 'evet' : 'hayır',
         OUTCOME_TEXT[p.outcome],
         scoreText(actualScore(resultById.get(p.matchId))),
         scoreText(match?.scoreSnapshot?.best),
-        ...AI_PROVIDERS.map((provider) => aiScore(provider.id)),
+        ...SUMMARY_AI_PROVIDERS.map((provider) => aiScore(provider.id)),
       ]
     })
 }

@@ -6,7 +6,7 @@ import { makeMatch } from '../analysis/testUtils'
 import { isBackupFile } from '../data/backupFormat'
 import { storyFromAnalysis } from '../image/storyGenerator'
 import {
-  consensusApprovedIds,
+  majorityApprovedIds,
   normalizeSelections,
   resolveSelection,
   selectAll,
@@ -105,9 +105,18 @@ describe('seçim işlemleri', () => {
       verdict('weak', 'chatgpt', 'strong'),
       verdict('weak', 'gemini', 'strong'), // listede değil
     ]
-    expect(consensusApprovedIds(list(), verdicts)).toEqual(['a'])
-    expect(consensusApprovedIds(list(), [verdict('a', 'chatgpt', 'strong')])).toEqual([])
-    expect(consensusApprovedIds(list(), [])).toEqual([])
+    expect(majorityApprovedIds(list(), verdicts)).toEqual(['a'])
+    expect(majorityApprovedIds(list(), [verdict('a', 'chatgpt', 'strong')])).toEqual([])
+    expect(majorityApprovedIds(list(), [])).toEqual([])
+    // Claude'lu gün: 2/3 çoğunluk onaysa seçilir; çoğunluk onay değilse ya da üç karar farklıysa seçilmez
+    const three = [
+      ...verdicts,
+      verdict('a', 'claude', 'reject'), // 2/3 Güçlü
+      verdict('b', 'claude', 'medium'), // 2/3 Orta
+      verdict('c', 'claude', 'strong'), // 2/3 Eleme
+    ]
+    expect(majorityApprovedIds(list(), three).sort()).toEqual(['a', 'b'])
+    expect(majorityApprovedIds(list(), [verdict('a', 'chatgpt', 'strong'), verdict('a', 'gemini', 'medium'), verdict('a', 'claude', 'weak')])).toEqual([])
   })
 })
 

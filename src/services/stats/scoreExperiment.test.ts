@@ -259,8 +259,8 @@ describe('skor tahmini ölçümü', () => {
   const row = (id: string) => stats.rows.find((r) => r.id === id)!
 
   it('kaynaklar ve referanslar sabit sırayla', () => {
-    expect(SCORE_SOURCES.map((s) => s.label)).toEqual(['Model', 'ChatGPT', 'Gemini', 'Referans: hep 1-1', 'Referans: hep 2-1'])
-    expect(stats.rows.map((r) => r.id)).toEqual(['model', 'chatgpt', 'gemini', 'ref11', 'ref21'])
+    expect(SCORE_SOURCES.map((s) => s.label)).toEqual(['Model', 'ChatGPT', 'Gemini', 'Claude', 'Referans: hep 1-1', 'Referans: hep 2-1'])
+    expect(stats.rows.map((r) => r.id)).toEqual(['model', 'chatgpt', 'gemini', 'claude', 'ref11', 'ref21'])
   })
 
   it('yalnızca skoru girilmiş ve tahmini olan maçlar sayılır', () => {

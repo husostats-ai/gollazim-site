@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { AI_CHUNK_SIZE } from '../../config/ai'
+import { createHash } from 'node:crypto'
+import { AI_CHUNK_SIZE, AI_PROVIDERS } from '../../config/ai'
 import { defaultThresholds } from '../../config/categories'
 import type { AiVerdict, Pick } from '../../types'
 import { analyzeDay } from '../analysis/engine'
 import { makeMatch } from '../analysis/testUtils'
 import { isBackupFile } from '../data/backupFormat'
-import { buildAiStats } from './aiStats'
+import { AI_SOURCES, buildAiStats, buildSummaryAiStats } from './aiStats'
+import { agreementLabel, agreementText, majorityDecision, summarizeVerdicts } from './consensus'
 import { collectAiMatches } from './collect'
 import { numberMap, parseAiResponse, parseLine } from './parser'
 import { buildPrompts, DATA_END, DATA_START, matchBlock } from './prompt'
@@ -128,6 +130,28 @@ describe('prompt üretimi', () => {
     }
     // veri bloğu iki yapay zekâ için aynıdır
     expect(gemini.slice(gemini.indexOf(DATA_START), gemini.indexOf(DATA_END))).toBe(data)
+  })
+
+  it('Claude promptu diğerleriyle aynıdır; yalnızca son satırdaki yönerge farklıdır', () => {
+    const claude = buildPrompts(items, 'claude', 'x')[0].text
+    const body = (text: string) => text.slice(0, text.lastIndexOf('\n'))
+    expect(body(claude)).toBe(body(buildPrompts(items, 'chatgpt', 'x')[0].text))
+    expect(body(claude)).toBe(body(buildPrompts(items, 'gemini', 'x')[0].text))
+    expect(claude.slice(claude.lastIndexOf('\n') + 1)).toMatch(/^Claude için yönerge: Cevap vermeden önce web arama özelliğini aç\. /)
+    expect(claude).not.toContain('ChatGPT için yönerge')
+  })
+
+  it('ChatGPT ve Gemini yönergeleri Claude eklenirken değişmedi', () => {
+    const hash = (id: string) => createHash('sha256').update(AI_PROVIDERS.find((p) => p.id === id)!.instruction).digest('hex')
+    expect(hash('chatgpt')).toBe('4fda49c603816953c9c415de4e651bea77f64bad0d0108a06d95a54e69dd1398')
+    expect(hash('gemini')).toBe('d163eb80110936218e5afb9ab5d91a5b3a7eccfb9f8cc58f92526044c3dfc299')
+  })
+
+  it('Claude cevabı aynı satır biçimiyle çözülür', () => {
+    const numbers = numberMap(['m1', 'm2'])
+    const parsed = parseAiResponse('#1 | Orta | Ev sahibi gollü (kaynak). | Rotasyon | SKOR: 2-1\n#2 | Eleme | Kadro belirsiz. | Sakatlık', numbers)
+    expect(parsed.errors).toEqual([])
+    expect(parsed.verdicts.map((v) => [v.matchId, v.decision, v.score])).toEqual([['m1', 'medium', { home: 2, away: 1 }], ['m2', 'reject', undefined]])
   })
 
   it('maç yoksa parça üretmez', () => {
@@ -351,7 +375,8 @@ describe('yapay zekâ istatistikleri', () => {
   it('onaylanan (Güçlü veya Orta) maçların başarısı, yapay zekâ bazında ve ortak kararda', () => {
     expect(row(stats.approved.chatgpt)).toEqual([3, 1, 75, 4]) // A + B
     expect(row(stats.approved.gemini)).toEqual([3, 1, 75, 4]) // A + D
-    expect(row(stats.approved.consensus)).toEqual([2, 1, 66.7, 3]) // yalnızca A; C ortak ama Eleme
+    expect(row(stats.approved.majority)).toEqual([2, 1, 66.7, 3]) // yalnızca A; C ortak ama Eleme
+    expect(row(stats.approved.claude)).toEqual([0, 0, null, 0]) // Claude'suz günler
   })
 
   it('karar seviyesine göre başarı', () => {
@@ -363,22 +388,103 @@ describe('yapay zekâ istatistikleri', () => {
     expect(row(level('medium').gemini)).toEqual([0, 0, null, 0])
     expect(row(level('weak').gemini)).toEqual([1, 0, 100, 1])
     expect(row(level('reject').chatgpt)).toEqual([0, 2, 0, 2])
-    expect(row(level('reject').consensus)).toEqual([0, 2, 0, 2])
-    expect(row(level('strong').consensus)).toEqual([2, 1, 66.7, 3])
+    expect(row(level('reject').majority)).toEqual([0, 2, 0, 2])
+    expect(row(level('strong').majority)).toEqual([2, 1, 66.7, 3])
   })
 
   it('değerlendirilemeyen öneri orana girmez ama ayrı sayılır; hepsi az veri işaretlidir', () => {
     expect(stats.byDecision[0].tallies.gemini).toMatchObject({ void: 1, total: 5, lowSample: true })
   })
 
-  it('kararı kaydedilmiş maç sayıları; ortak karar yalnızca iki karar aynıysa', () => {
-    expect(stats.matches).toEqual({ chatgpt: 4, gemini: 4, consensus: 2 })
+  it('kararı kaydedilmiş maç sayıları; Claude\'suz günlerde çoğunluk yalnızca iki karar aynıysa', () => {
+    expect(stats.matches).toEqual({ chatgpt: 4, gemini: 4, claude: 0, majority: 2 })
+  })
+
+  it('Claude\'suz veride çoğunluk kararı, eski "Ortak karar" ile aynı sayıları verir', () => {
+    const old = buildSummaryAiStats(picks, verdicts)!
+    expect(stats.approved.majority).toEqual(old.approved.consensus)
+    expect(stats.matches.majority).toBe(old.matches.consensus)
+    expect(stats.byDecision.map((b) => b.tallies.majority)).toEqual(old.byDecision.map((b) => b.tallies.consensus))
+    expect(stats.approved.chatgpt).toEqual(old.approved.chatgpt)
+    expect(stats.approved.gemini).toEqual(old.approved.gemini)
+  })
+
+  // Claude'lu günler:
+  // A: + Claude Güçlü -> 3/3 Güçlü
+  // B: + Claude Orta -> 2/3 Orta (ChatGPT Orta, Gemini Zayıf)
+  // C: + Claude Zayıf -> 2/3 Eleme
+  // D: + Claude Orta -> Gemini Güçlü, Claude Orta: 2 farklı, çoğunluk yok
+  // G: üçü de farklı -> çoğunluk yok
+  const withClaude = [
+    ...verdicts,
+    verdict('A', 'claude', 'strong'),
+    verdict('B', 'claude', 'medium'),
+    verdict('C', 'claude', 'weak'),
+    verdict('D', 'claude', 'medium'),
+    verdict('G', 'chatgpt', 'strong'), verdict('G', 'gemini', 'medium'), verdict('G', 'claude', 'weak'),
+  ]
+  const three = buildAiStats([...picks, pick('G', 'won')], withClaude)!
+
+  it('üç yapay zekâ: her biri ayrı, çoğunluk kararı ayrıca ölçülür', () => {
+    expect(AI_SOURCES).toEqual(['chatgpt', 'gemini', 'claude', 'majority'])
+    expect(three.matches).toEqual({ chatgpt: 5, gemini: 5, claude: 5, majority: 3 })
+    expect(row(three.approved.claude)).toEqual([4, 1, 80, 5]) // A (2-1) + B (1-0) + D (1-0); G'de Zayıf
+    expect(row(three.approved.majority)).toEqual([3, 1, 75, 4]) // A Güçlü + B Orta
+    const level = (d: string) => three.byDecision.find((b) => b.decision === d)!.tallies
+    expect(row(level('strong').majority)).toEqual([2, 1, 66.7, 3]) // A
+    expect(row(level('medium').majority)).toEqual([1, 0, 100, 1]) // B
+    expect(row(level('reject').majority)).toEqual([0, 2, 0, 2]) // C
+    expect(row(level('weak').majority)).toEqual([0, 0, null, 0])
+  })
+
+  it('özetin dökümü Claude kararlarını görmez; yalnızca Claude kararı varsa döküm yoktur', () => {
+    expect(buildSummaryAiStats(picks, withClaude.filter((v) => v.matchId !== 'G'))).toEqual(buildSummaryAiStats(picks, verdicts))
+    expect(buildSummaryAiStats(picks, [verdict('A', 'claude', 'strong')])).toBeNull()
+    expect(buildAiStats(picks, [verdict('A', 'claude', 'strong')])!.matches).toEqual({ chatgpt: 0, gemini: 0, claude: 1, majority: 0 })
   })
 
   it('kararı olmayan maçların önerileri hiçbir satıra girmez; hiç karar yoksa döküm üretilmez', () => {
     const all = Object.values(stats.approved).concat(stats.byDecision.flatMap((b) => Object.values(b.tallies)))
     expect(Math.max(...all.map((t) => t.total))).toBeLessThanOrEqual(5)
     expect(buildAiStats(picks, [])).toBeNull()
+  })
+})
+
+describe('karar özeti: ortalama değil çoğunluk', () => {
+  const of = (...decisions: AiVerdict['decision'][]) => summarizeVerdicts(decisions.map((decision) => ({ decision })))
+  const text = (...decisions: AiVerdict['decision'][]) => agreementText(of(...decisions)!)
+
+  it('üç karar: 3/3 aynı, 2/3 çoğunluk, 3 farklı', () => {
+    expect(of('medium', 'medium', 'medium')).toEqual({ kind: 'unanimous', voters: 3, votes: 3, decision: 'medium' })
+    expect(of('strong', 'medium', 'medium')).toEqual({ kind: 'majority', voters: 3, votes: 2, decision: 'medium' })
+    expect(of('strong', 'medium', 'weak')).toEqual({ kind: 'split', voters: 3, votes: 1, decision: null })
+    expect(text('medium', 'medium', 'medium')).toBe('3/3 aynı · Orta')
+    expect(text('strong', 'reject', 'strong')).toBe('2/3 çoğunluk · Güçlü')
+    expect(text('strong', 'medium', 'weak')).toBe('3 farklı')
+    expect(agreementLabel(of('strong', 'reject', 'strong')!)).toBe('2/3 çoğunluk')
+  })
+
+  it('seviyeler ortalanmaz: Güçlü + Zayıf + Eleme "Orta" olmaz, iki onay farklı seviyedeyse çoğunluk yoktur', () => {
+    expect(majorityDecision([{ decision: 'strong' }, { decision: 'weak' }, { decision: 'reject' }])).toBeNull()
+    expect(majorityDecision([{ decision: 'strong' }, { decision: 'medium' }, { decision: 'reject' }])).toBeNull()
+  })
+
+  it('sonuç karar sırasından bağımsızdır', () => {
+    const orders: AiVerdict['decision'][][] = [['weak', 'strong', 'weak'], ['strong', 'weak', 'weak'], ['weak', 'weak', 'strong']]
+    for (const order of orders) expect(text(...order)).toBe('2/3 çoğunluk · Zayıf')
+  })
+
+  it('eski günler (iki karar): aynıysa 2/2 aynı ve çoğunluk sayılır, farklıysa çoğunluk yoktur', () => {
+    expect(of('strong', 'strong')).toEqual({ kind: 'unanimous', voters: 2, votes: 2, decision: 'strong' })
+    expect(text('strong', 'strong')).toBe('2/2 aynı · Güçlü')
+    expect(of('strong', 'medium')).toEqual({ kind: 'split', voters: 2, votes: 1, decision: null })
+    expect(text('strong', 'medium')).toBe('2 farklı')
+  })
+
+  it('tek karar ya da hiç karar: özet yok', () => {
+    expect(of('strong')).toBeNull()
+    expect(of()).toBeNull()
+    expect(majorityDecision([])).toBeNull()
   })
 })
 
