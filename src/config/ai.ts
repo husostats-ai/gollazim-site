@@ -1,7 +1,7 @@
 // Yapay zekâ analizi ayarları. Site hiçbir yapay zekâ servisine bağlanmaz:
 // prompt üretir, kullanıcı onu kendi uygulamasına yapıştırır ve cevabı geri getirir.
 
-export type AiProvider = 'chatgpt' | 'gemini'
+export type AiProvider = 'chatgpt' | 'gemini' | 'claude'
 export type AiDecision = 'strong' | 'medium' | 'weak' | 'reject'
 
 export const AI_PROVIDERS: { id: AiProvider; label: string; instruction: string }[] = [
@@ -17,7 +17,19 @@ export const AI_PROVIDERS: { id: AiProvider; label: string; instruction: string 
     instruction:
       'Gemini için yönerge: Cevap vermeden önce Google Arama ile araştırma özelliğini kullan. Her maç için güncel sakatlık, cezalı oyuncu, muhtemel kadro, rotasyon ve motivasyon (puan durumu, maçın önemi) bilgisini araştır. Bulduğun bilgiyi gerekçede kullan ve kaynağın adını gerekçenin sonuna parantez içinde yaz. Arama yapamıyorsan ya da bilgi bulamadıysan bunu "bilinmiyor" diye belirt.',
   },
+  {
+    id: 'claude',
+    label: 'Claude',
+    instruction:
+      'Claude için yönerge: Cevap vermeden önce web arama özelliğini aç. Her maç için güncel sakatlık, cezalı oyuncu, muhtemel kadro, rotasyon ve motivasyon (puan durumu, maçın önemi) bilgisini araştır. Bulduğun bilgiyi gerekçede kullan ve kaynağın adını gerekçenin sonuna parantez içinde yaz. Arama yapamıyorsan ya da bilgi bulamadıysan bunu "bilinmiyor" diye belirt.',
+  },
 ]
+
+/**
+ * "Analiz için özet" metni ve ayrıntı CSV'si yapay zekâya girdi olduğu için biçimi sabit
+ * tutulur: Claude eklenmeden önceki iki sağlayıcıyı ve iki yapay zekâlı "Ortak karar"ı yazar.
+ */
+export const SUMMARY_AI_PROVIDERS = AI_PROVIDERS.filter((p) => p.id === 'chatgpt' || p.id === 'gemini')
 
 /** approved: yapay zekâ maçı oynanabilir buldu (istatistikte "onay" sayılır) */
 export const AI_DECISIONS: { id: AiDecision; label: string; approved: boolean }[] = [

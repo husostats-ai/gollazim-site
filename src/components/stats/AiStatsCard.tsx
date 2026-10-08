@@ -1,9 +1,10 @@
-import { decisionLabel } from '../../config/ai'
+import { AI_PROVIDERS, decisionLabel } from '../../config/ai'
 import { AI_SOURCES, type AiSource, type AiStats } from '../../services/ai/aiStats'
+import { MAJORITY_NOTE } from '../../services/ai/consensus'
 import RateBars from './RateBars'
 import RateText from './RateText'
 
-const SOURCE_LABELS: Record<AiSource, string> = { chatgpt: 'ChatGPT', gemini: 'Gemini', consensus: 'Ortak karar' }
+const SOURCE_LABELS = { ...Object.fromEntries(AI_PROVIDERS.map((p) => [p.id, p.label])), majority: 'Çoğunluk kararı' } as Record<AiSource, string>
 
 export default function AiStatsCard({ stats }: { stats: AiStats }) {
   return (
@@ -11,13 +12,17 @@ export default function AiStatsCard({ stats }: { stats: AiStats }) {
       <div>
         <h3 className="text-sm font-extrabold tracking-wide">ONAYLADIĞI MAÇLARDA BAŞARI</h3>
         <p className="mt-1 mb-3 text-xs text-muted">
-          Onay: “Güçlü” ya da “Orta” kararı. Ortak karar: iki yapay zekânın aynı kararı verdiği maçlar. Kararı kayıtlı
-          maç sayısı: {AI_SOURCES.map((s) => `${SOURCE_LABELS[s]} ${stats.matches[s]}`).join(', ')}.
+          Onay: “Güçlü” ya da “Orta” kararı. Çoğunluk kararı: cevap veren yapay zekâların yarısından fazlasının aynı
+          seviyede verdiği karar (3/3 ya da 2/3; ortalama alınmaz). Kararı kayıtlı maç sayısı:{' '}
+          {AI_SOURCES.map((s) => `${SOURCE_LABELS[s]} ${stats.matches[s]}`).join(', ')}.
+        </p>
+        <p className="-mt-2 mb-3 text-xs text-muted" data-testid="ai-majority-note">
+          {MAJORITY_NOTE}
         </p>
         <RateBars
           rows={AI_SOURCES.map((s) => ({
             key: s,
-            label: s === 'consensus' ? 'Ortak onay' : `${SOURCE_LABELS[s]} onayı`,
+            label: s === 'majority' ? 'Çoğunluk onayı' : `${SOURCE_LABELS[s]} onayı`,
             tally: stats.approved[s],
           }))}
         />

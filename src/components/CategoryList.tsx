@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { DEFAULT_STORY_TEXTS, type StoryTexts } from '../config/storyTexts'
 import { settingsRepo } from '../services/data'
 import { buildCaption, type CaptionTarget } from '../services/story/caption'
-import { consensusApprovedIds, resolveSelection, selectAll, toggleSelection } from '../services/story/selection'
+import { majorityApprovedIds, resolveSelection, selectAll, toggleSelection } from '../services/story/selection'
 import { formatLongDate } from '../utils/format'
 import CaptionBox from './CaptionBox'
 import { activeShared, findActiveShared } from '../services/story/shared'
@@ -26,7 +26,7 @@ export default function CategoryList({ analysis }: { analysis: CategoryAnalysis 
   const category = getCategory(analysis.categoryId)
   const { predictions, qualifiedCount, threshold } = analysis
   const selectedIds = storySelections[category.id] ?? []
-  const approvedIds = consensusApprovedIds(predictions, aiVerdicts)
+  const approvedIds = majorityApprovedIds(predictions, aiVerdicts)
   const select = (ids: string[]) => setStorySelection(category.id, ids)
   // Açıklama metni görselle aynı maçlardan ve aynı sırayla üretilir.
   const { selected } = resolveSelection(predictions, selectedIds)
@@ -93,7 +93,7 @@ export default function CategoryList({ analysis }: { analysis: CategoryAnalysis 
           </button>
           {approvedIds.length > 0 && (
             <button type="button" onClick={() => select(approvedIds)} className={TOOL_BUTTON} data-testid="story-select-approved">
-              Ortak karar Onay olanları seç
+              Çoğunluk kararı Onay olanları seç
             </button>
           )}
         </div>

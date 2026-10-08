@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { CATEGORIES, defaultThresholds, type CategoryId } from '../../config/categories'
 import type { AiVerdict, Match, Pick, PickOutcome } from '../../types'
 import { formatRate } from '../../utils/format'
-import { buildAiStats } from '../ai/aiStats'
+import { buildSummaryAiStats as buildAiStats } from '../ai/aiStats'
 import { analyzeCategory } from '../analysis/engine'
 import { makeMatch } from '../analysis/testUtils'
 import { recordShare, sharedPicksOnly } from '../story/shared'
@@ -264,6 +264,21 @@ describe('özet metni', () => {
     expect(row(body, 'Ortak karar')).toEqual(['Ortak karar', '1', '%100 · n=1'])
     expect(row(body, 'Eleme')).toEqual(['Eleme', '%0 · n=1', '— · n=0', '— · n=0'])
     expect(buildStatsSummary(input({ kind: 'all' }, { verdicts: [] }))).toContain('Kayıtlı yapay zekâ kararı yok.')
+  })
+
+  it('Claude kararları özeti ve ayrıntı CSV\'sini değiştirmez (biçim sabit: ChatGPT, Gemini, Ortak karar)', () => {
+    const claude = [
+      { ...verdict(picks[0].matchId, 'claude', 'reject', '2026-10-09'), score: { home: 3, away: 1 } },
+      verdict(picks[12].matchId, 'claude', 'reject', '2026-10-09'),
+      verdict(picks[1].matchId, 'claude', 'strong', '2026-10-09'),
+    ]
+    const withClaude = { verdicts: [...verdicts, ...claude], results: matches.slice(0, 3).map((m) => ({ matchId: m.id, status: 'completed', ftHome: 2, ftAway: 1 }) as MatchResult) }
+    const without = { verdicts, results: withClaude.results }
+    expect(buildStatsSummary(input({ kind: 'all' }, withClaude))).toBe(buildStatsSummary(input({ kind: 'all' }, without)))
+    expect(buildDetailCsv(input({ kind: 'all' }, withClaude))).toBe(buildDetailCsv(input({ kind: 'all' }, without)))
+    expect(buildStatsSummary(input({ kind: 'all' }, withClaude))).not.toContain('Claude')
+    expect(DETAIL_CSV_COLUMNS.filter((c) => c.startsWith('ai_'))).toEqual(['ai_chatgpt', 'ai_gemini', 'ai_chatgpt_skor', 'ai_gemini_skor'])
+    expect(buildStatsSummary(input({ kind: 'all' }, { verdicts: claude }))).toContain('Kayıtlı yapay zekâ kararı yok.')
   })
 
   it('paylaşılan ve tüm öneriler yan yana', () => {

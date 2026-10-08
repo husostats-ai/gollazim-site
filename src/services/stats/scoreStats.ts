@@ -74,7 +74,7 @@ export interface ScoreStatsInput {
  * olan maçlar sayılır; maç başladıktan sonra kaydedilen yapay zekâ tahminleri sayılmaz.
  * Referanslar skoru girilmiş tüm maçlarda ölçülür.
  */
-export function buildScoreStats({ matches, results, verdicts }: ScoreStatsInput): ScoreStats {
+export function buildScoreStats({ matches, results, verdicts }: ScoreStatsInput, sources: readonly (typeof SCORE_SOURCES)[number][] = SCORE_SOURCES): ScoreStats {
   const resultById = new Map(results.map((r) => [r.matchId, r]))
   const scored = matches.flatMap((match) => {
     const actual = actualScore(resultById.get(match.id))
@@ -91,7 +91,7 @@ export function buildScoreStats({ matches, results, verdicts }: ScoreStatsInput)
     return verdict?.score && !verdict.scoreLate ? verdict.score : null
   }
   return {
-    rows: SCORE_SOURCES.map((source) =>
+    rows: sources.map((source) =>
       scoreRow(
         source.id,
         source.label,

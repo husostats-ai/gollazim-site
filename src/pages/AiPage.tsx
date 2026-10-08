@@ -5,12 +5,13 @@ import NoData from '../components/NoData'
 import NoteBadges from '../components/NoteBadges'
 import PageTitle from '../components/PageTitle'
 import ReliabilityBadge from '../components/ReliabilityBadge'
-import { isConsensus } from '../components/ai/AiVerdictBadges'
+import { AgreementBadge } from '../components/ai/AiVerdictBadges'
 import PromptPanel from '../components/ai/PromptPanel'
 import ResponsePanel from '../components/ai/ResponsePanel'
 import { AI_PROVIDERS, decisionLabel, providerLabel, type AiProvider } from '../config/ai'
 import { getCategory } from '../config/categories'
 import { collectAiMatches } from '../services/ai/collect'
+import { MAJORITY_NOTE, summarizeVerdicts } from '../services/ai/consensus'
 import { numberMap } from '../services/ai/parser'
 import { buildPrompts } from '../services/ai/prompt'
 import { analyzeDay } from '../services/analysis/engine'
@@ -85,7 +86,7 @@ export default function AiPage() {
     <>
       <PageTitle
         title="AI ANALİZİ"
-        subtitle="Site hiçbir veriyi kendiliğinden göndermez ve API anahtarı kullanmaz. Prompt’u kopyalayıp kendi ChatGPT ya da Gemini uygulamanıza yapıştırırsınız; cevabı buraya geri yapıştırırsınız."
+        subtitle="Site hiçbir veriyi kendiliğinden göndermez ve API anahtarı kullanmaz. Prompt’u kopyalayıp kendi ChatGPT, Gemini ya da Claude uygulamanıza yapıştırırsınız; cevabı buraya geri yapıştırırsınız."
       />
       <div className="mb-4 space-y-3">
         <DatePicker />
@@ -155,10 +156,14 @@ export default function AiPage() {
 
           <section className="min-w-0 rounded-2xl border border-line bg-navy-700 p-4">
             <h2 className="font-extrabold tracking-wide">MAÇLAR VE KARARLAR</h2>
+            <p className="mt-1 text-xs text-muted" data-testid="ai-majority-note">
+              Karar özeti ortalama değil çoğunluktur: “3/3 aynı”, “2/3 çoğunluk”, “3 farklı”. {MAJORITY_NOTE}
+            </p>
             <ul className="mt-2 divide-y divide-line">
               {items.map((item) => {
                 const number = numberedIds.indexOf(item.match.id) + 1
                 const verdicts = verdictsOf(item.match.id)
+                const agreement = summarizeVerdicts(verdicts)
                 return (
                   <li key={item.match.id} className="py-3" data-testid="ai-match">
                     <div className="flex items-start gap-2.5">
@@ -214,11 +219,9 @@ export default function AiPage() {
                                 )}
                               </li>
                             ))}
-                            {isConsensus(verdicts) && (
+                            {agreement && (
                               <li>
-                                <span className="inline-flex rounded-full border border-info-line bg-info-soft px-2 py-0.5 text-[11px] font-bold text-info">
-                                  Ortak karar
-                                </span>
+                                <AgreementBadge agreement={agreement} />
                               </li>
                             )}
                           </ul>

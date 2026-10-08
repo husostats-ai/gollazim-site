@@ -1,11 +1,25 @@
 import { AI_PROVIDERS, decisionLabel } from '../../config/ai'
-import { isConsensus } from '../../services/ai/consensus'
+import { agreementText, MAJORITY_NOTE, summarizeVerdicts, type Agreement } from '../../services/ai/consensus'
 import { useApp } from '../../state/AppContext'
 import type { AiVerdict } from '../../types'
 
 const chip = 'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] whitespace-nowrap'
 
-export { isConsensus }
+/** Karar özeti rozeti: "3/3 aynı", "2/3 çoğunluk · Orta", "3 farklı". Tek karar varken çıkmaz. */
+export function AgreementBadge({ agreement }: { agreement: Agreement | null }) {
+  if (!agreement) return null
+  const tone = agreement.kind === 'split' ? 'border-navy-500 bg-navy-800 text-muted' : 'border-info-line bg-info-soft text-info'
+  return (
+    <span
+      className={`${chip} font-bold ${tone}`}
+      data-testid="ai-agreement"
+      data-agreement={agreement.kind}
+      title={`${agreement.voters} yapay zekânın kararı karşılaştırıldı; ortalama alınmaz. ${MAJORITY_NOTE}`}
+    >
+      {agreementText(agreement)}
+    </span>
+  )
+}
 
 /** Maçın kayıtlı yapay zekâ kararları; her karar hangi yapay zekâdan geldiğiyle etiketlidir. */
 export default function AiVerdictBadges({ matchId }: { matchId: string }) {
@@ -34,11 +48,7 @@ export default function AiVerdictBadges({ matchId }: { matchId: string }) {
           )}
         </span>
       ))}
-      {isConsensus(verdicts) && (
-        <span className={`${chip} border-info-line bg-info-soft font-bold text-info`} data-testid="ai-consensus">
-          Ortak karar
-        </span>
-      )}
+      <AgreementBadge agreement={summarizeVerdicts(verdicts)} />
     </div>
   )
 }
