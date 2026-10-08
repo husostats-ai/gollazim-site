@@ -5,6 +5,7 @@ import type {
   AiPromptBatch,
   AiVerdict,
   BackupFile,
+  Highlight,
   LeagueTable,
   Match,
   MatchResult,
@@ -92,6 +93,13 @@ export interface SharedRepo {
   addMany(records: SharedPick[]): Promise<void>
   /** Kaydı silmez; çıkarıldı olarak işaretler */
   markRemoved(id: string, removedAt: string): Promise<void>
+}
+
+export interface HighlightsRepo {
+  listByDate(date: string): Promise<Highlight[]>
+  put(record: Highlight): Promise<void>
+  /** Kaydı siler (kilitlenmeden önce kaldırılan seçim silinmiş sayılır) */
+  remove(id: string): Promise<void>
 }
 
 export interface SettingsRepo {

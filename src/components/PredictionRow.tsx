@@ -3,6 +3,7 @@ import { marketNotes } from '../services/analysis/market'
 import type { Prediction, SortMode } from '../services/analysis/types'
 import { useApp } from '../state/AppContext'
 import CautiousBadge from './CautiousBadge'
+import HighlightButton from './HighlightButton'
 import NoteBadges from './NoteBadges'
 import OutcomeBadge from './OutcomeBadge'
 import ReliabilityBadge from './ReliabilityBadge'
@@ -35,6 +36,7 @@ export default function PredictionRow({ prediction, sortMode, showCategory }: Pr
           <NoteBadges notes={notes.filter((n) => n.kind === 'conflict')} />
           <NoteBadges notes={marketNotes(percent, market, marketConflictLimit).filter((n) => n.kind === 'market-conflict')} />
           {sortMode === 'cautious' && supportsCautious(category) && <CautiousBadge value={cautiousPercent} />}
+          <HighlightButton prediction={prediction} />
         </div>
       </div>
       <div className="shrink-0 text-right">

@@ -13,7 +13,7 @@ export const isBackupFile = (data: unknown): data is BackupFile => {
     ['uploads', 'matches', 'results', 'picks'].every((k) => Array.isArray(d[k])) &&
     typeof d.thresholds === 'object' &&
     d.thresholds !== null &&
-    ['aiVerdicts', 'aiPrompts', 'storySelections', 'sharedPicks', 'leagueTables', 'teamAliases'].every((k) => d[k] === undefined || Array.isArray(d[k])) &&
+    ['aiVerdicts', 'aiPrompts', 'storySelections', 'sharedPicks', 'leagueTables', 'teamAliases', 'highlights'].every((k) => d[k] === undefined || Array.isArray(d[k])) &&
     (d.storyTexts === undefined || (typeof d.storyTexts === 'object' && d.storyTexts !== null)) &&
     (d.marketConflictLimit === undefined || typeof d.marketConflictLimit === 'number')
   )
@@ -40,4 +40,6 @@ export const assembleBackup = (content: BackupContent, now: Date): BackupFile =>
   sharedPicks: content.sharedPicks,
   leagueTables: content.leagueTables,
   teamAliases: content.teamAliases,
+  // Hiç seçim yoksa alan yazılmaz: seçim yapılmamış bir veritabanının yedeği eskisiyle aynı kalır.
+  ...(content.highlights && content.highlights.length > 0 && { highlights: content.highlights }),
 })
