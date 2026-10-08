@@ -9,7 +9,8 @@ import { evaluatePick } from '../results/evaluator'
 // o yoksa aynı değerlendirme fonksiyonu (evaluatePick) kullanılır.
 //
 // Kilit: maçın başlama saati geldiği anda seçim kilitlenir; kilitli satır eklenemez ve silinemez.
-// Saati bilinmeyen maç hiç eklenemez (geriye dönük ekleme kapalıdır).
+// Saati bilinmeyen maç hiç eklenemez (geriye dönük ekleme kapalıdır). Üye paketiyle yayınlanan
+// seçim, maç başlamamış olsa da silinemez.
 
 export const highlightId = (date: string, matchId: string, categoryId: CategoryId): string => [date, matchId, categoryId].join('|')
 
@@ -44,9 +45,10 @@ export interface HighlightCandidate {
 
 type Pick_<T, K extends keyof T> = { [P in K]: T[P] }
 
-export type HighlightRefusal = 'locked' | 'no-time' | 'exists' | 'missing'
+export type HighlightRefusal = 'locked' | 'published' | 'no-time' | 'exists' | 'missing'
 export const REFUSAL_TEXTS: Record<HighlightRefusal, string> = {
   locked: 'Maç başladı; seçim kilitli.',
+  published: 'Bu seçim üyelere yayınlandı; kaldırılamaz.',
   'no-time': 'Maçın saati bilinmiyor; öne çıkanlara eklenemez.',
   exists: 'Bu öneri zaten öne çıkanlarda.',
   missing: 'Bu öneri öne çıkanlarda değil.',
@@ -81,13 +83,29 @@ export function addHighlight(existing: readonly Highlight[], candidate: Highligh
 
 export type RemoveResult = { ok: true; record: Highlight } | { ok: false; reason: HighlightRefusal }
 
-/** Kaldırılacak kaydı verir; maç başladıysa reddeder. Kilit, kayıttaki gün ve saatten okunur (maç silinmiş olabilir) */
+/** Kaldırılacak kaydı verir; seçim yayınlandıysa ya da maç başladıysa reddeder. Kilit, kayıttaki gün ve saatten okunur (maç silinmiş olabilir) */
 export function removeHighlight(existing: readonly Highlight[], id: string, now: Date): RemoveResult {
   const record = existing.find((h) => h.id === id)
   if (!record) return { ok: false, reason: 'missing' }
+  if (record.publishedAt !== undefined) return { ok: false, reason: 'published' }
   // Saati okunamayan kayıt kilitli sayılır: ne zaman başladığı bilinmeyen seçim silinemez.
   if (lockState(record, now) !== 'open') return { ok: false, reason: 'locked' }
   return { ok: true, record }
+}
+
+/** Kaldırılamayan seçimin nedeni; kaldırılabiliyorsa null. Yayınlanmış olmak, maçın başlamasından önce gelir. */
+export function removalBlock(record: Pick_<Highlight, 'date' | 'time' | 'publishedAt'>, now: Date): 'published' | 'locked' | null {
+  if (record.publishedAt !== undefined) return 'published'
+  return lockState(record, now) !== 'open' ? 'locked' : null
+}
+
+/**
+ * Yayın paketine giren seçimleri "yayınlandı" olarak işaretler. İlk yayın anı korunur:
+ * daha önce yayınlanmış kayıt değişmez. Değişen kayıtları döner.
+ */
+export function markPublished(records: readonly Highlight[], ids: readonly string[], publishedAt: string): Highlight[] {
+  const wanted = new Set(ids)
+  return records.filter((record) => wanted.has(record.id) && record.publishedAt === undefined).map((record) => ({ ...record, publishedAt }))
 }
 
 /**
@@ -137,7 +155,7 @@ export function normalizeHighlights(value: unknown, isCategory: (id: string) => 
   const byId = new Map<string, Highlight>()
   for (const row of value as Partial<Highlight>[]) {
     if (typeof row !== 'object' || row === null) continue
-    const { date, matchId, categoryId, addedAt, home, away, time, league, percent, reliability } = row
+    const { date, matchId, categoryId, addedAt, home, away, time, league, percent, reliability, publishedAt } = row
     if (typeof date !== 'string' || typeof matchId !== 'string' || typeof addedAt !== 'string' || Number.isNaN(Date.parse(addedAt))) continue
     if (typeof categoryId !== 'string' || !isCategory(categoryId)) continue
     if (typeof home !== 'string' || typeof away !== 'string' || typeof time !== 'string' || !TIME.test(time)) continue
@@ -155,6 +173,7 @@ export function normalizeHighlights(value: unknown, isCategory: (id: string) => 
       ...(typeof league === 'string' && { league }),
       percent,
       ...(typeof reliability === 'string' && RELIABILITY_LEVELS.includes(reliability) && { reliability }),
+      ...(typeof publishedAt === 'string' && !Number.isNaN(Date.parse(publishedAt)) && { publishedAt }),
     })
   }
   return [...byId.values()]

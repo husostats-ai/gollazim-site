@@ -5,9 +5,9 @@ import { describe, expect, it } from 'vitest'
 import { CATEGORIES } from '../config/categories'
 import { DEFAULT_MEMBER_TEXTS } from '../config/memberTexts'
 import { MEMBER_STALE_HOURS } from '../config/member'
-import { DAY, memberInput, PREVIOUS_DAY, PUBLISHED_AT } from '../services/member/__fixtures__/rawData'
+import { DAY, dayHighlights, HIGHLIGHT_PERCENT, memberInput, PREVIOUS_DAY, PUBLISHED_AT } from '../services/member/__fixtures__/rawData'
 import type { MemberErrorKind } from '../services/member/controller'
-import { MEMBER_ERROR_TEXTS, MEMBER_NOTICE_TEXTS, STALE_DATA_TEXT } from '../services/member/labels'
+import { MEMBER_ERROR_TEXTS, MEMBER_HIGHLIGHT_TEXTS, MEMBER_NOTICE_TEXTS, STALE_DATA_TEXT } from '../services/member/labels'
 import { buildMemberPayload } from '../services/member/payload'
 import { formatRate } from '../utils/format'
 import { HOW_TO_READ, HOW_TO_READ_TITLE } from './howToRead'
@@ -561,5 +561,68 @@ describe('SIZINTI: çizilen sayfada yasak terim yok', () => {
 
   it('denetim boş değil: yasak terim içeren bir metin yakalanır', () => {
     for (const leak of ['Kaynak: CSV', 'Piyasa %64', 'xG 1,9 – 1,2', 'Gol ortalaması 3,4', 'başarı oranı', 'https://footystats.org/x']) expect(FORBIDDEN.test(leak.toLocaleLowerCase('tr')), leak).toBe(true)
+  })
+})
+
+describe('günün öne çıkanları kutusu', () => {
+  const box = (markup: string): string | null => /<section[^>]*data-testid="member-highlights"[\s\S]*?<\/section>/.exec(markup)?.[0] ?? null
+  const rowsOf = (markup: string) => markup.split(/data-testid="member-highlight"[^>]*>/).slice(1).map((part) => textOf(part.split('</li>')[0]))
+  const today = box(html(analysis(0)))!
+
+  it('seçim sayısı kadar satır: saat, maç, kategori; skor ve sonuç', () => {
+    expect(today).not.toBeNull()
+    const rows = rowsOf(today)
+    expect(rows).toHaveLength(dayHighlights(DAY).length)
+    const kuzey = rows.find((r) => r.includes('Kuzey Yıldızı') && r.includes('2.5 ÜST'))!
+    expect(kuzey).toMatch(/^\d{2}:\d{2} Kuzey Yıldızı – Güney Spor 2\.5 ÜST/)
+    expect(kuzey).toContain('İY 1-0 · MS 3-1')
+    expect(kuzey).toContain('✓ Tuttu')
+    expect(rows.find((r) => r.includes('Doğu Gençlik'))).toContain('✗ Tutmadı')
+    const pending = rows.find((r) => r.includes('İç Anadolu FK'))!
+    expect(pending).toContain('··· Bekliyor')
+    expect(pending).not.toMatch(/MS \d/)
+    // Satırlar saat sırasındadır.
+    expect(rows.map((r) => r.slice(0, 5))).toEqual([...rows.map((r) => r.slice(0, 5))].sort())
+  })
+
+  it('başlıkta küçük "deneme" notu ve altta yasal not; yüzde ve güvenilirlik yazmaz', () => {
+    const text = textOf(today)
+    expect(text).toContain(`${MEMBER_HIGHLIGHT_TEXTS.title} ${MEMBER_HIGHLIGHT_TEXTS.trial}`)
+    expect(MEMBER_HIGHLIGHT_TEXTS.trial).toBe('deneme')
+    expect(text).toContain('Bu bir istatistik taramasıdır; bahis tavsiyesi değildir.')
+    expect(text).toContain(`${dayHighlights(DAY).length} seçim`)
+    expect(text).not.toContain('%')
+    expect(text).not.toContain(String(HIGHLIGHT_PERCENT))
+    expect(text.toLocaleLowerCase('tr')).not.toMatch(/güvenilirlik|oran|tutar|kupon|oyna/)
+    expect(text).not.toMatch(/[★☆]/)
+  })
+
+  it('kutu, seçili günün seçimlerini gösterir; gün başlığının altında, kategori düğmelerinin üstündedir', () => {
+    const markup = html(analysis(0))
+    expect(markup.indexOf('member-day-title')).toBeLessThan(markup.indexOf('member-highlights'))
+    expect(markup.indexOf('member-highlights')).toBeLessThan(markup.indexOf('member-category-'))
+    const previous = rowsOf(box(html(analysis(1)))!)
+    expect(previous).toHaveLength(1)
+    expect(previous[0]).toContain('Dünkü Ev – Dünkü Deplasman')
+    expect(previous[0]).toContain('KG VAR')
+  })
+
+  it('seçim yoksa kutu hiç çizilmez: boş dizi, sürüm 3 paket ve önerisi olmayan gün', () => {
+    const none = buildMemberPayload(memberInput({ days: memberInput().days.map(({ date, matches, results }) => ({ date, matches, results })) }))
+    expect(html(createElement(MemberAnalysis, { payload: none, today: DAY }))).not.toContain('member-highlights')
+    const v3 = JSON.parse(JSON.stringify(payload)) as MemberPayload
+    ;(v3 as { v: number }).v = 3
+    for (const day of v3.days) delete day.highlights
+    expect(html(createElement(MemberAnalysis, { payload: v3, today: DAY }))).not.toContain('member-highlights')
+  })
+
+  it('önerisi olmayan ama öne çıkanı olan günde kutu görünür, altında "öneri yok" yazar', () => {
+    const input = memberInput()
+    const only = buildMemberPayload({ ...input, days: [{ ...input.days[0], matches: [], results: input.days[0].results }] })
+    const markup = html(createElement(MemberAnalysis, { payload: only, today: DAY }))
+    expect(rowsOf(box(markup)!)).toHaveLength(dayHighlights(DAY).length)
+    expect(textOf(markup)).toContain('Bu gün için yayınlanmış öneri yok.')
+    // Maç verisi yok: adlar kayıttan, sonuç dondurulmuş öneriden.
+    expect(rowsOf(box(markup)!).find((r) => r.includes('Kuzey Yıldızı') && r.includes('2.5 ÜST'))).toContain('✓ Tuttu')
   })
 })

@@ -13,7 +13,10 @@ export class MemberPayloadError extends Error {}
 export const MEMBER_KEYS = {
   payload: ['v', 'n', 'publishedAt', 'texts', 'days', 'statistics'],
   texts: ['disclaimer', 'account'],
-  day: ['date', 'matches', 'lists'],
+  day: ['date', 'matches', 'lists', 'highlights'],
+  /** Sürüm 1-3 paketlerdeki gün (highlights alanı yok) */
+  dayV3: ['date', 'matches', 'lists'],
+  highlight: ['home', 'away', 'league', 'time', 'categoryId', 'status', 'score', 'outcome'],
   match: ['home', 'away', 'league', 'time', 'status', 'score', 'homeStanding', 'awayStanding'],
   standing: ['rank', 'played', 'stale'],
   list: ['categoryId', 'items'],
@@ -39,6 +42,8 @@ const STATUSES = ['pending', 'completed', 'postponed', 'cancelled']
 const STAR_KEYS = ['5', '4', '3', '2', '1']
 
 const MAX_DAYS = 7
+/** Bir günde pakete girebilecek en fazla öne çıkan seçim */
+const MAX_HIGHLIGHTS = 60
 const MAX_NAME = 120
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 const WEEK_OR_DAY = DATE
@@ -154,7 +159,7 @@ function standing(value: unknown, path: string): void {
 }
 
 function day(value: unknown, path: string, version: number): void {
-  const d = object(value, path, MEMBER_KEYS.day)
+  const d = object(value, path, version >= 4 ? MEMBER_KEYS.day : MEMBER_KEYS.dayV3)
   text(d.date, `${path}.date`, 10, DATE)
   const matches = array(d.matches, `${path}.matches`, CATEGORIES.length * MAX_MATCHES_PER_CATEGORY)
   matches.forEach((entry, i) => {
@@ -169,6 +174,24 @@ function day(value: unknown, path: string, version: number): void {
     nullable(m.homeStanding, (v) => standing(v, `${p}.homeStanding`))
     nullable(m.awayStanding, (v) => standing(v, `${p}.awayStanding`))
   })
+  if (version >= 4) {
+    const seen = new Set<string>()
+    array(d.highlights, `${path}.highlights`, MAX_HIGHLIGHTS).forEach((entry, i) => {
+      const p = `${path}.highlights[${i}]`
+      const h = object(entry, p, MEMBER_KEYS.highlight)
+      text(h.home, `${p}.home`, MAX_NAME)
+      text(h.away, `${p}.away`, MAX_NAME)
+      nullable(h.league, (v) => text(v, `${p}.league`, MAX_NAME))
+      text(h.time, `${p}.time`, 5, TIME)
+      categoryKey(h.categoryId, `${p}.categoryId`)
+      nullable(h.status, (v) => oneOf(v, `${p}.status`, STATUSES))
+      nullable(h.score, (v) => text(v, `${p}.score`, 20, SCORE))
+      oneOf(h.outcome, `${p}.outcome`, OUTCOMES)
+      const key = [h.home, h.away, h.time, h.categoryId].join('|')
+      if (seen.has(key)) fail(p, 'aynı seçim bir günde iki kez yer alamaz')
+      seen.add(key)
+    })
+  }
   const lists = array(d.lists, `${path}.lists`, CATEGORIES.length)
   if (lists.length !== CATEGORIES.length) fail(`${path}.lists`, 'her kategori için bir liste bekleniyor')
   /** "liste sırası:maç sırası" -> o listedeki yüzde ve seviye (others alanının çapraz denetimi için) */
@@ -215,7 +238,7 @@ function day(value: unknown, path: string, version: number): void {
 /** Paketi şemaya karşı denetler; uymuyorsa MemberPayloadError fırlatır. */
 export function assertMemberPayload(value: unknown): asserts value is MemberPayload {
   const p = object(value, 'paket', MEMBER_KEYS.payload)
-  if (p.v !== 1 && p.v !== 2 && p.v !== 3) fail('paket.v', 'desteklenmeyen paket sürümü')
+  if (p.v !== 1 && p.v !== 2 && p.v !== 3 && p.v !== 4) fail('paket.v', 'desteklenmeyen paket sürümü')
   integer(p.n, 'paket.n', 1, COUNT_MAX)
   text(p.publishedAt, 'paket.publishedAt', 24, ISO)
   const texts = object(p.texts, 'paket.texts', MEMBER_KEYS.texts)

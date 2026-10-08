@@ -40,7 +40,7 @@ const STATUS_COLOR: Record<ResultStatus, string> = { won: theme.win, lost: theme
  * Sonuç işareti: tuttu ✓, tutmadı ✗, değerlendirilemedi —, bekliyor ··· .
  * Yazı tipi yerine çizimdir (her cihazda aynı görünür) ve renkten bağımsız okunur.
  */
-function drawMark(ctx: Ctx, status: ResultStatus, cx: number, cy: number, r: number) {
+export function drawMark(ctx: Ctx, status: ResultStatus, cx: number, cy: number, r: number) {
   ctx.beginPath()
   ctx.arc(cx, cy, r, 0, Math.PI * 2)
   ctx.fillStyle = STATUS_COLOR[status]

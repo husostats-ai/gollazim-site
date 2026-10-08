@@ -4,6 +4,7 @@ import type { CategoryId } from '../config/categories'
 import type { MemberPayload } from '../services/member/payload'
 import { HOW_TO_READ, HOW_TO_READ_TITLE } from './howToRead'
 import MemberCard from './MemberCard'
+import MemberHighlights from './MemberHighlights'
 import { categoryChoices, dayChip, dayTitle, listFor, PERCENT_LABELS, PERCENT_NOTE, percentKind, secondPercentLabel } from './view'
 
 const CHIP = 'shrink-0 rounded-xl border px-3.5 py-2 text-sm font-bold whitespace-nowrap transition-colors'
@@ -43,6 +44,8 @@ export default function MemberAnalysis({ payload, today, initialDay = 0, initial
       <h1 className="mt-4 text-xl font-black tracking-tight sm:text-2xl" data-testid="member-day-title">
         {dayTitle(day.date)}
       </h1>
+      {/* Sürüm 1-3 paketlerde bu alan yoktur; seçim yoksa kutu çizilmez. */}
+      <MemberHighlights highlights={day.highlights ?? []} />
 
       {list === null ? (
         <div className="mt-4">

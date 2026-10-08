@@ -13,8 +13,8 @@ const TONE = {
 }
 
 /**
- * "Öne çıkana ekle": aynı düğme ekler ve kaldırır. Maç başladıysa ya da saati bilinmiyorsa
- * pasiftir; kilit ayrıca kayıt sırasında da denetlenir. Yalnızca admin sitesindedir.
+ * "Öne çıkana ekle": aynı düğme ekler ve kaldırır. Maç başladıysa, saati bilinmiyorsa ya da
+ * seçim üyelere yayınlandıysa pasiftir; kilit ayrıca kayıt sırasında da denetlenir. Yalnızca admin sitesindedir.
  */
 export default function HighlightButton({ prediction }: { prediction: Prediction }) {
   const { highlights, addHighlight, removeHighlight } = useApp()
@@ -22,12 +22,15 @@ export default function HighlightButton({ prediction }: { prediction: Prediction
   const [refusal, setRefusal] = useState<string | null>(null)
   const { match, categoryId } = prediction
   const id = highlightId(match.date, match.id, categoryId)
-  const selected = highlights.some((h) => h.id === id)
-  const state = lockState(match, now)
+  const record = highlights.find((h) => h.id === id)
+  const selected = record !== undefined
+  const published = record?.publishedAt !== undefined
+  // Yayınlanan seçim, maç başlamamış olsa da kaldırılamaz.
+  const state = lockState(match, now) === 'open' && published ? 'published' : lockState(match, now)
 
   if (state !== 'open') {
     const text = state === 'no-time' ? 'saat bilinmiyor' : selected ? '🔒 Öne çıkanlarda' : '🔒 Kilitli'
-    const title = state === 'no-time' ? REFUSAL_TEXTS['no-time'] : selected ? 'Maç başladı; seçim kilitli, kaldırılamaz.' : 'Maç başladı; öne çıkanlara eklenemez.'
+    const title = state === 'no-time' ? REFUSAL_TEXTS['no-time'] : published ? REFUSAL_TEXTS.published : selected ? 'Maç başladı; seçim kilitli, kaldırılamaz.' : 'Maç başladı; öne çıkanlara eklenemez.'
     return (
       <button type="button" disabled title={title} aria-pressed={selected} data-testid="highlight-toggle" data-state={state} data-selected={selected} className={`${BASE} ${selected ? TONE.lockedSelected : TONE.disabled}`}>
         {text}

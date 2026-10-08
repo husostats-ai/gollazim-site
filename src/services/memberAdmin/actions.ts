@@ -57,7 +57,7 @@ export async function previewPublication(repo: MemberAdminRepo, sources: Publish
 
 /**
  * Yayınlar: paketi kurar, sızıntı denetiminden geçirir, aktif üyeler için şifreler; yayın
- * numarasını artırır ve geçmişe yazar. Aktif üye yoksa ya da denetim başarısızsa
+ * numarasını artırır, geçmişe yazar ve pakete giren öne çıkan seçimleri yayınlandı olarak işaretler. Aktif üye yoksa ya da denetim başarısızsa
  * PublishError fırlatır ve hiçbir şey kaydedilmez.
  */
 export async function publish(repo: MemberAdminRepo, sources: PublishSources, day: string, now: string): Promise<Publication> {
@@ -66,6 +66,8 @@ export async function publish(repo: MemberAdminRepo, sources: PublishSources, da
   const publication = await sealPublication(draft, members, meta)
   await repo.addPublication(publication.record)
   await repo.patchMeta({ publishCounter: publication.record.n })
+  // Pakete giren öne çıkan seçimler artık üyelere açıktır: kaldırılamaz olarak işaretlenir.
+  if (draft.highlightIds.length > 0) await sources.markHighlightsPublished(draft.highlightIds, now)
   return publication
 }
 

@@ -195,6 +195,11 @@ export interface Highlight {
   percent: number
   /** Eklenme anındaki güvenilirlik seviyesi */
   reliability?: ReliabilityLevel
+  /**
+   * Seçimin üye paketiyle ilk yayınlandığı an (ISO). Yayınlanan seçim, maç başlamamış olsa da
+   * kaldırılamaz: üyelerin gördüğü seçim sonradan sessizce kaybolmaz.
+   */
+  publishedAt?: string
 }
 
 /** Yapıştırılan lig tablosundan saklanan satır (yalnızca gösterim içindir) */

@@ -2,13 +2,14 @@ import { readFileSync } from 'node:fs'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_MEMBER_TEXTS, normalizeMemberTexts } from '../../config/memberTexts'
 import { MEMBER_SITE_URL } from '../../config/member'
-import type { Match } from '../../types'
+import type { Highlight, Match } from '../../types'
 import { shiftDate } from '../../utils/format'
 import { assembleBackup } from '../data/backupFormat'
 import type { MemberAdminRepo } from '../data/types'
-import { DAY, dayMatches, LEAGUE_TABLES, MARKET_LIMIT, MATCHES, PICKS, PREVIOUS_DAY, RESULTS, SHARED, THRESHOLDS } from '../member/__fixtures__/rawData'
+import { DAY, dayMatches, HIGHLIGHTS, LEAGUE_TABLES, MARKET_LIMIT, MATCHES, PICKS, PREVIOUS_DAY, RESULTS, SHARED, THRESHOLDS } from '../member/__fixtures__/rawData'
 import { generatePassword, MemberAccessError, openEnvelope, openWithKeys, PASSWORD_ALPHABET, type MemberKeys } from '../member/crypto'
 import type { MemberPayload } from '../member/payload'
+import { markPublished, removeHighlight } from '../highlights/highlights'
 import { assertMemberPayload } from '../member/schema'
 import { addMembers, backupMemberKeys, previewPublication, publish, removeMemberByName, renewMemberPassword, restoreMemberKeys, saveMemberTexts } from './actions'
 import { checkPassphrase, KEY_BACKUP_FORMAT, KeyBackupError, openKeyBackup, parseKeyBackup, sealKeyBackup, type KeyBackupFile } from './keyBackup'
@@ -49,11 +50,31 @@ function memoryRepo(): MemberAdminRepo & { state: { members: Map<string, MemberR
   }
 }
 
-const sources = (matches: Match[] = MATCHES): PublishSources => ({
+/** Öne çıkan seçimleri de olan kaynak; işaretleme, uygulamadaki depo gibi kayıtları yerinde günceller */
+function sourcesWithHighlights(matches: Match[] = MATCHES, initial: Highlight[] = HIGHLIGHTS): PublishSources & { highlights: Highlight[] } {
+  const store = {
+    ...sources(matches),
+    highlights: initial.map((h) => ({ ...h })),
+    listHighlightsByDate: async (date: string) => store.highlights.filter((h) => h.date === date),
+    markHighlightsPublished: async (ids: string[], publishedAt: string) => {
+      const changed = markPublished(store.highlights, ids, publishedAt)
+      store.highlights = store.highlights.map((h) => changed.find((c) => c.id === h.id) ?? h)
+    },
+  }
+  return store
+}
+
+function sources(matches: Match[] = MATCHES): PublishSources {
+  return sourcesBase(matches)
+}
+
+const sourcesBase = (matches: Match[]): PublishSources => ({
   listMatchesByDate: async (date) => matches.filter((m) => m.date === date),
   listResultsByMatchIds: async (ids) => RESULTS.filter((r) => ids.includes(r.matchId)),
   listPicks: async () => PICKS,
   listShared: async () => SHARED,
+  listHighlightsByDate: async () => [],
+  markHighlightsPublished: async () => undefined,
   listLeagueTables: async () => LEAGUE_TABLES,
   listAliases: async () => [],
   getThresholds: async () => THRESHOLDS,
@@ -201,6 +222,68 @@ describe('üye ekleme', () => {
       expect(itemsOf(draft.payload)[0]).toBe(0)
       // Hiç veri yokken de: yalnızca seçilen gün.
       expect(datesOf((await previewPublication(memoryRepo(), sources([]), DAY, T1)).payload)).toEqual([DAY])
+    })
+  })
+
+  describe('günün öne çıkanları', () => {
+    const repoWithMembers = async () => {
+      const r = memoryRepo()
+      await addMembers(r, ['zeynep'], T0)
+      return r
+    }
+
+    it('önizleme: seçimler özete girer, hiçbir şey işaretlenmez', async () => {
+      const store = sourcesWithHighlights()
+      const draft = await previewPublication(memoryRepo(), store, DAY, T1)
+      expect(summarizePayload(draft.payload).days.map((d) => [d.date, d.highlights])).toEqual([
+        [DAY, HIGHLIGHTS.filter((h) => h.date === DAY).length],
+        [PREVIOUS_DAY, HIGHLIGHTS.filter((h) => h.date === PREVIOUS_DAY).length],
+      ])
+      expect([...draft.highlightIds].sort()).toEqual(HIGHLIGHTS.map((h) => h.id).sort())
+      expect(store.highlights.every((h) => h.publishedAt === undefined)).toBe(true)
+      expect(scanForLeaks(draft.payload, draft.rawMatches).problems).toEqual([])
+    })
+
+    it('yayın: pakete giren seçimler yayınlandı olur ve artık kaldırılamaz; pakette yüzde yok', async () => {
+      const r = await repoWithMembers()
+      const store = sourcesWithHighlights()
+      // Yayından önce (maç başlamadan) kaldırılabilir.
+      expect(removeHighlight(store.highlights, HIGHLIGHTS[0].id, new Date('2026-10-05T06:30:00.000Z')).ok).toBe(true)
+      const publication = await publish(r, store, DAY, T1)
+      expect(publication.summary.days[0].highlights).toBe(HIGHLIGHTS.filter((h) => h.date === DAY).length)
+      expect(store.highlights.map((h) => h.publishedAt)).toEqual(HIGHLIGHTS.map(() => T1))
+      for (const record of store.highlights) expect(removeHighlight(store.highlights, record.id, new Date('2026-10-05T06:30:00.000Z'))).toEqual({ ok: false, reason: 'published' })
+      // İkinci yayın ilk yayın anını değiştirmez.
+      await publish(r, store, DAY, T2)
+      expect(store.highlights.every((h) => h.publishedAt === T1)).toBe(true)
+    }, SLOW)
+
+    it('yayın başarısızsa (aktif üye yok) hiçbir seçim işaretlenmez', async () => {
+      const store = sourcesWithHighlights()
+      expect(((await rejection(publish(memoryRepo(), store, DAY, T1))) as PublishError).kind).toBe('no-members')
+      expect(store.highlights.every((h) => h.publishedAt === undefined)).toBe(true)
+    })
+
+    it('önerisi olmayan önceki gün, öne çıkanı varsa pakete girer; ikisi de yoksa girmez', async () => {
+      // 3 gün önce: maç var ama hiçbir listeye girmiyor; yalnızca bir öne çıkan seçimi var.
+      const date = shiftDate(DAY, -3)
+      const bare: Match[] = dayMatches(PREVIOUS_DAY).map((m) => ({ ...m, id: m.id.replace(PREVIOUS_DAY, date), date, stats: {} }))
+      const selection: Highlight = { ...HIGHLIGHTS[0], id: `${date}|${bare[0].id}|over25`, date, matchId: bare[0].id, home: bare[0].home, away: bare[0].away }
+      const withSelection = await previewPublication(memoryRepo(), sourcesWithHighlights([...dayMatches(DAY), ...bare], [selection]), DAY, T1)
+      expect(withSelection.payload.days.map((d) => [d.date, d.lists.reduce((n, l) => n + l.items.length, 0) > 0, d.highlights!.length])).toEqual([
+        [DAY, true, 0],
+        [date, false, 1],
+      ])
+      expect(withSelection.highlightIds).toEqual([selection.id])
+      const without = await previewPublication(memoryRepo(), sourcesWithHighlights([...dayMatches(DAY), ...bare], []), DAY, T1)
+      expect(without.payload.days.map((d) => d.date)).toEqual([DAY])
+    })
+
+    it('7 günlük pencerenin dışındaki seçim pakete girmez ve işaretlenmez', async () => {
+      const old: Highlight = { ...HIGHLIGHTS[0], id: 'eski', date: shiftDate(DAY, -7) }
+      const draft = await previewPublication(memoryRepo(), sourcesWithHighlights(MATCHES, [...HIGHLIGHTS, old]), DAY, T1)
+      expect(draft.highlightIds).not.toContain('eski')
+      expect(draft.highlightIds).toHaveLength(HIGHLIGHTS.length)
     })
   })
 

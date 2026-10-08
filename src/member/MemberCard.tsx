@@ -22,14 +22,14 @@ const RELIABILITY_TONE: Record<ReliabilityLevel, string> = {
 }
 
 // Sonuç rozeti: dolu zemin, belirgin yeşil / kırmızı.
-const OUTCOME_TONE: Record<PickOutcome, string> = {
+export const OUTCOME_TONE: Record<PickOutcome, string> = {
   won: 'border-[#22c55e] bg-[#22c55e] text-navy-950',
   lost: 'border-[#dc2626] bg-[#dc2626] text-white',
   void: 'border-navy-500 bg-navy-600 text-muted',
   pending: 'border-navy-500 bg-navy-600 text-muted',
 }
 
-const BADGE = 'inline-flex max-w-full items-center gap-x-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold'
+export const BADGE = 'inline-flex max-w-full items-center gap-x-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold'
 
 function Standing({ side, standing }: { side: string; standing: MemberStanding | null }) {
   if (!standing) return null

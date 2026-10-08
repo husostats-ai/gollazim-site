@@ -1,9 +1,12 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
+import { isCategoryId } from '../../config/categories'
 import { DEFAULT_MEMBER_TEXTS } from '../../config/memberTexts'
+import type { Highlight } from '../../types'
 import { toAppDateTime } from '../../utils/date'
 import { isBackupFile } from '../data/backupFormat'
+import { highlightId, normalizeHighlights } from '../highlights/highlights'
 import { deriveMemberKeys, fromBase64, generatePassword, newSiteSalt, openEnvelope, randomBytes, sealPayload, toBase64, type MemberKeys } from './crypto'
 import { draftPublication } from '../memberAdmin/publish'
 
@@ -14,7 +17,7 @@ import { draftPublication } from '../memberAdmin/publish'
 //
 // Çıktı (samples/ repoya girmez): paket.json ve giris.json (test kullanıcısının adı,
 // şifresi ve site tuzu; sonraki çalıştırmalarda aynı kullanıcı kullanılır).
-// İsteğe bağlı: UYE_N (yayın no), UYE_AT (yayın anı, ISO), UYE_DOSYA (paket dosya adı),
+// İsteğe bağlı: UYE_ONE_CIKAN (gün başına sentetik öne çıkan sayısı), UYE_N (yayın no), UYE_AT (yayın anı, ISO), UYE_DOSYA (paket dosya adı),
 // UYE_CIKAR=1 (test kullanıcısı pakete eklenmez: erişimi kaldırılmış üye denemesi).
 
 it.runIf(process.env.UYE_ORNEK && process.env.UYE_BACKUP)(
@@ -33,13 +36,28 @@ it.runIf(process.env.UYE_ORNEK && process.env.UYE_BACKUP)(
     const siteSalt = fromBase64(login.siteSalt, 'siteSalt', 16)
 
     const day = toAppDateTime(new Date(backup.exportedAt)).date
-    // Admin'deki "Yayınla" ile aynı kurucu: seçilen gün + önerisi olan önceki 6 gün.
+    // Yedekteki öne çıkan seçimler; UYE_ONE_CIKAN=N verilirse ayrıca her günün dondurulmuş
+    // önerilerinden ilk N tanesi sentetik seçim olarak eklenir (yedekte seçim yokken denemek için).
+    const extra = Number(process.env.UYE_ONE_CIKAN ?? 0)
+    const synthetic: Highlight[] = [...new Set(backup.picks.map((p) => p.date))].flatMap((date) =>
+      backup.picks
+        .filter((p) => p.date === date)
+        .slice(0, extra)
+        .flatMap((p): Highlight[] => {
+          const match = backup.matches.find((m) => m.id === p.matchId)
+          return match?.time ? [{ id: highlightId(date, p.matchId, p.categoryId), date, matchId: p.matchId, categoryId: p.categoryId, addedAt: `${date}T03:00:00.000Z`, home: match.home, away: match.away, time: match.time, ...(match.league !== undefined && { league: match.league }), percent: p.percent }] : []
+        }),
+    )
+    const highlights = [...normalizeHighlights(backup.highlights, isCategoryId), ...synthetic]
+    // Admin'deki "Yayınla" ile aynı kurucu: seçilen gün + önerisi ya da öne çıkanı olan önceki 6 gün.
     const { payload } = await draftPublication(
       {
         listMatchesByDate: async (date) => backup.matches.filter((m) => m.date === date),
         listResultsByMatchIds: async (ids) => backup.results.filter((r) => ids.includes(r.matchId)),
         listPicks: async () => backup.picks,
         listShared: async () => backup.sharedPicks ?? [],
+        listHighlightsByDate: async (date) => highlights.filter((h) => h.date === date),
+        markHighlightsPublished: async () => undefined,
         listLeagueTables: async () => backup.leagueTables ?? [],
         listAliases: async () => backup.teamAliases ?? [],
         getThresholds: async () => backup.thresholds,

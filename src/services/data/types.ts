@@ -100,6 +100,8 @@ export interface HighlightsRepo {
   put(record: Highlight): Promise<void>
   /** Kaydı siler (kilitlenmeden önce kaldırılan seçim silinmiş sayılır) */
   remove(id: string): Promise<void>
+  /** Verilen seçimleri yayınlandı olarak işaretler; daha önce yayınlanmış olanın ilk yayın anı korunur */
+  markPublished(ids: string[], publishedAt: string): Promise<void>
 }
 
 export interface SettingsRepo {

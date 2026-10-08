@@ -1,7 +1,9 @@
 import { COLUMN_ALIASES, TEXT_FIELDS, type FieldKey } from '../../../config/columnAliases'
 import { defaultThresholds } from '../../../config/categories'
-import type { LeagueTable, Match, MatchResult, Pick, SharedPick, TeamAlias } from '../../../types'
+import type { Highlight, LeagueTable, Match, MatchResult, Pick, SharedPick, TeamAlias } from '../../../types'
 import { importCsv } from '../../csv/importer'
+import { addHighlight } from '../../highlights/highlights'
+import { highlightInputOf } from '../../memberAdmin/publish'
 import { buildPicksForResult } from '../../results/freeze'
 import { recordShare } from '../../story/shared'
 import type { MemberPayloadInput } from '../payload'
@@ -292,6 +294,25 @@ export const PICKS: Pick[] = RESULTS.flatMap((r) => {
 
 export const SHARED: SharedPick[] = recordShare([], { date: DAY, categoryId: 'over25', matches: [byHome('Kuzey Yıldızı'), byHome('Doğu Gençlik')], now: PUBLISHED_AT })
 
+/**
+ * Öne çıkan seçimler (uygulamanın kendi ekleme koduyla, maçlar başlamadan önce). Kayıttaki yüzde
+ * (HIGHLIGHT_PERCENT) pakette hiçbir yerde geçmeyen bir değerdir: görünürse kayıt sızmış demektir.
+ */
+export const HIGHLIGHT_PERCENT = 43
+const highlight = (home: string, categoryId: Highlight['categoryId'], now: string): Highlight => {
+  const added = addHighlight([], { match: byHome(home), categoryId, percent: HIGHLIGHT_PERCENT, reliability: 'unmeasured' }, new Date(now))
+  if (!added.ok) throw new Error(`öne çıkan eklenemedi: ${home} (${added.reason})`)
+  return added.record
+}
+export const HIGHLIGHTS: Highlight[] = [
+  highlight('Kuzey Yıldızı', 'over25', '2026-10-05T06:00:00.000Z'), // 3-1: tuttu
+  highlight('Doğu Gençlik', 'over25', '2026-10-05T06:01:00.000Z'), // 0-0: tutmadı
+  highlight('İç Anadolu FK', 'over25', '2026-10-05T06:02:00.000Z'), // skor yok: bekliyor
+  highlight('Kuzey Yıldızı', 'corners85', '2026-10-05T06:03:00.000Z'), // korner 12: tuttu
+  highlight('Dünkü Ev', 'btts', '2026-10-04T06:00:00.000Z'), // 2-2: tuttu
+]
+export const dayHighlights = (date: string): Highlight[] => HIGHLIGHTS.filter((h) => h.date === date)
+
 export const LEAGUE_TABLES: LeagueTable[] = [
   {
     id: LEAGUE,
@@ -312,7 +333,7 @@ export const memberInput = (overrides: Partial<MemberPayloadInput> = {}): Member
   texts: { disclaimer: 'Bu bir istatistik taramasıdır; bahis tavsiyesi değildir ve sonuç garantisi vermez. 18+', account: 'Hesap kişiye özeldir, paylaşılamaz.' },
   thresholds: THRESHOLDS,
   marketConflictLimit: MARKET_LIMIT,
-  days: [DAY, PREVIOUS_DAY].map((date) => ({ date, matches: dayMatches(date), results: RESULTS.filter((r) => dayMatches(date).some((m) => m.id === r.matchId)) })),
+  days: [DAY, PREVIOUS_DAY].map((date) => ({ date, matches: dayMatches(date), results: RESULTS.filter((r) => dayMatches(date).some((m) => m.id === r.matchId)), highlights: dayHighlights(date).map(highlightInputOf) })),
   leagueTables: LEAGUE_TABLES,
   teamAliases: TEAM_ALIASES,
   picks: PICKS,

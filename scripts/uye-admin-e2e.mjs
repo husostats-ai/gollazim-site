@@ -142,7 +142,12 @@ async function memberLogin(browser, username, password) {
   await page.type(sel('member-password'), password)
   await page.keyboard.press('Enter')
   await page.waitForSelector(`${sel('member-cards')}, ${sel('member-error')}`, { timeout: 30000 })
-  const result = (await page.$(sel('member-cards'))) ? `ok:${await text(page, 'member-publish-no')}|${await text(page, 'member-disclaimer')}` : `hata:${await text(page, 'member-error')}`
+  // Öne çıkanlar kutusu (varsa): satır sayısı ve kutuda yüzde işareti geçip geçmediği
+  const highlights = await page.evaluate(() => {
+    const box = document.querySelector('[data-testid="member-highlights"]')
+    return box ? `${box.querySelectorAll('[data-testid="member-highlight"]').length}:${box.innerText.includes('%') ? 'yüzde-var' : 'yüzde-yok'}:${box.innerText.includes('deneme') ? 'deneme' : 'not-yok'}` : 'yok'
+  })
+  const result = (await page.$(sel('member-cards'))) ? `ok:${await text(page, 'member-publish-no')}|${await text(page, 'member-disclaimer')}|öne-çıkan=${highlights}` : `hata:${await text(page, 'member-error')}`
   await page.close()
   return result
 }
@@ -317,15 +322,64 @@ try {
     published = target
     return { downloaded, result: await text(page, 'publish-result') }
   }
+  // Öne çıkan seçim: örnek maçlar geçmişte olduğu için düğmeyle eklenemez; kayıt doğrudan
+  // veritabanına yazılır (yayın günü, saati olan bir maç). Yüzde ve güvenilirlik kayıtta VAR.
+  const publishDay = await page.$eval(sel('publish-day'), (el) => el.value)
+  const seeded = await page.evaluate(
+    (day) =>
+      new Promise((done, fail) => {
+        const open = indexedDB.open('gollazim')
+        open.onerror = () => fail(open.error)
+        open.onsuccess = () => {
+          const db = open.result
+          db.transaction('matches').objectStore('matches').getAll().onsuccess = (e) => {
+            const match = e.target.result.find((m) => m.date === day && m.time)
+            const record = { id: `${day}|${match.id}|over25`, date: day, matchId: match.id, categoryId: 'over25', addedAt: new Date().toISOString(), home: match.home, away: match.away, time: match.time, percent: 87, reliability: 'low' }
+            const tx = db.transaction('highlights', 'readwrite')
+            tx.objectStore('highlights').put(record)
+            tx.oncomplete = () => {
+              db.close()
+              done(record)
+            }
+          }
+        }
+      }),
+    publishDay,
+  )
+  await page.reload({ waitUntil: 'networkidle0' })
+  await page.waitForFunction((s) => document.querySelector(s)?.textContent.includes('1 öne çıkan'), { timeout: 20000 }, sel('publish-summary'))
+  step('yayın özeti: gün başına öne çıkan sayısı', (await text(page, 'publish-summary')).includes('1 öne çıkan'), `${publishDay}: ${seeded.home} – ${seeded.away}`)
+  const order = await text(page, 'publish-order')
+  step('yayın kartında sıra notu: önce uye-yayinla, sonra yayinla', order.indexOf('npm run uye-yayinla') > 0 && order.indexOf('npm run uye-yayinla') < order.indexOf('npm run yayinla'), order.slice(0, 90))
+  await tap(page, 'publish-start')
+  const confirmText = await text(page, 'publish-highlights')
+  step('yayın onayı: "bu yayında N öne çıkan var, yayından sonra kaldırılamaz"', confirmText === 'Bu yayında 1 öne çıkan var; yayından sonra kaldırılamaz.' && !(await page.$eval(sel('publish-confirm'), (el) => el.disabled)), confirmText)
+  await page.$$eval('[data-testid="publish-confirm-box"] button', (els) => els[els.length - 1].click())
   const p1 = await publishNow('paket-1.json')
+  const afterPublish = await page.evaluate(
+    (id) =>
+      new Promise((done) => {
+        const open = indexedDB.open('gollazim')
+        open.onsuccess = () => {
+          const db = open.result
+          db.transaction('highlights').objectStore('highlights').get(id).onsuccess = (e) => {
+            db.close()
+            done(e.target.result)
+          }
+        }
+      }),
+    seeded.id,
+  )
+  step('yayından sonra seçim "yayınlandı" olarak işaretlendi', typeof afterPublish?.publishedAt === 'string' && afterPublish.percent === 87, afterPublish?.publishedAt)
   step('yayın 1: paket.json indirildi, "sızıntı denetimi geçti"', p1.downloaded === 'paket.json' && p1.result.includes('Sızıntı denetimi geçti') && p1.result.includes('Yayın no 1 · 3 üye'), p1.result.slice(0, 110))
   await shot(page, 'member-admin-publish', 'admin-yayinla')
   const envelope = JSON.parse(readFileSync(join(outDir, 'paket-1.json'), 'utf8'))
   const openPart = JSON.stringify({ ...envelope, ciphertext: '', slots: [] })
-  step('indirilen paket şifreli: açık kısımda içerik, kullanıcı adı yok; 64 yuva', envelope.format === 'gollazim-uye-paket' && envelope.slots.length === 64 && !/ali|veli|zeynep|percent|home/.test(openPart) && !readFileSync(join(outDir, 'paket-1.json'), 'utf8').includes('Cerezo'))
+  step('indirilen paket şifreli: açık kısımda içerik, kullanıcı adı yok; 64 yuva', envelope.format === 'gollazim-uye-paket' && envelope.slots.length === 64 && !/ali|veli|zeynep|percent|home|highlights/.test(openPart) && !readFileSync(join(outDir, 'paket-1.json'), 'utf8').includes('Cerezo'))
   for (const name of ['ali', 'veli', 'zeynep']) {
     const result = await memberLogin(browser, name, passwords[name])
     step(`üye girişi (yayın 1): ${name}`, result.startsWith('ok:Yayın no 1') && result.includes('E2E özel uyarı metni. 18+'), result.slice(0, 60))
+    step(`üye sayfası (yayın 1): öne çıkanlar kutusunda 1 satır, "deneme" notu var, yüzde yok: ${name}`, result.endsWith('öne-çıkan=1:yüzde-yok:deneme'), result.split('|').pop())
   }
 
   // D) ÇIKAR + YENİDEN YAYINLA

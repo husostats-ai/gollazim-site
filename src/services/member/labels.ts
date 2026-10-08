@@ -35,6 +35,14 @@ export const MEMBER_OUTCOMES: Record<PickOutcome, { mark: string; label: string 
   pending: { mark: '···', label: 'Bekliyor' },
 }
 
+/** "Günün öne çıkanları" kutusunun sabit metinleri (üye sayfası) */
+export const MEMBER_HIGHLIGHT_TEXTS = {
+  title: 'GÜNÜN ÖNE ÇIKANLARI',
+  /** Başlığın yanındaki küçük not: bölüm deneme aşamasındadır */
+  trial: 'deneme',
+  note: 'Bu bir istatistik taramasıdır; bahis tavsiyesi değildir.',
+} as const
+
 /** Skoru olmayan maç durumlarının etiketi; tamamlanan maçta skor gösterilir */
 export const MEMBER_STATUS_LABELS: Record<MatchStatus, string | null> = {
   pending: 'Devam ediyor / bekliyor',
