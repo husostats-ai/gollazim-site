@@ -5,19 +5,26 @@ import type { MemberItem, MemberMatch, MemberStanding } from '../services/member
 import type { PickOutcome } from '../types'
 import { categoryLabel as labelOf, isOverstated, percentKind } from './view'
 
+// Renkler düz onaltılık değerlerdir (Chrome < 111 oklch paletini çizemez) ve yalnızca bu kartta
+// kullanılır; admin kartının rozetleri ayrıdır.
+//
+// Güvenilirlik rozeti: yalnızca çerçeve, dolu zemin yok, kırmızı ve yeşil yok. Sonuç rozetiyle
+// (aşağıda) karışmasın diye bilerek daha soluktur. Düşük seviyenin turuncusu, "Model çelişkisi"
+// rozetinin dolu sarısından ayrıdır; ölçülemeyen seviyeler kesik çerçevelidir.
 const RELIABILITY_TONE: Record<ReliabilityLevel, string> = {
-  high: 'border-win-line bg-win-soft text-win',
-  medium: 'border-warn-line bg-warn-soft text-warn',
-  low: 'border-loss-line bg-loss-soft text-loss-text',
-  unknown: 'border-navy-500 bg-navy-600 text-muted',
-  unmeasured: 'border-navy-500 bg-navy-600 text-muted',
-  market: 'border-info-line bg-info-soft text-info',
-  'market-partial': 'border-info-line bg-info-soft text-info',
+  high: 'border-[#3b8fbf] text-[#7dd3fc]',
+  medium: 'border-[#64748b] text-[#cbd5e1]',
+  low: 'border-[#c2691f] text-[#fb923c]',
+  unknown: 'border-dashed border-[#5d7790] text-muted',
+  unmeasured: 'border-dashed border-[#5d7790] text-muted',
+  market: 'border-[#7c6fc4] text-[#c4b5fd]',
+  'market-partial': 'border-[#7c6fc4] text-[#c4b5fd]',
 }
 
+// Sonuç rozeti: dolu zemin, belirgin yeşil / kırmızı.
 const OUTCOME_TONE: Record<PickOutcome, string> = {
-  won: 'border-win-line bg-win-soft text-win',
-  lost: 'border-loss-line bg-loss-soft text-loss-text',
+  won: 'border-[#22c55e] bg-[#22c55e] text-navy-950',
+  lost: 'border-[#dc2626] bg-[#dc2626] text-white',
   void: 'border-navy-500 bg-navy-600 text-muted',
   pending: 'border-navy-500 bg-navy-600 text-muted',
 }
