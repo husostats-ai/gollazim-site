@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react'
 import { CATEGORIES } from '../config/categories'
+import { collectAiMatches } from '../services/ai/collect'
+import { analyzeDay } from '../services/analysis/engine'
 import { compareAnswers, LEVEL_LABELS, matchTitle, warningsText, type AiId, type Level, type MatchComparison, type TeamComparison, type TeamSide } from '../services/rawCompare/compare'
 import { parseAnswer, type H2HRow, type ParsedAnswer, type Venue } from '../services/rawCompare/parser'
+import { buildRawPrompts, PROMPT_V3_GROUP_SIZE } from '../services/rawCompare/promptV3'
 import { RATE_KEYS, RATE_LABELS, type Rate, type TeamRates, type TotalCheck } from '../services/rawCompare/rates'
 import { useApp } from '../state/AppContext'
 import { copyText } from '../utils/clipboard'
@@ -251,8 +254,57 @@ function Unparsed({ label, answer }: { label: string; answer: ParsedAnswer | nul
   )
 }
 
+/**
+ * "Prompt oluştur": seçili günün maçları için yapay zekâya yapıştırılacak ham veri promptu.
+ * Maç seçimi ve numaralar AI ANALİZİ sayfasındaki promptla aynıdır; hiçbir şey kaydedilmez.
+ */
+function PromptSection({ matches, thresholds, selectedDate }: Pick<ReturnType<typeof useApp>, 'matches' | 'thresholds' | 'selectedDate'>) {
+  const [shown, setShown] = useState<number | null>(null)
+  const [copied, setCopied] = useState<{ index: number; ok: boolean } | null>(null)
+  // AI ANALİZİ sayfasıyla aynı çağrı: aynı maçlar, aynı sıra, aynı numaralar.
+  const prompts = useMemo(() => (selectedDate ? buildRawPrompts(collectAiMatches(analyzeDay(matches, thresholds, 'percent')), formatPlainDate(selectedDate)) : []), [matches, thresholds, selectedDate])
+  const open = prompts.find((prompt) => prompt.index === shown) ?? null
+  const count = prompts.length > 0 ? prompts[prompts.length - 1].to : 0
+
+  return (
+    <section className="rounded-xl border border-navy-500 bg-navy-800 p-3" data-testid="raw-prompt">
+      <h3 className="text-sm font-extrabold tracking-wide">PROMPT OLUŞTUR</h3>
+      {prompts.length === 0 ? (
+        <p className="mt-1 text-xs text-muted" data-testid="raw-prompt-empty">
+          {selectedDate ? `${formatPlainDate(selectedDate)} için AI ANALİZİ listesinde maç yok; prompt üretilmedi.` : 'Gün seçili değil; prompt üretilmedi.'}
+        </p>
+      ) : (
+        <>
+          <p className="mt-1 text-xs text-muted" data-testid="raw-prompt-info">
+            {formatPlainDate(selectedDate!)} · {count} maç (AI ANALİZİ promptundaki maçlar ve numaralar)
+            {prompts.length > 1 && ` · ${PROMPT_V3_GROUP_SIZE}’erli ${prompts.length} prompt`}
+          </p>
+          <ul className="mt-2 space-y-1.5">
+            {prompts.map((prompt) => (
+              <li key={prompt.index} className="flex flex-wrap items-center gap-2">
+                <button type="button" aria-pressed={shown === prompt.index} onClick={() => setShown(shown === prompt.index ? null : prompt.index)} data-testid={`raw-prompt-show-${prompt.index}`} className={`${SECONDARY} ${shown === prompt.index ? 'border-brand text-brand' : ''}`}>
+                  Prompt {prompt.index}/{prompt.total}
+                </button>
+                <span className="text-xs text-muted">
+                  #{prompt.from}
+                  {prompt.to > prompt.from && `–#${prompt.to}`}
+                </span>
+                <button type="button" onClick={() => void copyText(prompt.text).then((ok) => setCopied({ index: prompt.index, ok }))} data-testid={`raw-prompt-copy-${prompt.index}`} className={SECONDARY}>
+                  Kopyala
+                </button>
+                {copied?.index === prompt.index && <span className={`text-xs font-semibold ${copied.ok ? 'text-win' : 'text-loss-text'}`}>{copied.ok ? '✓ Kopyalandı' : 'Kopyalanamadı; metni açıp elle kopyalayın'}</span>}
+              </li>
+            ))}
+          </ul>
+          {open && <textarea readOnly value={open.text} rows={12} spellCheck={false} onFocus={(e) => e.target.select()} data-testid="raw-prompt-text" className={`${INPUT} mt-2 font-mono text-xs text-white`} />}
+        </>
+      )}
+    </section>
+  )
+}
+
 export default function RawComparePanel() {
-  const { matches, analysis, selectedDate } = useApp()
+  const { matches, analysis, selectedDate, thresholds } = useApp()
   const [texts, setTexts] = useState<Record<AiId, string>>({ A: '', B: '' })
   const [names, setNames] = useState<Record<AiId, string>>({ A: 'AI A', B: 'AI B' })
   const [copied, setCopied] = useState<boolean | null>(null)
@@ -282,6 +334,10 @@ export default function RawComparePanel() {
           İki yapay zekânın ham maç verisi cevabını yapıştırın. Oranlar yalnızca LİG satırlarından sayılır; iki cevap birbiriyle ve seçili günün ({selectedDate ? formatPlainDate(selectedDate) : 'gün seçili değil'}) CSV önerileriyle karşılaştırılır. Hiçbir şey kaydedilmez; sayfa yenilenince metinler
           gider. Eksik veri “bilinmiyor” olarak görünür.
         </p>
+
+        <div className="mt-3">
+          <PromptSection matches={matches} thresholds={thresholds} selectedDate={selectedDate} />
+        </div>
 
         <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
           {AIS.map((ai) => (
