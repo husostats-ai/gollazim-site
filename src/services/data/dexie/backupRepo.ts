@@ -7,10 +7,11 @@ import { normalizeSelections } from '../../story/selection'
 import { normalizeShared } from '../../story/shared'
 import { normalizeAliases, normalizeLeagueTables } from '../../league/matching'
 import { normalizeHighlights } from '../../highlights/highlights'
+import { normalizeAiShares } from '../../ai/memberShare'
 
 export const backupRepo: BackupRepo = {
   async exportAll() {
-    const [uploads, matches, results, picks, thresholds, aiVerdicts, aiPrompts, storyTexts, marketConflictLimit, storySelections, sharedPicks, leagueTables, teamAliases, highlights] =
+    const [uploads, matches, results, picks, thresholds, aiVerdicts, aiPrompts, storyTexts, marketConflictLimit, storySelections, sharedPicks, leagueTables, teamAliases, highlights, aiShares] =
       await Promise.all([
       db.uploads.toArray(),
       db.matches.toArray(),
@@ -26,12 +27,13 @@ export const backupRepo: BackupRepo = {
       db.leagueTables.toArray(),
       db.teamAliases.toArray(),
       db.highlights.toArray(),
+      db.aiShares.toArray(),
     ])
-    return assembleBackup({ uploads, matches, results, picks, thresholds, aiVerdicts, aiPrompts, storyTexts, marketConflictLimit, storySelections, sharedPicks, leagueTables, teamAliases, highlights }, new Date())
+    return assembleBackup({ uploads, matches, results, picks, thresholds, aiVerdicts, aiPrompts, storyTexts, marketConflictLimit, storySelections, sharedPicks, leagueTables, teamAliases, highlights, aiShares }, new Date())
   },
 
   async importAll(backup) {
-    const tables = [db.uploads, db.matches, db.results, db.picks, db.settings, db.aiVerdicts, db.aiPrompts, db.storySelections, db.sharedPicks, db.leagueTables, db.teamAliases, db.highlights]
+    const tables = [db.uploads, db.matches, db.results, db.picks, db.settings, db.aiVerdicts, db.aiPrompts, db.storySelections, db.sharedPicks, db.leagueTables, db.teamAliases, db.highlights, db.aiShares]
     await db.transaction('rw', tables, async () => {
       // Son yedek zamanı bu tarayıcıya aittir: yedekten gelmez, içe aktarma da onu silmez.
       const lastBackup = await db.settings.get(LAST_BACKUP_KEY)
@@ -48,6 +50,7 @@ export const backupRepo: BackupRepo = {
         db.leagueTables.clear(),
         db.teamAliases.clear(),
         db.highlights.clear(),
+        db.aiShares.clear(),
       ])
       await db.uploads.bulkPut(backup.uploads)
       await db.matches.bulkPut(backup.matches)
@@ -68,6 +71,7 @@ export const backupRepo: BackupRepo = {
       await db.teamAliases.bulkPut(normalizeAliases(backup.teamAliases))
       // Seçimi olmayan eski yedeklerde öne çıkan gelmez.
       await db.highlights.bulkPut(normalizeHighlights(backup.highlights, isCategoryId))
+      await db.aiShares.bulkPut(normalizeAiShares(backup.aiShares))
     })
   },
 }

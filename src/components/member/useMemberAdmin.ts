@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { highlightsRepo, leagueRepo, matchesRepo, memberAdminRepo, picksRepo, resultsRepo, settingsRepo, sharedRepo } from '../../services/data'
+import { aiRepo, aiSharesRepo, highlightsRepo, leagueRepo, matchesRepo, memberAdminRepo, picksRepo, resultsRepo, settingsRepo, sharedRepo } from '../../services/data'
 import type { PublishSources } from '../../services/memberAdmin/publish'
+import { recordAiShares } from '../../services/ai/memberShare'
 import type { MemberMeta, MemberRecord, PublicationRecord } from '../../services/memberAdmin/types'
 
 export interface MemberAdminData {
@@ -37,6 +38,8 @@ export const publishSources: PublishSources = {
   listShared: () => sharedRepo.listAll(),
   listHighlightsByDate: (date) => highlightsRepo.listByDate(date),
   markHighlightsPublished: (ids, publishedAt) => highlightsRepo.markPublished(ids, publishedAt),
+  listAiVerdictsByDate: (date) => aiRepo.listVerdictsByDate(date),
+  recordAiShares: async (sent, n, publishedAt) => aiSharesRepo.putMany(recordAiShares(await aiSharesRepo.getMany(sent.map((s) => s.matchId)), sent, n, publishedAt)),
   listLeagueTables: () => leagueRepo.listTables(),
   listAliases: () => leagueRepo.listAliases(),
   getThresholds: () => settingsRepo.getThresholds(),

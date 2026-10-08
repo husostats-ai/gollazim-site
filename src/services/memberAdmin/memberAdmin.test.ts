@@ -2,11 +2,12 @@ import { readFileSync } from 'node:fs'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_MEMBER_TEXTS, normalizeMemberTexts } from '../../config/memberTexts'
 import { MEMBER_SITE_URL } from '../../config/member'
-import type { Highlight, Match } from '../../types'
+import type { AiShare, AiVerdict, Highlight, Match } from '../../types'
+import { recordAiShares } from '../ai/memberShare'
 import { shiftDate } from '../../utils/format'
 import { assembleBackup } from '../data/backupFormat'
 import type { MemberAdminRepo } from '../data/types'
-import { DAY, dayMatches, HIGHLIGHTS, LEAGUE_TABLES, MARKET_LIMIT, MATCHES, PICKS, PREVIOUS_DAY, RESULTS, SHARED, THRESHOLDS } from '../member/__fixtures__/rawData'
+import { AI_REASON_CANARY, AI_VERDICTS, DAY, dayMatches, HIGHLIGHTS, LEAGUE_TABLES, MARKET_LIMIT, MATCHES, PICKS, PREVIOUS_DAY, RESULTS, SHARED, THRESHOLDS } from '../member/__fixtures__/rawData'
 import { generatePassword, MemberAccessError, openEnvelope, openWithKeys, PASSWORD_ALPHABET, type MemberKeys } from '../member/crypto'
 import type { MemberPayload } from '../member/payload'
 import { markPublished, removeHighlight } from '../highlights/highlights'
@@ -75,6 +76,8 @@ const sourcesBase = (matches: Match[]): PublishSources => ({
   listShared: async () => SHARED,
   listHighlightsByDate: async () => [],
   markHighlightsPublished: async () => undefined,
+  listAiVerdictsByDate: async () => [],
+  recordAiShares: async () => undefined,
   listLeagueTables: async () => LEAGUE_TABLES,
   listAliases: async () => [],
   getThresholds: async () => THRESHOLDS,
@@ -285,6 +288,84 @@ describe('üye ekleme', () => {
       expect(draft.highlightIds).not.toContain('eski')
       expect(draft.highlightIds).toHaveLength(HIGHLIGHTS.length)
     })
+  })
+
+  describe('"AI öneri güveni" satırı', () => {
+    /** Yapay zekâ kararları da olan kaynak; kayıt, uygulamadaki depo gibi maç başına tek satır tutar */
+    const sourcesWithAi = (verdicts: AiVerdict[] = AI_VERDICTS): PublishSources & { shares: AiShare[] } => {
+      const store = {
+        ...sources(),
+        shares: [] as AiShare[],
+        listAiVerdictsByDate: async (date: string) => verdicts.filter((v) => v.date === date),
+        recordAiShares: async (sent: Parameters<PublishSources['recordAiShares']>[0], n: number, publishedAt: string) => {
+          const next = recordAiShares(store.shares, sent, n, publishedAt)
+          store.shares = [...store.shares.filter((s) => !next.some((x) => x.id === s.id)), ...next]
+        },
+      }
+      return store
+    }
+    const idOf = (home: string) => MATCHES.find((m) => m.home === home)!.id
+    const repoWithMembers = async () => {
+      const r = memoryRepo()
+      await addMembers(r, ['zeynep'], T0)
+      return r
+    }
+
+    it('önizleme: gidecek satırlar özete girer, hiçbir şey kaydedilmez', async () => {
+      const store = sourcesWithAi()
+      const draft = await previewPublication(memoryRepo(), store, DAY, T1)
+      expect(summarizePayload(draft.payload).days.map((d) => [d.date, d.ai])).toEqual([[DAY, 2], [PREVIOUS_DAY, 0]])
+      expect(draft.aiShares.map((s) => s.matchId).sort()).toEqual([idOf('Kuzey Yıldızı'), idOf('Doğu Gençlik')].sort())
+      expect(store.shares).toEqual([])
+      expect(scanForLeaks(draft.payload, draft.rawMatches).problems).toEqual([])
+    })
+
+    it('yayın: şifreli paket açılınca satır yalnızca iki maçta; gerekçe ve skor tahmini yok; gönderilenler kaydedilir', async () => {
+      const r = memoryRepo()
+      const [login] = await addMembers(r, ['zeynep'], T0)
+      const store = sourcesWithAi()
+      const publication = await publish(r, store, DAY, T1)
+      expect(publication.text).not.toContain(AI_REASON_CANARY)
+      const opened = (await openEnvelope(publication.text, login.username, login.password)).payload
+      const plain = JSON.stringify(opened)
+      expect(opened.v).toBe(6)
+      expect(opened.days[0].matches.filter((m) => m.ai).map((m) => m.home).sort()).toEqual(['Doğu Gençlik', 'Kuzey Yıldızı'])
+      for (const forbidden of [AI_REASON_CANARY, 'kanarya-risk', 'reason', 'risk', 'savedAt', '"score":{', '7-6']) expect(plain).not.toContain(forbidden)
+      expect(store.shares.map((s) => [s.matchId, s.date, s.firstN, s.lastN, s.count, s.decision]).sort()).toEqual(
+        [
+          [idOf('Kuzey Yıldızı'), DAY, 1, 1, 3, 'medium'],
+          [idOf('Doğu Gençlik'), DAY, 1, 1, 2, 'strong'],
+        ].sort(),
+      )
+      expect(store.shares.every((s) => s.firstAt === T1 && s.lastAt === T1 && s.votes.length === 3)).toBe(true)
+      // Kayıtta da yalnızca karar seviyeleri var.
+      expect(JSON.stringify(store.shares)).not.toContain('kanarya')
+      // İkinci yayın: ilk gönderim korunur, son gönderim güncellenir; maç başına tek kayıt.
+      await publish(r, store, DAY, T2)
+      expect(store.shares).toHaveLength(2)
+      expect(store.shares.every((s) => s.firstN === 1 && s.firstAt === T1 && s.lastN === 2 && s.lastAt === T2)).toBe(true)
+    }, SLOW)
+
+    it('karar sonradan değişirse satır sonraki yayında gitmez; eski kayıt yerinde kalır', async () => {
+      const r = await repoWithMembers()
+      const store = sourcesWithAi()
+      await publish(r, store, DAY, T1)
+      const changed = sourcesWithAi(AI_VERDICTS.map((v) => (v.matchId === idOf('Kuzey Yıldızı') && v.provider === 'claude' ? { ...v, decision: 'reject' as const } : v)))
+      changed.shares = store.shares
+      const second = await publish(r, changed, DAY, T2)
+      expect(second.summary.days[0].ai).toBe(1)
+      const kuzey = changed.shares.find((s) => s.matchId === idOf('Kuzey Yıldızı'))!
+      expect([kuzey.firstN, kuzey.lastN]).toEqual([1, 1])
+      expect(changed.shares.find((s) => s.matchId === idOf('Doğu Gençlik'))!.lastN).toBe(2)
+    }, SLOW)
+
+    it('karar yoksa paket satırsız kurulur ve kayıt yazılmaz', async () => {
+      const r = await repoWithMembers()
+      const store = sourcesWithAi([])
+      const publication = await publish(r, store, DAY, T1)
+      expect(publication.summary.days.every((d) => d.ai === 0)).toBe(true)
+      expect(store.shares).toEqual([])
+    }, SLOW)
   })
 
   it('yayın numarası artar ve geçmişe yalnızca özet yazılır (içerik tutulmaz)', async () => {

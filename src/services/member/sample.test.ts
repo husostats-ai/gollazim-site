@@ -58,6 +58,8 @@ it.runIf(process.env.UYE_ORNEK && process.env.UYE_BACKUP)(
         listShared: async () => backup.sharedPicks ?? [],
         listHighlightsByDate: async (date) => highlights.filter((h) => h.date === date),
         markHighlightsPublished: async () => undefined,
+        listAiVerdictsByDate: async (date) => (backup.aiVerdicts ?? []).filter((v) => v.date === date),
+        recordAiShares: async () => undefined,
         listLeagueTables: async () => backup.leagueTables ?? [],
         listAliases: async () => backup.teamAliases ?? [],
         getThresholds: async () => backup.thresholds,

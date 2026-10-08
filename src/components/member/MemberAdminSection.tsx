@@ -109,7 +109,7 @@ export function IssuedBox({ issued, data, onClose, onDownloaded, onRepublish, bu
 
 export default function MemberAdminSection() {
   const data = useMemberAdminData()
-  const { dates, today, selectedDate, dataVersion, highlights, refresh } = useApp()
+  const { dates, today, selectedDate, dataVersion, highlights, aiVerdicts, refresh } = useApp()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [issued, setIssued] = useState<Issued | null>(null)
@@ -160,7 +160,7 @@ export default function MemberAdminSection() {
       cancelled = true
     }
     // Öne çıkan seçimler değişince de özet yenilenir.
-  }, [publishDay, version, dataVersion, highlights])
+  }, [publishDay, version, dataVersion, highlights, aiVerdicts])
 
   if (!data) return null
   const existing = data.members.map((m) => m.username)
@@ -170,6 +170,7 @@ export default function MemberAdminSection() {
   const passCheck = checkPassphrase(pass, pass2)
 
   const highlightCount = summary ? summary.days.reduce((sum, d) => sum + d.highlights, 0) : 0
+  const aiCount = summary ? summary.days.reduce((sum, d) => sum + d.ai, 0) : 0
   const incompatible = siteStatus?.level === 'incompatible'
 
   /** İşlemi çalıştırır; hata olursa gösterir. Aynı anda tek işlem yürür. */
@@ -445,7 +446,7 @@ export default function MemberAdminSection() {
           <ul className="mt-3 space-y-0.5 text-sm text-muted" data-testid="publish-summary">
             {summary.days.map((d) => (
               <li key={d.date}>
-                <span className="font-semibold text-white">{formatPlainDate(d.date)}:</span> {d.matches} maç · {d.items} öneri · {d.lists} dolu kategori · {d.highlights} öne çıkan
+                <span className="font-semibold text-white">{formatPlainDate(d.date)}:</span> {d.matches} maç · {d.items} öneri · {d.lists} dolu kategori · {d.highlights} öne çıkan · {d.ai} AI satırı
               </li>
             ))}
             <li>Paketin düz boyutu yaklaşık {kilobytes(summary.plainBytes)} (şifreli hâli bunun üçte biri kadar daha büyük olur)</li>
@@ -470,6 +471,11 @@ export default function MemberAdminSection() {
                 Bu yayında {highlightCount} öne çıkan var; yayından sonra kaldırılamaz.
               </p>
             )}
+            <p className="mt-1.5 text-sm text-muted" data-testid="publish-ai">
+              {aiCount > 0
+                ? `Bu yayında ${aiCount} maçın “AI öneri güveni” satırı üyelere gidiyor (yalnızca karar seviyeleri; gerekçe, risk ve skor tahmini gitmez).`
+                : 'Bu yayında “AI öneri güveni” satırı giden maç yok.'}
+            </p>
             {incompatible && (
               <p className="mt-1.5 text-sm font-bold text-loss-text" data-testid="publish-blocked">
                 Üye sitesi bu paketi açamıyor; önce üye sitesini güncelleyin ({MEMBER_SITE_UPDATE_HINT}).

@@ -1,7 +1,7 @@
 import type { ReliabilityLevel } from '../analysis/types'
 import type { MatchStatus, PickOutcome } from '../../types'
 import type { MemberErrorKind, SignOutReason } from './controller'
-import type { MemberConflict, MemberStanding } from './payload'
+import type { MemberAi, MemberAiProvider, MemberAiVote, MemberConflict, MemberStanding } from './payload'
 
 // Üye sayfasında gösterilen etiketler. Paket yalnızca türleri (seviye, çelişki türü)
 // taşır; metinler burada üretilir. Admin ekranındaki etiketlerden bilerek ayrıdır:
@@ -27,6 +27,13 @@ export const MEMBER_CONFLICT_LABELS: Record<MemberConflict, string> = {
   model: 'Model çelişkisi',
   hesap: 'Hesaplar çelişiyor',
 }
+
+/** "AI öneri güveni" satırı: üç yapay zekânın, maçın önerilerine duyduğu güven (maçın sonucu değil) */
+export const MEMBER_AI_TITLE = 'AI öneri güveni'
+export const MEMBER_AI_PROVIDER_LABELS: Record<MemberAiProvider, string> = { chatgpt: 'ChatGPT', gemini: 'Gemini', claude: 'Claude' }
+export const MEMBER_AI_LEVEL_LABELS: Record<MemberAiVote['level'], string> = { strong: 'Güçlü', medium: 'Orta', weak: 'Zayıf' }
+/** "3/3 · Orta", "2/3 · Güçlü": kaç yapay zekânın aynı seviyeyi verdiği; ortalama değildir */
+export const memberAiSummary = (ai: MemberAi): string => `${ai.count}/${ai.votes.length} · ${MEMBER_AI_LEVEL_LABELS[ai.level]}`
 
 export const STALE_TABLE_LABEL = '⚠ tablo eski'
 

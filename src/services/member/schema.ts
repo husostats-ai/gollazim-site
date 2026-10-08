@@ -18,6 +18,10 @@ export const MEMBER_KEYS = {
   dayV3: ['date', 'matches', 'lists'],
   highlight: ['home', 'away', 'league', 'time', 'categoryId', 'status', 'score', 'outcome'],
   match: ['home', 'away', 'league', 'time', 'status', 'score', 'homeStanding', 'awayStanding'],
+  /** Sürüm 6: maçın isteğe bağlı alanı ("AI öneri güveni" satırı); koşulu sağlamayan maçta bulunmaz */
+  matchOptional: ['ai'],
+  ai: ['votes', 'count', 'level'],
+  aiVote: ['who', 'level'],
   standing: ['rank', 'played', 'stale'],
   list: ['categoryId', 'items'],
   item: ['match', 'percent', 'model', 'conflict', 'stars', 'reliability', 'outcome', 'detail', 'others'],
@@ -52,6 +56,15 @@ const MAX_DAYS = 7
 export const SAMPLE_RANGE = { min: 2, max: 40 } as const
 export const SAMPLE_LEVEL_LIMITS = { medium: 8, high: 16 } as const
 const levelOfSample = (sample: number): string => (sample >= SAMPLE_LEVEL_LIMITS.high ? 'high' : sample >= SAMPLE_LEVEL_LIMITS.medium ? 'medium' : 'low')
+/**
+ * "AI öneri güveni" satırı. Üç yapay zekânın da kararı bulunur (sabit sırayla), hiçbiri "Eleme"
+ * değildir ve çoğunluk kararı Orta ya da Güçlüdür. Değerler admin tarafındaki yapay zekâ
+ * ayarlarıyla aynıdır; bu dosya üye sitesine girdiği için o ayarlar içe aktarılmaz, eşitlik
+ * testle denetlenir. Gerekçe, risk ve skor tahmini pakette YOKTUR.
+ */
+export const MEMBER_AI_PROVIDERS = ['chatgpt', 'gemini', 'claude'] as const
+export const MEMBER_AI_VOTE_LEVELS = ['strong', 'medium', 'weak'] as const
+export const MEMBER_AI_MAJORITY_LEVELS = ['strong', 'medium'] as const
 /** Bir günde pakete girebilecek en fazla öne çıkan seçim */
 const MAX_HIGHLIGHTS = 60
 const MAX_NAME = 120
@@ -168,13 +181,30 @@ function standing(value: unknown, path: string): void {
   if (typeof s.stale !== 'boolean') fail(`${path}.stale`, 'doğru/yanlış bekleniyor')
 }
 
+/** "AI öneri güveni" satırı: üç oy, "Eleme" yok, özet oylarla tutarlı, çoğunluk Orta ya da Güçlü */
+function aiRow(value: unknown, path: string, time: unknown): void {
+  const a = object(value, path, MEMBER_KEYS.ai)
+  if (time === null) fail(path, 'saati bilinmeyen maçta bulunamaz')
+  const votes = array(a.votes, `${path}.votes`, MEMBER_AI_PROVIDERS.length)
+  if (votes.length !== MEMBER_AI_PROVIDERS.length) fail(`${path}.votes`, `${MEMBER_AI_PROVIDERS.length} karar bekleniyor`)
+  const levels = votes.map((raw, i) => {
+    const q = `${path}.votes[${i}]`
+    const vote = object(raw, q, MEMBER_KEYS.aiVote)
+    if (vote.who !== MEMBER_AI_PROVIDERS[i]) fail(`${q}.who`, 'yapay zekâlar sabit sırada olmalı')
+    return oneOf(vote.level, `${q}.level`, MEMBER_AI_VOTE_LEVELS)
+  })
+  const level = oneOf(a.level, `${path}.level`, MEMBER_AI_MAJORITY_LEVELS)
+  const count = integer(a.count, `${path}.count`, 2, votes.length)
+  if (levels.filter((l) => l === level).length !== count) fail(`${path}.count`, 'kararlarla tutarlı olmalı')
+}
+
 function day(value: unknown, path: string, version: number): void {
   const d = object(value, path, version >= 4 ? MEMBER_KEYS.day : MEMBER_KEYS.dayV3)
   text(d.date, `${path}.date`, 10, DATE)
   const matches = array(d.matches, `${path}.matches`, CATEGORIES.length * MAX_MATCHES_PER_CATEGORY)
   matches.forEach((entry, i) => {
     const p = `${path}.matches[${i}]`
-    const m = object(entry, p, MEMBER_KEYS.match)
+    const m = object(entry, p, MEMBER_KEYS.match, version >= 6 ? MEMBER_KEYS.matchOptional : [])
     text(m.home, `${p}.home`, MAX_NAME)
     text(m.away, `${p}.away`, MAX_NAME)
     nullable(m.league, (v) => text(v, `${p}.league`, MAX_NAME))
@@ -183,6 +213,7 @@ function day(value: unknown, path: string, version: number): void {
     nullable(m.score, (v) => text(v, `${p}.score`, 20, SCORE))
     nullable(m.homeStanding, (v) => standing(v, `${p}.homeStanding`))
     nullable(m.awayStanding, (v) => standing(v, `${p}.awayStanding`))
+    if (m.ai !== undefined) aiRow(m.ai, `${p}.ai`, m.time)
   })
   if (version >= 4) {
     const seen = new Set<string>()
@@ -250,7 +281,7 @@ function day(value: unknown, path: string, version: number): void {
 /** Paketi şemaya karşı denetler; uymuyorsa MemberPayloadError fırlatır. */
 export function assertMemberPayload(value: unknown): asserts value is MemberPayload {
   const p = object(value, 'paket', MEMBER_KEYS.payload)
-  if (p.v !== 1 && p.v !== 2 && p.v !== 3 && p.v !== 4 && p.v !== 5) fail('paket.v', 'desteklenmeyen paket sürümü')
+  if (p.v !== 1 && p.v !== 2 && p.v !== 3 && p.v !== 4 && p.v !== 5 && p.v !== 6) fail('paket.v', 'desteklenmeyen paket sürümü')
   integer(p.n, 'paket.n', 1, COUNT_MAX)
   text(p.publishedAt, 'paket.publishedAt', 24, ISO)
   const texts = object(p.texts, 'paket.texts', MEMBER_KEYS.texts)

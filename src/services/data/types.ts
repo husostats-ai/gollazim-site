@@ -3,6 +3,7 @@ import type { StoryTexts } from '../../config/storyTexts'
 import type { CategoryId } from '../../config/categories'
 import type {
   AiPromptBatch,
+  AiShare,
   AiVerdict,
   BackupFile,
   Highlight,
@@ -102,6 +103,15 @@ export interface HighlightsRepo {
   remove(id: string): Promise<void>
   /** Verilen seçimleri yayınlandı olarak işaretler; daha önce yayınlanmış olanın ilk yayın anı korunur */
   markPublished(ids: string[], publishedAt: string): Promise<void>
+}
+
+/** "AI öneri güveni" satırı üyeye giden maçların kaydı. Yalnızca kayıttır; silme işlemi yoktur. */
+export interface AiSharesRepo {
+  listAll(): Promise<AiShare[]>
+  listByDate(date: string): Promise<AiShare[]>
+  /** Verilen kimliklerden kayıtlı olanlar */
+  getMany(ids: string[]): Promise<AiShare[]>
+  putMany(records: AiShare[]): Promise<void>
 }
 
 export interface SettingsRepo {

@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie'
 import { getCategory } from '../../../config/categories'
-import type { AiPromptBatch, AiVerdict, Highlight, LeagueTable, TeamAlias, Match, MatchResult, Pick, SharedPick, StorySelection, Upload } from '../../../types'
+import type { AiPromptBatch, AiShare, AiVerdict, Highlight, LeagueTable, TeamAlias, Match, MatchResult, Pick, SharedPick, StorySelection, Upload } from '../../../types'
 import { assessReliability } from '../../analysis/reliability'
 import type { MemberRecord, PublicationRecord } from '../../memberAdmin/types'
 
@@ -25,6 +25,7 @@ export const db = new Dexie('gollazim') as Dexie & {
   memberMeta: EntityTable<SettingRow, 'key'>
   publications: EntityTable<PublicationRecord, 'n'>
   highlights: EntityTable<Highlight, 'id'>
+  aiShares: EntityTable<AiShare, 'id'>
 }
 
 db.version(1).stores({
@@ -84,4 +85,9 @@ db.version(7).stores({
 // v8: "günün öne çıkanları" seçimleri (gün + maç + kategori). Mevcut tablolara dokunmaz.
 db.version(8).stores({
   highlights: 'id, date',
+})
+
+// v9: "AI öneri güveni" satırı üye paketiyle gönderilen maçların kaydı. Mevcut tablolara dokunmaz.
+db.version(9).stores({
+  aiShares: 'id, date',
 })

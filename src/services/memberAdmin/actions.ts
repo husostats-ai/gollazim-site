@@ -68,6 +68,8 @@ export async function publish(repo: MemberAdminRepo, sources: PublishSources, da
   await repo.patchMeta({ publishCounter: publication.record.n })
   // Pakete giren öne çıkan seçimler artık üyelere açıktır: kaldırılamaz olarak işaretlenir.
   if (draft.highlightIds.length > 0) await sources.markHighlightsPublished(draft.highlightIds, now)
+  // "AI öneri güveni" satırı üyeye giden maçlar kaydedilir (ileride isabet karşılaştırması için).
+  if (draft.aiShares.length > 0) await sources.recordAiShares(draft.aiShares, publication.record.n, now)
   return publication
 }
 
