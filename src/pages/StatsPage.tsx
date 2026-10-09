@@ -6,6 +6,7 @@ import DailyStoryPanel from '../components/stats/DailyStoryPanel'
 import ScoreStatsCard from '../components/stats/ScoreStatsCard'
 import StatsSummaryPanel from '../components/stats/StatsSummaryPanel'
 import GoalModelStatsCard from '../components/stats/GoalModelStatsCard'
+import HtScorelessCard from '../components/stats/HtScorelessCard'
 import MarketStatsCard from '../components/stats/MarketStatsCard'
 import LowSampleBadge from '../components/stats/LowSampleBadge'
 import RateBars from '../components/stats/RateBars'
@@ -19,6 +20,7 @@ import { buildCategoryAiStats, buildLegacyAiStats } from '../services/ai/aiStats
 import { aiRepo, matchesRepo, picksRepo, resultsRepo, sharedRepo } from '../services/data'
 import { buildStarStats, recomputedNote } from '../services/stats/starStats'
 import { SCOPE_LABELS, sharedPicksOnly, type StatsScope } from '../services/story/shared'
+import { buildHtScorelessStats } from '../services/stats/htScoreless'
 import { buildMainStats } from '../services/stats/mainStats'
 import { backfillMarket, buildMarketStats } from '../services/stats/marketStats'
 import { buildStats, LOW_SAMPLE_LIMIT, type Bucket } from '../services/stats/statsEngine'
@@ -99,6 +101,8 @@ export default function StatsPage() {
   const starStats = useMemo(() => buildStarStats(scopedPicks), [scopedPicks])
   /** En üstteki kart: yalnızca sabit ana kategoriler (config/mainCategories), seçili ölçüde */
   const main = useMemo(() => buildMainStats(scopedPicks), [scopedPicks])
+  /** İY 0.5 ÜST önerilip ilk yarısı 0-0 biten maçlarda 2. yarı; seçili ölçüde */
+  const htScoreless = useMemo(() => buildHtScorelessStats(scopedPicks, results), [scopedPicks, results])
   // Kategori bazlı kararlar ile eski maç geneli kararlar ayrı ölçülür; aynı orana karışmaz.
   const aiCategoryStats = useMemo(() => buildCategoryAiStats(picks ?? [], verdicts), [picks, verdicts])
   const aiLegacyStats = useMemo(() => buildLegacyAiStats(picks ?? [], verdicts), [picks, verdicts])
@@ -219,6 +223,14 @@ export default function StatsPage() {
               </TableToggle>
             </Card>
           </div>
+
+          <Card
+            title={`İY 0.5 ÜST TUTMADIĞINDA 2. YARI · ${scope === 'shared' ? 'Paylaşılan' : 'Tümü'}`}
+            testId="ht-scoreless-card"
+            note="İLK YARI 0.5 ÜST olarak dondurulmuş önerilerden ilk yarısı 0-0 biten maçlar."
+          >
+            <HtScorelessCard stats={htScoreless} />
+          </Card>
 
           {starStats.byCategory.length > 0 && (
             <Card title="YILDIZ SAYISINA GÖRE BAŞARI" note="Yıldız, önerinin dondurulduğu anda kartta görünen değerdir.">
