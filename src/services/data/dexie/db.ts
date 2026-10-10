@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie'
 import { getCategory } from '../../../config/categories'
-import type { AiPromptBatch, AiShare, AiVerdict, Highlight, LeagueTable, TeamAlias, Match, MatchResult, Pick, SharedPick, StorySelection, Upload } from '../../../types'
+import type { AiPromptBatch, AiShare, AiVerdict, Highlight, LeagueTable, TeamAlias, Match, MatchResult, Pick, SharedPick, StorySelection, StreakStep, Upload } from '../../../types'
 import { assessReliability } from '../../analysis/reliability'
 import type { MemberRecord, PublicationRecord } from '../../memberAdmin/types'
 
@@ -26,6 +26,7 @@ export const db = new Dexie('gollazim') as Dexie & {
   publications: EntityTable<PublicationRecord, 'n'>
   highlights: EntityTable<Highlight, 'id'>
   aiShares: EntityTable<AiShare, 'id'>
+  streakSteps: EntityTable<StreakStep, 'id'>
 }
 
 db.version(1).stores({
@@ -90,4 +91,9 @@ db.version(8).stores({
 // v9: "AI öneri güveni" satırı üye paketiyle gönderilen maçların kaydı. Mevcut tablolara dokunmaz.
 db.version(9).stores({
   aiShares: 'id, date',
+})
+
+// v10: "seri takibi" adımları (maç + kategori, sırayla). Mevcut tablolara dokunmaz.
+db.version(10).stores({
+  streakSteps: 'id, seq',
 })

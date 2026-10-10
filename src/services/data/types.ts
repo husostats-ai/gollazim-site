@@ -13,6 +13,7 @@ import type {
   Pick,
   SharedPick,
   StorySelection,
+  StreakStep,
   TeamAlias,
   Thresholds,
   Upload,
@@ -112,6 +113,19 @@ export interface AiSharesRepo {
   /** Verilen kimliklerden kayıtlı olanlar */
   getMany(ids: string[]): Promise<AiShare[]>
   putMany(records: AiShare[]): Promise<void>
+}
+
+/** "Seri takibi" adımları. Seriler tutulmaz; adımlardan türetilir. */
+export interface StreakRepo {
+  /** Tüm adımlar, sırayla */
+  listAll(): Promise<StreakStep[]>
+  putMany(records: StreakStep[]): Promise<void>
+  /** Kaydı siler (kilitlenmeden önce geri alınan adım silinmiş sayılır) */
+  remove(id: string): Promise<void>
+  /** Verilen adımları yayınlandı olarak işaretler; ilk yayın anları korunur */
+  markPublished(ids: string[], publishedAt: string): Promise<void>
+  /** Maçın günü ya da saati düzenlenince adımın görünümünü günceller */
+  syncSchedule(matchId: string, schedule: { date: string; time?: string | null }): Promise<void>
 }
 
 export interface SettingsRepo {

@@ -2,14 +2,14 @@ import type { ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 import { MEMBER_STALE_HOURS } from '../config/member'
 import type { MemberErrorKind } from '../services/member/controller'
-import { MEMBER_ERROR_TEXTS, STALE_DATA_TEXT } from '../services/member/labels'
+import { MEMBER_ERROR_TEXTS, MEMBER_STREAK_TEXTS, STALE_DATA_TEXT } from '../services/member/labels'
 import type { MemberPayload } from '../services/member/payload'
 import { isStale, updatedText } from './view'
 
 const tab = ({ isActive }: { isActive: boolean }) =>
   ['shrink-0 rounded-full px-3.5 py-2 text-xs font-bold tracking-wide whitespace-nowrap transition-colors', isActive ? 'bg-brand text-navy-950' : 'text-muted hover:bg-navy-700 hover:text-white'].join(' ')
 
-/** Üye sayfasının sade düzeni: logo, iki sekme, çıkış. Admin gezinmesi burada yoktur. */
+/** Üye sayfasının sade düzeni: logo, sekmeler, çıkış. Admin gezinmesi burada yoktur. */
 export function MemberFrame({ children, actions, nav }: { children: ReactNode; actions?: ReactNode; nav?: ReactNode }) {
   return (
     <div className="min-h-dvh" data-testid="member-frame">
@@ -59,6 +59,11 @@ export default function MemberShell({ payload, now, today, refreshError, onLogou
           <NavLink to={`${basePath}/istatistik`} className={tab}>
             İSTATİSTİK
           </NavLink>
+          {payload.streak && (
+            <NavLink to={`${basePath}/seri`} className={tab} data-testid="member-tab-streak">
+              {MEMBER_STREAK_TEXTS.tab}
+            </NavLink>
+          )}
         </>
       }
     >

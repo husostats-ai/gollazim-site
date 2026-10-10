@@ -109,7 +109,7 @@ export function IssuedBox({ issued, data, onClose, onDownloaded, onRepublish, bu
 
 export default function MemberAdminSection() {
   const data = useMemberAdminData()
-  const { dates, today, selectedDate, dataVersion, highlights, aiVerdicts, refresh } = useApp()
+  const { dates, today, selectedDate, dataVersion, highlights, aiVerdicts, streak, refresh } = useApp()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [issued, setIssued] = useState<Issued | null>(null)
@@ -160,7 +160,7 @@ export default function MemberAdminSection() {
       cancelled = true
     }
     // Öne çıkan seçimler değişince de özet yenilenir.
-  }, [publishDay, version, dataVersion, highlights, aiVerdicts])
+  }, [publishDay, version, dataVersion, highlights, aiVerdicts, streak])
 
   if (!data) return null
   const existing = data.members.map((m) => m.username)
@@ -449,6 +449,9 @@ export default function MemberAdminSection() {
                 <span className="font-semibold text-white">{formatPlainDate(d.date)}:</span> {d.matches} maç · {d.items} öneri · {d.lists} dolu kategori · {d.highlights} öne çıkan · {d.ai} AI satırı
               </li>
             ))}
+            <li data-testid="publish-summary-streak">
+              <span className="font-semibold text-white">Seri takibi:</span> aktif seride {summary.streak.steps} adım ({summary.streak.pending} bekleyen) · {summary.streak.past} geçmiş seri
+            </li>
             <li>Paketin düz boyutu yaklaşık {kilobytes(summary.plainBytes)} (şifreli hâli bunun üçte biri kadar daha büyük olur)</li>
           </ul>
         )}
@@ -469,6 +472,11 @@ export default function MemberAdminSection() {
             {highlightCount > 0 && (
               <p className="mt-1.5 rounded-lg border border-warn-line bg-warn-soft px-2.5 py-1.5 text-sm font-semibold text-warn" data-testid="publish-highlights">
                 Bu yayında {highlightCount} öne çıkan var; yayından sonra kaldırılamaz.
+              </p>
+            )}
+            {summary && summary.streak.pending > 0 && (
+              <p className="mt-1.5 rounded-lg border border-warn-line bg-warn-soft px-2.5 py-1.5 text-sm font-semibold text-warn" data-testid="publish-streak">
+                Bu yayında seri takibinde bekleyen adım var; yayından sonra silinemez.
               </p>
             )}
             <p className="mt-1.5 text-sm text-muted" data-testid="publish-ai">

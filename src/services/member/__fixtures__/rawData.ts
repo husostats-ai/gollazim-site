@@ -1,12 +1,14 @@
 import { COLUMN_ALIASES, TEXT_FIELDS, type FieldKey } from '../../../config/columnAliases'
 import { defaultThresholds } from '../../../config/categories'
-import type { AiVerdict, Highlight, LeagueTable, Match, MatchResult, Pick, SharedPick, TeamAlias } from '../../../types'
+import type { AiVerdict, Highlight, LeagueTable, Match, MatchResult, Pick, SharedPick, StreakStep, TeamAlias } from '../../../types'
 import { importCsv } from '../../csv/importer'
 import { addHighlight } from '../../highlights/highlights'
-import { aiInputsOf, highlightInputOf } from '../../memberAdmin/publish'
+import { aiInputsOf, highlightInputOf, streakInputOf } from '../../memberAdmin/publish'
+import { buildStreak, streakStepId } from '../../streak/streak'
+import { factsFrom } from '../../streak/streakFacts'
 import { buildPicksForResult } from '../../results/freeze'
 import { recordShare } from '../../story/shared'
-import type { MemberPayloadInput } from '../payload'
+import type { MemberPayloadInput, MemberStreakInput } from '../payload'
 
 // Sızıntı testlerinin verisi. Kolon adları gerçek FootyStats dışa aktarımındakiyle
 // aynıdır (107 kolon); takımlar ve tüm sayılar uydurmadır. Ham alanların her hücresi
@@ -361,6 +363,25 @@ export const LEAGUE_TABLES: LeagueTable[] = [
 ]
 export const TEAM_ALIASES: TeamAlias[] = []
 
+/**
+ * Seri takibi adımları, sırayla: tuttu, tutmadı (ilk seri biter), tuttu, oynanmadı (kaldırıldı), bekliyor.
+ * Eklenme zamanı (STREAK_ADDED_AT) pakette hiçbir yerde geçmeyen bir değerdir.
+ */
+export const STREAK_ADDED_AT = '2026-10-03T21:17:43.000Z'
+const streakStep = (seq: number, home: string, categoryId: StreakStep['categoryId'], extra: Partial<StreakStep> = {}): StreakStep => {
+  const match = byHome(home)
+  return { id: streakStepId(match.id, categoryId), matchId: match.id, categoryId, seq, addedAt: STREAK_ADDED_AT, date: match.date, home: match.home, away: match.away, time: match.time!, ...(match.league !== undefined && { league: match.league }), ...extra }
+}
+export const STREAK_STEPS: StreakStep[] = [
+  streakStep(1, 'Dünkü Ev', 'btts'), // 2-2: tuttu
+  streakStep(2, 'Doğu Gençlik', 'over25'), // 0-0: tutmadı
+  streakStep(3, 'Kuzey Yıldızı', 'over25'), // 3-1: tuttu
+  streakStep(4, 'Ova Belediyespor', 'over25', { removed: { at: '2026-10-05T05:00:00.000Z', reason: 'unplayed' } }), // ertelendi: oynanmadı
+  streakStep(5, 'İç Anadolu FK', 'over25'), // skor yok: bekliyor
+]
+export const streakView = (steps: StreakStep[] = STREAK_STEPS, matches: Match[] = MATCHES, results: MatchResult[] = RESULTS, picks: Pick[] = PICKS) => buildStreak(steps, factsFrom({ matches, results, picks }))
+export const STREAK_INPUT: MemberStreakInput = streakInputOf(streakView(), MATCHES)
+
 export const memberInput = (overrides: Partial<MemberPayloadInput> = {}): MemberPayloadInput => ({
   n: 7,
   publishedAt: PUBLISHED_AT,
@@ -372,5 +393,6 @@ export const memberInput = (overrides: Partial<MemberPayloadInput> = {}): Member
   teamAliases: TEAM_ALIASES,
   picks: PICKS,
   shared: SHARED,
+  streak: STREAK_INPUT,
   ...overrides,
 })

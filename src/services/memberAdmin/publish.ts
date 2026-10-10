@@ -1,11 +1,13 @@
 import type { MemberTexts } from '../../config/memberTexts'
-import type { AiVerdict, Highlight, LeagueTable, Match, MatchResult, Pick, SharedPick, TeamAlias, Thresholds } from '../../types'
+import type { AiVerdict, Highlight, LeagueTable, Match, MatchResult, Pick, SharedPick, StreakStep, TeamAlias, Thresholds } from '../../types'
 import { shiftDate } from '../../utils/format'
 import { fromBase64, sealPayload, type MemberEnvelope } from '../member/crypto'
 import { AI_CATEGORY_IDS } from '../../config/ai'
 import type { CategoryId } from '../../config/categories'
 import { aiShareId, memberShareRow, type MemberShareRow } from '../ai/memberShare'
-import { buildMemberPublication, type MemberAiInput, type MemberHighlightInput, type MemberPayload, type MemberPayloadInput } from '../member/payload'
+import { buildMemberPublication, type MemberAiInput, type MemberHighlightInput, type MemberPayload, type MemberPayloadInput, type MemberStreakInput } from '../member/payload'
+import { buildStreak, type StreakView } from '../streak/streak'
+import { factsFrom } from '../streak/streakFacts'
 import { scanForLeaks } from './leakScan'
 import { activeKeys } from './registry'
 import type { MemberMeta, MemberRecord, PublicationRecord } from './types'
@@ -27,6 +29,12 @@ export interface PublishSources {
   listAiVerdictsByDate(date: string): Promise<AiVerdict[]>
   /** Satırı bu yayınla üyeye giden maçları kaydeder (yalnızca kayıt) */
   recordAiShares(sent: SentAiShare[], n: number, publishedAt: string): Promise<void>
+  /** "Seri takibi" adımlarının tamamı (güne bağlı değildir) */
+  listStreakSteps(): Promise<StreakStep[]>
+  /** Verilen kimliklerden kayıtlı olan maçlar (seri adımlarının maçları, günü pakette olmasa da) */
+  listMatchesByIds(ids: string[]): Promise<Match[]>
+  /** Pakete giren adımları yayınlandı olarak işaretler (yayınlanan adım silinemez) */
+  markStreakPublished(ids: string[], publishedAt: string): Promise<void>
   listLeagueTables(): Promise<LeagueTable[]>
   listAliases(): Promise<TeamAlias[]>
   getThresholds(): Promise<Thresholds>
@@ -59,6 +67,8 @@ export interface PublishDraft {
   highlightIds: string[]
   /** "AI öneri güveni" satırı pakete giren maçlar (yayından sonra kaydetmek için; pakete girmez) */
   aiShares: SentAiShare[]
+  /** Pakete giren seri adımlarının kayıt kimlikleri (yayından sonra işaretlemek için; pakete girmez) */
+  streakIds: string[]
 }
 
 /**
@@ -95,6 +105,33 @@ export const highlightInputOf = (record: Highlight): MemberHighlightInput => ({
   league: record.league ?? null,
 })
 
+/**
+ * Seri görünümünü paket kurucusunun girdisine indirger. Alanlar tek tek yazılır: kayıt kimlikleri,
+ * sıra numarası, eklenme, yayın ve düzeltme zamanları kurucuya hiç verilmez. Maç kaydı duruyorsa
+ * takım ve lig adı ondan, silinmişse adımın kaydından okunur.
+ */
+export function streakInputOf(view: StreakView, matches: readonly Match[]): MemberStreakInput {
+  const matchById = new Map(matches.map((m) => [m.id, m]))
+  const names = (record: StreakStep) => {
+    const match = matchById.get(record.matchId)
+    return { home: match ? match.home : record.home, away: match ? match.away : record.away, league: (match ? match.league : record.league) ?? null }
+  }
+  const steps = view.current?.steps ?? []
+  return {
+    status: steps.some((s) => s.step !== null) ? 'active' : 'idle',
+    steps: steps.map(({ record, state, step }) => {
+      const { home, away, league } = names(record)
+      return { date: record.date, home, away, league, time: record.time, categoryId: record.categoryId, state, step }
+    }),
+    past: [...view.past].reverse().map((run) => {
+      const { record } = run.steps[run.steps.length - 1]
+      const { home, away, league } = names(record)
+      return { length: run.length, ended: record.date, last: { home, away, league, categoryId: record.categoryId } }
+    }),
+    totals: { longest: view.totals.longest, current: view.totals.current, count: view.totals.count, mean: view.totals.mean, won: view.totals.won, lost: view.totals.lost, lowSample: view.totals.lowSample },
+  }
+}
+
 /** Pakete giren en fazla gün sayısı: seçilen gün ve ondan önceki günler (şemadaki sınırı aşmaz) */
 export const PUBLISH_DAY_COUNT = 7
 
@@ -105,7 +142,7 @@ export const PUBLISH_DAY_COUNT = 7
  */
 export async function draftPublication(sources: PublishSources, options: { day: string; n: number; publishedAt: string; texts: MemberTexts }): Promise<PublishDraft> {
   const dates = Array.from({ length: PUBLISH_DAY_COUNT }, (_, back) => shiftDate(options.day, -back))
-  const [dayData, picks, shared, leagueTables, teamAliases, thresholds, marketConflictLimit] = await Promise.all([
+  const [dayData, picks, shared, leagueTables, teamAliases, thresholds, marketConflictLimit, streakSteps] = await Promise.all([
     Promise.all(
       dates.map(async (date) => {
         const [matches, records, verdicts] = await Promise.all([sources.listMatchesByDate(date), sources.listHighlightsByDate(date), sources.listAiVerdictsByDate(date)])
@@ -121,8 +158,14 @@ export async function draftPublication(sources: PublishSources, options: { day: 
     sources.listAliases(),
     sources.getThresholds(),
     sources.getMarketConflictLimit(),
+    sources.listStreakSteps(),
   ])
-  const input: MemberPayloadInput = { n: options.n, publishedAt: options.publishedAt, texts: options.texts, thresholds, marketConflictLimit, days: dayData.map((d) => ({ date: d.date, matches: d.matches, results: d.results, highlights: d.highlights, ai: d.ai.inputs })), leagueTables, teamAliases, picks, shared }
+  // Seri güne bağlı değildir: adımların maçları ve skorları, günü pakette olmasa da okunur.
+  const streakMatchIds = [...new Set(streakSteps.map((s) => s.matchId))]
+  const [streakMatches, streakResults] = await Promise.all([sources.listMatchesByIds(streakMatchIds), sources.listResultsByMatchIds(streakMatchIds)])
+  const streakWanted = new Set(streakSteps.map((s) => s.id))
+  const streak = streakInputOf(buildStreak(streakSteps, factsFrom({ matches: streakMatches, results: streakResults, picks: picks.filter((p) => streakWanted.has(p.id)) })), streakMatches)
+  const input: MemberPayloadInput = { n: options.n, publishedAt: options.publishedAt, texts: options.texts, thresholds, marketConflictLimit, days: dayData.map((d) => ({ date: d.date, matches: d.matches, results: d.results, highlights: d.highlights, ai: d.ai.inputs })), leagueTables, teamAliases, picks, shared, streak }
   const full = buildMemberPublication(input)
   // Listeler paket kurulurken hesaplandığı için boş günler ancak şimdi bilinir.
   const keep = dayData.map((d, i) => i === 0 || full.payload.days[i].lists.some((list) => list.items.length > 0) || d.highlights.length > 0)
@@ -134,11 +177,15 @@ export async function draftPublication(sources: PublishSources, options: { day: 
     const found = rowOf.get(aiShareId(matchId, categoryId))
     return found ? [{ matchId, categoryId, date: found.date, row: found.row }] : []
   })
-  return { payload, rawMatches: kept.flatMap((d) => d.matches), highlightIds: kept.flatMap((d) => d.highlightIds), aiShares }
+  // Sızıntı denetimi seri adımlarının ham maç kayıtlarını da kapsar.
+  const rawMatches = [...new Map([...kept.flatMap((d) => d.matches), ...streakMatches].map((m) => [m.id, m])).values()]
+  return { payload, rawMatches, highlightIds: kept.flatMap((d) => d.highlightIds), aiShares, streakIds: streakSteps.map((s) => s.id) }
 }
 
 export interface PublishSummary {
   days: { date: string; matches: number; items: number; lists: number; highlights: number; ai: number }[]
+  /** Seri takibi: aktif serideki adım, bekleyen adım ve pakete giren geçmiş seri sayısı */
+  streak: { steps: number; pending: number; past: number }
   /** Paketin düz hâlinin boyutu (bayt) */
   plainBytes: number
 }
@@ -148,6 +195,7 @@ const byteLength = (text: string): number => new TextEncoder().encode(text).leng
 /** Onay ekranındaki paket özeti */
 export const summarizePayload = (payload: MemberPayload): PublishSummary => ({
   days: payload.days.map((d) => ({ date: d.date, matches: d.matches.length, items: d.lists.reduce((sum, l) => sum + l.items.length, 0), lists: d.lists.filter((l) => l.items.length > 0).length, highlights: d.highlights?.length ?? 0, ai: d.lists.reduce((sum, l) => sum + l.items.filter((item) => item.ai !== undefined).length, 0) })),
+  streak: { steps: payload.streak?.steps.length ?? 0, pending: payload.streak?.steps.filter((s) => s.state === 'pending').length ?? 0, past: payload.streak?.past.length ?? 0 },
   plainBytes: byteLength(JSON.stringify(payload)),
 })
 

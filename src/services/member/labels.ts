@@ -1,7 +1,7 @@
 import type { ReliabilityLevel } from '../analysis/types'
 import type { MatchStatus, PickOutcome } from '../../types'
 import type { MemberErrorKind, SignOutReason } from './controller'
-import type { MemberAi, MemberAiProvider, MemberAiVote, MemberConflict, MemberStanding } from './payload'
+import type { MemberAi, MemberAiProvider, MemberAiVote, MemberConflict, MemberStanding, MemberStreakState } from './payload'
 
 // Üye sayfasında gösterilen etiketler. Paket yalnızca türleri (seviye, çelişki türü)
 // taşır; metinler burada üretilir. Admin ekranındaki etiketlerden bilerek ayrıdır:
@@ -63,6 +63,41 @@ export const MEMBER_HIGHLIGHT_TEXTS = {
   trial: 'deneme',
   note: 'Bu bir istatistik taramasıdır; bahis tavsiyesi değildir.',
 } as const
+
+/** "Seri takibi" sayfasının sabit metinleri (üye sayfası). Gözlem dilidir: yalnızca adım, seri ve sonuç sözcükleri. */
+export const MEMBER_STREAK_TEXTS = {
+  tab: 'SERİ TAKİBİ',
+  title: 'Seri Takibi',
+  /** Başlığın yanındaki küçük not: bölüm deneme aşamasındadır */
+  trial: 'deneme',
+  intro: 'Sırayla izlenen maçların sonuçları. Tutan her maç seriyi bir adım ilerletir; tutmayan maç seriyi bitirir. Oynanmayan ya da değerlendirilemeyen maç seriyi etkilemez.',
+  active: 'AKTİF SERİ',
+  empty: 'Henüz seri yok.',
+  noActive: 'Şu an aktif seri yok.',
+  past: 'GEÇMİŞ SERİLER',
+  noPast: 'Biten seri yok.',
+  longest: 'En uzun seri',
+  current: 'Mevcut seri',
+  count: 'Toplam seri',
+  mean: 'Seri başına tutan (ort.)',
+  won: 'Tuttu',
+  lost: 'Tutmadı',
+  lowSample: '⚠ az örnek',
+  lowSampleNote: (limit: number) => `${limit}’den az biten seri var; sayılar tesadüfen yüksek ya da düşük çıkmış olabilir.`,
+  step: (step: number) => `${step}. adım`,
+  runLength: (length: number) => `${length} adım tuttu`,
+  runEnded: 'Seriyi bitiren maç',
+  note: 'İstatistik takibidir, bahis tavsiyesi değildir. 18+',
+} as const
+
+/** Seri adımının durumu: işaretler sonuç rozetleriyle aynıdır */
+export const MEMBER_STREAK_STATES: Record<MemberStreakState, { mark: string; label: string }> = {
+  won: { mark: '✓', label: 'Tuttu' },
+  lost: { mark: '✗', label: 'Tutmadı' },
+  pending: { mark: '···', label: 'Bekliyor' },
+  unplayed: { mark: '—', label: 'Oynanmadı' },
+  void: { mark: '—', label: 'Değerlendirilemedi' },
+}
 
 /** Skoru olmayan maç durumlarının etiketi; tamamlanan maçta skor gösterilir */
 export const MEMBER_STATUS_LABELS: Record<MatchStatus, string | null> = {

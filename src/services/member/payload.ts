@@ -11,7 +11,7 @@ import { buildMainStats } from '../stats/mainStats'
 import { buildStarStats } from '../stats/starStats'
 import { buildStats, type Bucket, type Tally } from '../stats/statsEngine'
 import { sharedPicksOnly } from '../story/shared'
-import { assertMemberPayload } from './schema'
+import { assertMemberPayload, MEMBER_STREAK_LIMITS } from './schema'
 
 // Üye sayfasına giden yayın paketi. İZİNLİ ALAN LİSTESİDİR: paket, kayıt nesnelerinden
 // (Match, Prediction, Pick…) kopyalanmaz; her alan aşağıda adıyla, tek tek yazılarak
@@ -33,11 +33,12 @@ import { assertMemberPayload } from './schema'
  * 5: önerilerde tahmini maç sayısı (sample) bulunabilir.
  * 6: maçlarda "AI öneri güveni" satırı (ai) bulunabilir (maç geneli; artık üretilmez).
  * 7: "AI öneri güveni" satırı önerinin kendisindedir (kategori bazlı); maçta bulunmaz.
+ * 8: "seri takibi" (streak) var: aktif serinin adımları, geçmiş seriler ve sayılar.
  * Sürüm 1 (others alanı olmayan), sürüm 2 (main alanı olmayan), sürüm 3 (highlights alanı olmayan),
- * sürüm 4 (sample alanı olmayan), sürüm 5 (ai alanı olmayan) ve sürüm 6 (ai alanı maçta olan)
- * paketler üye sayfasında hâlâ açılır; sürüm 6'daki maç geneli satır gösterilmez.
+ * sürüm 4 (sample alanı olmayan), sürüm 5 (ai alanı olmayan), sürüm 6 (ai alanı maçta olan) ve
+ * sürüm 7 (streak alanı olmayan) paketler üye sayfasında hâlâ açılır; sürüm 6'daki maç geneli satır gösterilmez.
  */
-export const MEMBER_PAYLOAD_VERSION = 7
+export const MEMBER_PAYLOAD_VERSION = 8
 
 /** Günlük dökümde pakete giren en fazla gün sayısı (en yeniler) */
 export const MEMBER_DAILY_LIMIT = 90
@@ -223,8 +224,64 @@ export interface MemberDay {
   highlights?: MemberHighlight[]
 }
 
+/**
+ * Seri takibindeki adımın durumu. unplayed: maç oynanmadı; void: değerlendirilemedi (ikisi de
+ * seriden kaldırılmış adımdır: seriyi ne ilerletir ne bozar).
+ */
+export type MemberStreakState = 'won' | 'lost' | 'pending' | 'unplayed' | 'void'
+
+/**
+ * "Seri takibi" adımı. Yalnızca maçın adı, ligi, günü ve saati, kategori, durum ve adım numarası:
+ * yüzde, geçmiş veri seviyesi, skor, yapay zekâ kararı, kayıt kimlikleri ve eklenme zamanı pakete GİRMEZ.
+ */
+export interface MemberStreakStep {
+  /** YYYY-MM-DD */
+  date: string
+  home: string
+  away: string
+  league: string | null
+  /** HH:mm, Türkiye saati */
+  time: string
+  categoryId: CategoryId
+  /** Aktif seride 'lost' bulunmaz: tutmayan adım seriyi bitirir ve geçmiş serilere geçer */
+  state: MemberStreakState
+  /** Serideki adım numarası; seriden kaldırılan adımda null */
+  step: number | null
+}
+
+/** Biten seri: uzunluğu (tutan adım sayısı), bittiği gün ve seriyi bitiren maç */
+export interface MemberStreakRun {
+  length: number
+  /** YYYY-MM-DD */
+  ended: string
+  last: { home: string; away: string; league: string | null; categoryId: CategoryId }
+}
+
+export interface MemberStreakTotals {
+  longest: number
+  current: number
+  /** Biten seri sayısı */
+  count: number
+  /** Biten serilerde seri başına tutan adım (bir ondalık); biten seri yoksa null */
+  mean: number | null
+  won: number
+  lost: number
+  lowSample: boolean
+}
+
+/** "Seri takibi". Güne bağlı değildir: paketin en üstündedir, günlük dökümün gün sınırı burada geçerli değildir. */
+export interface MemberStreak {
+  /** active: aktif seride en az bir sayılan adım var */
+  status: 'active' | 'idle'
+  /** Aktif serinin adımları, sırayla (boş olabilir) */
+  steps: MemberStreakStep[]
+  /** Biten seriler, yeniden eskiye (en yeniler) */
+  past: MemberStreakRun[]
+  totals: MemberStreakTotals
+}
+
 export interface MemberPayload {
-  v: 1 | 2 | 3 | 4 | 5 | 6 | typeof MEMBER_PAYLOAD_VERSION
+  v: 1 | 2 | 3 | 4 | 5 | 6 | 7 | typeof MEMBER_PAYLOAD_VERSION
   /** Yayın numarası */
   n: number
   /** Yayın anı (ISO) */
@@ -234,7 +291,15 @@ export interface MemberPayload {
   days: MemberDay[]
   /** İstatistik sayfasının değerleri: tüm öneriler ve yalnızca paylaşılanlar */
   statistics: { all: MemberStats; shared: MemberStats }
+  /** Seri takibi. Sürüm 1-7 paketlerde bu alan yoktur. */
+  streak?: MemberStreak
 }
+
+/**
+ * Seri takibinin paket kurucusuna verilen hâli. Çağıran taraf adım kayıtlarını buna indirger:
+ * kayıt kimlikleri, eklenme ve yayın zamanları kurucuya hiç ulaşmaz.
+ */
+export type MemberStreakInput = MemberStreak
 
 /**
  * Öne çıkan seçimin paket kurucusuna verilen hâli. Kayıttaki yüzde, güvenilirlik ve eklenme
@@ -291,6 +356,8 @@ export interface MemberPayloadInput {
   /** Tüm dondurulmuş öneriler (sonuçlar ve istatistik için) */
   picks: Pick[]
   shared: SharedPick[]
+  /** Seri takibi; verilmezse boş seri yazılır */
+  streak?: MemberStreakInput
 }
 
 const tallyOf = (t: Tally): MemberTally => ({
@@ -431,6 +498,18 @@ function dayOf(input: MemberPayloadInput, day: MemberDayInput, now: Date, sentAi
   return { date: day.date, matches, lists, highlights }
 }
 
+const EMPTY_STREAK: MemberStreakInput = { status: 'idle', steps: [], past: [], totals: { longest: 0, current: 0, count: 0, mean: null, won: 0, lost: 0, lowSample: true } }
+
+/** Seri takibi: alanlar tek tek yazılır; en fazla son MEMBER_STREAK_LIMITS kadar adım ve seri girer. */
+function streakOf(input: MemberStreakInput): MemberStreak {
+  return {
+    status: input.status,
+    steps: input.steps.slice(-MEMBER_STREAK_LIMITS.steps).map((s) => ({ date: s.date, home: s.home, away: s.away, league: s.league, time: s.time, categoryId: s.categoryId, state: s.state, step: s.step })),
+    past: input.past.slice(0, MEMBER_STREAK_LIMITS.past).map((r) => ({ length: r.length, ended: r.ended, last: { home: r.last.home, away: r.last.away, league: r.last.league, categoryId: r.last.categoryId } })),
+    totals: { longest: input.totals.longest, current: input.totals.current, count: input.totals.count, mean: input.totals.mean, won: input.totals.won, lost: input.totals.lost, lowSample: input.totals.lowSample },
+  }
+}
+
 /**
  * Yayın paketini kurar. Saf fonksiyondur: aynı girdi her zaman aynı paketi verir.
  * Dönmeden önce paket şemaya karşı denetlenir; izinli olmayan tek bir alan hata verir.
@@ -454,6 +533,7 @@ export function buildMemberPublication(input: MemberPayloadInput): { payload: Me
       all: statsOf(input.picks),
       shared: statsOf(sharedPicksOnly(input.picks, input.shared)),
     },
+    streak: streakOf(input.streak ?? EMPTY_STREAK),
   }
   assertMemberPayload(payload)
   return { payload, aiSent }

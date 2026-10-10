@@ -2,12 +2,13 @@ import { readFileSync } from 'node:fs'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_MEMBER_TEXTS, normalizeMemberTexts } from '../../config/memberTexts'
 import { MEMBER_SITE_URL } from '../../config/member'
-import type { AiShare, AiVerdict, Highlight, Match } from '../../types'
+import type { AiShare, AiVerdict, Highlight, Match, StreakStep } from '../../types'
+import { deleteStreakStep, markStreakPublished } from '../streak/streak'
 import { recordAiShares } from '../ai/memberShare'
 import { shiftDate } from '../../utils/format'
 import { assembleBackup } from '../data/backupFormat'
 import type { MemberAdminRepo } from '../data/types'
-import { AI_REASON_CANARY, AI_VERDICTS, DAY, dayMatches, HIGHLIGHTS, LEAGUE_TABLES, MARKET_LIMIT, MATCHES, PICKS, PREVIOUS_DAY, RESULTS, SHARED, THRESHOLDS } from '../member/__fixtures__/rawData'
+import { AI_REASON_CANARY, AI_VERDICTS, DAY, dayMatches, HIGHLIGHTS, LEAGUE_TABLES, MARKET_LIMIT, MATCHES, PICKS, PREVIOUS_DAY, RESULTS, SHARED, STREAK_ADDED_AT, STREAK_INPUT, STREAK_STEPS, streakView, THRESHOLDS } from '../member/__fixtures__/rawData'
 import { generatePassword, MemberAccessError, openEnvelope, openWithKeys, PASSWORD_ALPHABET, type MemberKeys } from '../member/crypto'
 import type { MemberPayload } from '../member/payload'
 import { markPublished, removeHighlight } from '../highlights/highlights'
@@ -78,6 +79,9 @@ const sourcesBase = (matches: Match[]): PublishSources => ({
   markHighlightsPublished: async () => undefined,
   listAiVerdictsByDate: async () => [],
   recordAiShares: async () => undefined,
+  listStreakSteps: async () => [],
+  listMatchesByIds: async (ids) => matches.filter((m) => ids.includes(m.id)),
+  markStreakPublished: async () => undefined,
   listLeagueTables: async () => LEAGUE_TABLES,
   listAliases: async () => [],
   getThresholds: async () => THRESHOLDS,
@@ -290,6 +294,67 @@ describe('üye ekleme', () => {
     })
   })
 
+  describe('seri takibi', () => {
+    const sourcesWithStreak = (matches: Match[] = MATCHES, initial: StreakStep[] = STREAK_STEPS): PublishSources & { steps: StreakStep[] } => {
+      const store = {
+        ...sources(matches),
+        steps: initial.map((s) => ({ ...s })),
+        listStreakSteps: async () => store.steps,
+        markStreakPublished: async (ids: string[], publishedAt: string) => {
+          const changed = markStreakPublished(store.steps, ids, publishedAt)
+          store.steps = store.steps.map((s) => changed.find((c) => c.id === s.id) ?? s)
+        },
+      }
+      return store
+    }
+
+    it('önizleme: seri pakete ve özete girer, hiçbir şey işaretlenmez; sızıntı denetiminden geçer', async () => {
+      const store = sourcesWithStreak()
+      const draft = await previewPublication(memoryRepo(), store, DAY, T1)
+      expect(draft.payload.streak).toEqual(STREAK_INPUT)
+      expect(summarizePayload(draft.payload).streak).toEqual({ steps: 3, pending: 1, past: 1 })
+      expect([...draft.streakIds].sort()).toEqual(STREAK_STEPS.map((s) => s.id).sort())
+      expect(store.steps.every((s) => s.publishedAt === undefined && s.removed?.publishedAt === undefined)).toBe(true)
+      expect(scanForLeaks(draft.payload, draft.rawMatches).problems).toEqual([])
+      expect(JSON.stringify(draft.payload)).not.toContain(STREAK_ADDED_AT)
+    })
+
+    it('seri 7 günlük pencereye bağlı değildir: eski adımlar da girer ve ham maçları sızıntı denetimine katılır', async () => {
+      const store = sourcesWithStreak()
+      const later = shiftDate(DAY, 20)
+      const draft = await previewPublication(memoryRepo(), store, later, T1)
+      expect(draft.payload.days.map((d) => d.date)).toEqual([later])
+      expect(draft.payload.streak).toEqual(STREAK_INPUT)
+      expect(draft.rawMatches.map((m) => m.id).sort()).toEqual([...new Set(STREAK_STEPS.map((s) => s.matchId))].sort())
+      expect(scanForLeaks(draft.payload, draft.rawMatches).problems).toEqual([])
+    })
+
+    it('yayın: adımlar yayınlandı olur ve artık silinemez; kaldırmanın yayını da işaretlenir; ilk yayın anı korunur', async () => {
+      const r = memoryRepo()
+      await addMembers(r, ['zeynep'], T0)
+      const store = sourcesWithStreak()
+      const early = new Date('2026-10-05T06:30:00.000Z')
+      const pending = STREAK_STEPS[4]
+      expect(deleteStreakStep(streakView(store.steps), pending.id, early).ok).toBe(true)
+      const publication = await publish(r, store, DAY, T1)
+      expect(publication.summary.streak).toEqual({ steps: 3, pending: 1, past: 1 })
+      expect(store.steps.map((s) => s.publishedAt)).toEqual(STREAK_STEPS.map(() => T1))
+      expect(store.steps[3].removed?.publishedAt).toBe(T1)
+      expect(deleteStreakStep(streakView(store.steps), pending.id, early)).toEqual({ ok: false, reason: 'published' })
+      await publish(r, store, DAY, T2)
+      expect(store.steps.map((s) => s.publishedAt)).toEqual(STREAK_STEPS.map(() => T1))
+    })
+
+    it('yayın başarısızsa (aktif üye yok) hiçbir adım işaretlenmez; adım yokken boş seri yayınlanır', async () => {
+      const store = sourcesWithStreak()
+      expect(((await rejection(publish(memoryRepo(), store, DAY, T1))) as PublishError).kind).toBe('no-members')
+      expect(store.steps.every((s) => s.publishedAt === undefined)).toBe(true)
+      const empty = await previewPublication(memoryRepo(), sources(), DAY, T1)
+      expect(empty.payload.streak).toEqual({ status: 'idle', steps: [], past: [], totals: { longest: 0, current: 0, count: 0, mean: null, won: 0, lost: 0, lowSample: true } })
+      expect(empty.streakIds).toEqual([])
+    })
+  })
+
   describe('"AI öneri güveni" satırı', () => {
     /** Yapay zekâ kararları da olan kaynak; kayıt, uygulamadaki depo gibi maç başına tek satır tutar */
     const sourcesWithAi = (verdicts: AiVerdict[] = AI_VERDICTS): PublishSources & { shares: AiShare[] } => {
@@ -337,7 +402,7 @@ describe('üye ekleme', () => {
       expect(publication.text).not.toContain(AI_REASON_CANARY)
       const opened = (await openEnvelope(publication.text, login.username, login.password)).payload
       const plain = JSON.stringify(opened)
-      expect(opened.v).toBe(7)
+      expect(opened.v).toBe(8)
       const day = opened.days[0]
       expect(day.lists.flatMap((l) => l.items.filter((i) => i.ai).map((i) => `${day.matches[i.match].home}|${l.categoryId}|${i.ai!.count}|${i.ai!.level}`)).sort()).toEqual(EXPECTED.map((e) => e.join('|')).sort())
       expect(day.matches.some((m) => 'ai' in m)).toBe(false)

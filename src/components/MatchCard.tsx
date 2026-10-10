@@ -15,6 +15,7 @@ import ReliabilityBadge from './ReliabilityBadge'
 import ScoreOdds from './ScoreOdds'
 import SharedBadge from './SharedBadge'
 import Stars from './Stars'
+import StreakButton from './StreakButton'
 
 interface Props {
   prediction: Prediction
@@ -108,6 +109,7 @@ export default function MatchCard({ prediction, rank, sortMode, storySelection, 
 
       <div className="flex flex-wrap items-center gap-1.5">
         <HighlightButton prediction={prediction} />
+        <StreakButton prediction={prediction} />
       </div>
 
       {shared && <SharedBadge record={shared.record} onRemove={shared.onRemove} />}

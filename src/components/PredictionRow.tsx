@@ -8,6 +8,7 @@ import NoteBadges from './NoteBadges'
 import OutcomeBadge from './OutcomeBadge'
 import ReliabilityBadge from './ReliabilityBadge'
 import Stars from './Stars'
+import StreakButton from './StreakButton'
 
 interface Props {
   prediction: Prediction
@@ -37,6 +38,7 @@ export default function PredictionRow({ prediction, sortMode, showCategory }: Pr
           <NoteBadges notes={marketNotes(percent, market, marketConflictLimit).filter((n) => n.kind === 'market-conflict')} />
           {sortMode === 'cautious' && supportsCautious(category) && <CautiousBadge value={cautiousPercent} />}
           <HighlightButton prediction={prediction} />
+          <StreakButton prediction={prediction} />
         </div>
       </div>
       <div className="shrink-0 text-right">

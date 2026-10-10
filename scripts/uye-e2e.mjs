@@ -32,11 +32,14 @@ const sampleDir = mkdtempSync(join(tmpdir(), 'gollazim-uye-ornek-'))
 /** Geçici klasörde şifreli örnek paket (ve ilk çağrıda sentetik test kullanıcısı) üretir */
 function generate(dir, env = {}) {
   // Yedekte öne çıkan seçim yoktur; sonuçlanmış her gün için 3 sentetik seçim eklenir.
-  execFileSync('npx', ['vitest', 'run', 'src/services/member/sample'], { env: { ...process.env, UYE_ORNEK: dir, UYE_ONE_CIKAN: '3', ...env }, stdio: ['ignore', 'pipe', 'pipe'] })
+  // Yedekte seri adımı da yoktur; sonuçlanmış önerilerden 8 sentetik adım eklenir.
+  execFileSync('npx', ['vitest', 'run', 'src/services/member/sample'], { env: { ...process.env, UYE_ORNEK: dir, UYE_ONE_CIKAN: '3', UYE_SERI: '8', ...env }, stdio: ['ignore', 'pipe', 'pipe'] })
 }
 generate(sampleDir, { UYE_N: '1' })
 generate(sampleDir, { UYE_N: '2', UYE_DOSYA: 'paket-2.json' })
 generate(sampleDir, { UYE_N: '3', UYE_DOSYA: 'paket-cikarilmis.json', UYE_CIKAR: '1' })
+// Sürüm 7 paket (seri takibi alanı olmayan eski biçim): yeni üye sitesi bunu da açmalıdır.
+generate(sampleDir, { UYE_N: '5', UYE_DOSYA: 'paket-v7.json', UYE_SURUM: '7' })
 generate(sampleDir, { UYE_N: '4', UYE_DOSYA: 'paket-eski.json', UYE_AT: new Date(Date.now() - 30 * 3_600_000).toISOString() })
 const dist = resolve('dist')
 const memberDist = resolve('dist-uye')
@@ -67,8 +70,8 @@ const origin = `http://127.0.0.1:${server.address().port}`
 
 /** Denenen iki hedef: aynı üye uygulaması, farklı adres ve rota tabanı */
 const TARGETS = {
-  eski: { ad: 'admin sitesindeki üye rotası', prefix: '/gollazim-site/', home: '#/uye', stats: '#/uye/istatistik', shots: 'ekran', rapor: 'e2e-rapor.json', dist },
-  yeni: { ad: 'ayrı üye sitesi', prefix: '/gollazim-uye/', home: '#/', stats: '#/istatistik', shots: 'ekran-uye-sitesi', rapor: 'uye-sitesi-e2e-rapor.json', dist: memberDist },
+  eski: { ad: 'admin sitesindeki üye rotası', prefix: '/gollazim-site/', home: '#/uye', stats: '#/uye/istatistik', streak: '#/uye/seri', shots: 'ekran', rapor: 'e2e-rapor.json', dist },
+  yeni: { ad: 'ayrı üye sitesi', prefix: '/gollazim-uye/', home: '#/', stats: '#/istatistik', streak: '#/seri', shots: 'ekran-uye-sitesi', rapor: 'uye-sitesi-e2e-rapor.json', dist: memberDist },
 }
 const wanted = process.env.UYE_HEDEF ?? 'ikisi'
 const targetNames = wanted === 'ikisi' ? ['eski', 'yeni'] : [wanted]
@@ -323,7 +326,7 @@ try {
   step('giriş sonrası uyarı metinleri paketten', (await text(page, 'member-disclaimer')).includes('bahis tavsiyesi değildir'))
   step('güncel pakette "güncel olmayabilir" uyarısı yok', (await page.$(sel('member-stale'))) === null)
   const navLinks = await page.$$eval('a', (as) => as.map((a) => a.getAttribute('href')))
-  step('düzende yalnızca iki sekme var', JSON.stringify(navLinks) === JSON.stringify([T.home, T.stats]), JSON.stringify(navLinks))
+  step('düzende yalnızca üç sekme var (Analizler, İstatistik, Seri Takibi)', JSON.stringify(navLinks) === JSON.stringify([T.home, T.stats, T.streak]), JSON.stringify(navLinks))
 
   // 4) Kartlar, gün ve kategori seçimi
   const cardCount = await page.$$eval(sel('member-card'), (els) => els.length)
@@ -509,6 +512,38 @@ try {
   step('istatistik 390 px taşma yok', await shot(page, 'istatistik', 390))
   step('istatistik 320 px taşma yok', await shot(page, 'istatistik', 320))
 
+  // 5b) Seri takibi (paket sürümü 8)
+  await page.click(`a[href="${T.streak}"]`)
+  await page.waitForSelector(sel('member-streak'))
+  const streak = await page.evaluate(() => {
+    const q = (id) => document.querySelector(`[data-testid="${id}"]`)
+    const number = (id) => q(id).textContent.trim()
+    return {
+      heading: q('member-streak').querySelector('h1').innerText.replace(/\s+/g, ' ').trim(),
+      trial: q('member-streak-trial').textContent.trim(),
+      note: q('member-streak-note').textContent.trim(),
+      totals: { longest: number('member-streak-longest'), current: number('member-streak-current'), count: number('member-streak-count'), mean: number('member-streak-mean'), won: number('member-streak-won'), lost: number('member-streak-lost') },
+      labels: [...q('member-streak-totals').querySelectorAll('p:first-child')].map((p) => p.textContent.trim()),
+      lowSample: q('member-streak-low-sample')?.textContent.trim() ?? null,
+      steps: [...document.querySelectorAll('[data-testid="member-streak-step"]')].map((li) => ({ state: li.dataset.state, text: li.innerText.replace(/\s+/g, ' ').trim() })),
+      runs: [...document.querySelectorAll('[data-testid="member-streak-run"]')].map((li) => ({ length: Number(li.dataset.length), text: li.textContent.replace(/\s+/g, ' ').trim() })),
+      text: q('member-streak').innerText,
+      tabActive: document.querySelector('a[aria-current="page"]')?.textContent.trim(),
+    }
+  })
+  step('seri takibi: sekme açıldı; başlık "Seri Takibi" ve yanında "deneme" notu', streak.heading === 'Seri Takibi deneme' && streak.trial === 'deneme' && streak.tabActive === 'SERİ TAKİBİ', `${streak.heading} · sekme ${streak.tabActive}`)
+  step('seri takibi: altı sayı kutusu (en uzun, mevcut, toplam, seri başına tutan (ort.), tuttu, tutmadı)', JSON.stringify(streak.labels) === JSON.stringify(['En uzun seri', 'Mevcut seri', 'Toplam seri', 'Seri başına tutan (ort.)', 'Tuttu', 'Tutmadı']) && Object.values(streak.totals).every((v) => /^(\d+|\d+,\d|—)$/.test(v)), JSON.stringify(streak.totals))
+  const stepsWon = streak.steps.filter((s) => s.state === 'won').length
+  step('seri takibi: sayılar listeyle tutarlı (8 sentetik adım: tuttu + tutmadı = 8; mevcut seri = aktif serideki tutan adım; tutmadı = toplam seri)', Number(streak.totals.won) + Number(streak.totals.lost) === 8 && Number(streak.totals.current) === stepsWon && streak.totals.lost === streak.totals.count && streak.runs.length === Number(streak.totals.count) && Math.max(stepsWon, ...streak.runs.map((r) => r.length)) === Number(streak.totals.longest), `aktif ${streak.steps.length} adım · geçmiş ${streak.runs.map((r) => r.length).join(',') || '-'}`)
+  step('seri takibi: adım satırı maç, kategori, gün, saat, adım numarası ve durum', streak.steps.every((s) => /^.+ – .+ .+ · \d{1,2} \S+ \d{4} \d{2}:\d{2}( · .+)? \d+\. adım ✓ Tuttu$/.test(s.text)) && streak.runs.every((r) => r.text.startsWith(`${r.length} adım tuttu`) && r.text.includes('Seriyi bitiren maç:')), streak.steps[0]?.text ?? streak.runs[0]?.text ?? '')
+  step('seri takibi: az örnek uyarısı ve yasal not', streak.lowSample?.startsWith('⚠ az örnek') && streak.note === 'İstatistik takibidir, bahis tavsiyesi değildir. 18+', streak.lowSample ?? '')
+  const streakLeak = /%|[★☆]|(iy|ms) \d|oran|kasa|kupon|katla|rolling|kazanç|ortalama|güvenilirlik|geçmiş veri/.exec(streak.text.replace(streak.note, '').toLocaleLowerCase('tr'))
+  step('seri takibi: yüzde, yıldız, skor, geçmiş veri ve yasak sözcük yok', streakLeak === null && FORBIDDEN.exec(await visibleText(page)) === null, streakLeak?.[0] ?? '')
+  step('seri takibi 390 px taşma yok', await shot(page, 'seri', 390))
+  step('seri takibi 320 px taşma yok', await shot(page, 'seri', 320))
+  await page.reload({ waitUntil: 'networkidle0' })
+  step('seri takibi: sayfa yenilenince aynı sayfada kalıyor', (await page.$(sel('member-streak'))) !== null && (await page.evaluate(() => location.hash)) === T.streak)
+
   // 6) Üye oturumunda admin yolları
   if (T.prefix === '/gollazim-uye/') {
     // Ayrı üye sitesinde admin rotası yoktur: bilinmeyen her yol ve eski "#/uye" bağlantıları köke döner.
@@ -545,6 +580,21 @@ try {
   step('eski pakette "güncel olmayabilir" uyarısı', (await text(page, 'member-stale')).includes('Bu veri güncel olmayabilir.'), `${await text(page, 'member-updated')}`)
   await shot(page, 'eski-paket', 320)
   packageFile = 'paket-2.json'
+
+  // 9b) Sürüm 7 paket (seri takibi alanı yok): yine açılır; sekme çıkmaz, adresi ana sayfaya döner
+  packageFile = 'paket-v7.json'
+  await refreshNow(page)
+  await page.waitForFunction((s) => document.querySelector(s)?.textContent.trim() === 'Yayın no 5', { timeout: 15000 }, sel('member-publish-no'))
+  const v7Links = await page.$$eval('a', (as) => as.map((a) => a.getAttribute('href')))
+  step('sürüm 7 paket hâlâ açılıyor: kartlar çiziliyor, Seri Takibi sekmesi yok', (await page.$(sel('member-cards'))) !== null && JSON.stringify(v7Links) === JSON.stringify([T.home, T.stats]) && (await page.$(sel('member-refresh-error'))) === null, JSON.stringify(v7Links))
+  await page.goto(`${site}${T.streak}`, { waitUntil: 'networkidle0' })
+  await page.waitForSelector(sel('member-frame'))
+  await sleep(200)
+  step('sürüm 7 pakette seri adresi ana sayfaya dönüyor', (await page.evaluate(() => location.hash)) === T.home && (await page.$(sel('member-streak'))) === null, await page.evaluate(() => location.hash))
+  packageFile = 'paket-2.json'
+  await refreshNow(page)
+  await page.waitForFunction((s) => document.querySelector(s)?.textContent.trim() === 'Yayın no 2', { timeout: 15000 }, sel('member-publish-no'))
+  step('ardından sürüm 8 paket yeniden açılıyor; Seri Takibi sekmesi geri geliyor', (await page.$(sel('member-tab-streak'))) !== null)
 
   // 10) Sekmeyi kapatıp yeni sekme açınca oturum biter
   await page.close()
@@ -643,7 +693,7 @@ try {
     await memberPage.waitForSelector(sel('member-login'))
     const after = await dump(adminPage)
     const tables = Object.keys(JSON.parse(before.json)).length - 1
-    step('admin verisi dolu profilde üye sitesi kullanıldı: veritabanı dökümü önce / sırasında / sonra bayt bayt aynı', before.json === during.json && before.json === after.json && tables === 16, `${tables} tablo · sürüm ${JSON.parse(before.json).surum} · sha256 ${sha(before.json).slice(0, 16)}`)
+    step('admin verisi dolu profilde üye sitesi kullanıldı: veritabanı dökümü önce / sırasında / sonra bayt bayt aynı', before.json === during.json && before.json === after.json && tables === 17, `${tables} tablo · sürüm ${JSON.parse(before.json).surum} · sha256 ${sha(before.json).slice(0, 16)}`)
     step('admin sitesinin localStorage kayıtları da değişmedi', before.local === during.local && before.local === after.local, before.local)
     await adminPage.reload({ waitUntil: 'networkidle0' })
     step('üye sitesinden sonra admin sitesi aynı profilde normal açılıyor', (await adminPage.evaluate(() => document.body.innerText)).includes('GÜNÜN ANALİZLERİ') && (await adminPage.evaluate(() => location.hash)) === '#/')

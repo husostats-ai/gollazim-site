@@ -6,6 +6,8 @@ import type { SortMode } from '../services/analysis/types'
 import { leagueRepo, aiRepo, aiSharesRepo, highlightsRepo, matchesRepo, picksRepo, resultsRepo, settingsRepo, sharedRepo, storySelectionsRepo } from '../services/data'
 import { addHighlight, removeHighlight, type HighlightCandidate, type HighlightRefusal } from '../services/highlights/highlights'
 import { findActiveShared, recordShare } from '../services/story/shared'
+import type { StreakCandidate, StreakRefusal, StreakView } from '../services/streak/streak'
+import { loadStreak, removePendingFromStreak, sendToStreak, takeBackFromStreak, undoStreakRemoval } from '../services/streak/streakService'
 import { selectionsForDate, type DaySelections } from '../services/story/selection'
 import type { AiShare, AiVerdict, Highlight, LeagueTable, Match, MatchResult, Pick, SharedPick, TeamAlias, Thresholds } from '../types'
 import { todayInAppZone } from '../utils/date'
@@ -49,6 +51,15 @@ interface AppState {
   addHighlight: (candidate: HighlightCandidate) => Promise<HighlightRefusal | null>
   /** Seçimi kaldırır (kayıt silinir); maç başladıysa reddeder */
   removeHighlight: (id: string) => Promise<HighlightRefusal | null>
+  /** "Seri takibi": tüm adımlar ve onlardan türeyen seriler (güne bağlı değildir); yüklenene dek null */
+  streak: StreakView | null
+  /** Öneriyi seriye yeni adım olarak gönderir; bekleyen adım varsa ya da maç başladıysa reddeder (neden döner) */
+  sendToStreak: (candidate: StreakCandidate) => Promise<StreakRefusal | null>
+  /** Adımı siler; maç başladıysa ya da adım yayınlandıysa reddeder */
+  takeBackFromStreak: (id: string) => Promise<StreakRefusal | null>
+  /** Bekleyen adımı seriden kaldırır (oynanmadı); kayıt durur */
+  removePendingFromStreak: (id: string) => Promise<StreakRefusal | null>
+  undoStreakRemoval: (id: string) => Promise<StreakRefusal | null>
   /** Yapıştırılan lig tabloları ve takım adı eşleştirmeleri; yalnızca kartta gösterim içindir */
   leagueTables: LeagueTable[]
   teamAliases: TeamAlias[]
@@ -91,6 +102,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sharedPicks, setSharedPicks] = useState<SharedPick[]>([])
   const [highlights, setHighlights] = useState<Highlight[]>([])
   const [aiShares, setAiShares] = useState<AiShare[]>([])
+  const [streak, setStreak] = useState<StreakView | null>(null)
   const [leagueTables, setLeagueTables] = useState<LeagueTable[]>([])
   const [teamAliases, setTeamAliases] = useState<TeamAlias[]>([])
   // Seçim yazmaları sırayla yapılır ki art arda işaretlemelerde son durum kalsın.
@@ -145,7 +157,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [selectedDate, version, today])
 
+  // Seri güne bağlı değildir: veri her değiştiğinde (skor, yedek, silme) baştan okunur.
+  useEffect(() => {
+    let cancelled = false
+    void loadStreak().then((next) => !cancelled && setStreak(next))
+    return () => {
+      cancelled = true
+    }
+  }, [version])
+
   const refresh = useCallback(async () => setVersion((v) => v + 1), [])
+
+  const streakAction = useCallback(async <T,>(action: (arg: T) => Promise<StreakRefusal | null>, arg: T) => {
+    const reason = await action(arg)
+    setStreak(await loadStreak())
+    return reason
+  }, [])
+  const sendToStreakAction = useCallback((candidate: StreakCandidate) => streakAction(sendToStreak, candidate), [streakAction])
+  const takeBackFromStreakAction = useCallback((id: string) => streakAction(takeBackFromStreak, id), [streakAction])
+  const removePendingFromStreakAction = useCallback((id: string) => streakAction(removePendingFromStreak, id), [streakAction])
+  const undoStreakRemovalAction = useCallback((id: string) => streakAction(undoStreakRemoval, id), [streakAction])
 
   const saveThresholds = useCallback(async (next: Thresholds) => {
     setThresholds(next)
@@ -258,6 +289,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     highlights,
     addHighlight: addHighlightAction,
     removeHighlight: removeHighlightAction,
+    streak,
+    sendToStreak: sendToStreakAction,
+    takeBackFromStreak: takeBackFromStreakAction,
+    removePendingFromStreak: removePendingFromStreakAction,
+    undoStreakRemoval: undoStreakRemovalAction,
     leagueTables,
     teamAliases,
     sharedPicks,

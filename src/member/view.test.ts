@@ -7,7 +7,7 @@ import { DEFAULT_MEMBER_TEXTS } from '../config/memberTexts'
 import { MEMBER_STALE_HOURS } from '../config/member'
 import { DAY, dayHighlights, HIGHLIGHT_PERCENT, memberInput, PREVIOUS_DAY, PUBLISHED_AT } from '../services/member/__fixtures__/rawData'
 import type { MemberErrorKind } from '../services/member/controller'
-import { MEMBER_ERROR_TEXTS, MEMBER_HIGHLIGHT_TEXTS, MEMBER_NOTICE_TEXTS, STALE_DATA_TEXT } from '../services/member/labels'
+import { MEMBER_ERROR_TEXTS, MEMBER_HIGHLIGHT_TEXTS, MEMBER_NOTICE_TEXTS, MEMBER_STREAK_TEXTS, STALE_DATA_TEXT } from '../services/member/labels'
 import { buildMemberPayload } from '../services/member/payload'
 import { assertMemberPayload } from '../services/member/schema'
 import { formatRate } from '../utils/format'
@@ -17,10 +17,11 @@ import MemberLogin from './MemberLogin'
 import { LEGAL_NOTICE } from './legalNotice'
 import MemberShell from './MemberShell'
 import MemberStatsPage from './MemberStatsPage'
+import MemberStreak from './MemberStreak'
 import { CALCULATORS } from '../services/analysis/calculators'
 import { makeMatch } from '../services/analysis/testUtils'
 import type { MemberPayload } from '../services/member/payload'
-import { categoryChoices, dayChip, dayTitle, isOverstated, isStale, listFor, PERCENT_LABELS, PERCENT_NOTE, percentKind, secondPercentLabel, updatedText } from './view'
+import { streakMeanText, categoryChoices, dayChip, dayTitle, isOverstated, isStale, listFor, PERCENT_LABELS, PERCENT_NOTE, percentKind, secondPercentLabel, updatedText } from './view'
 
 // Üye sayfasının görünümü: bileşenler sunucu tarafı çizimle (tarayıcısız) HTML'e çevrilir.
 // Tıklama gerektiren akışlar (gün ve kategori seçimi) açılış seçimi verilerek çizilir;
@@ -205,17 +206,17 @@ describe('üye düzeni', () => {
     const links = (markup: string) => [...markup.matchAll(/<a [^>]*href="([^"]+)"/g)].map((m) => m[1])
     const at = (basePath: string | undefined, path: string) =>
       renderToStaticMarkup(createElement(MemoryRouter, { initialEntries: [path] }, createElement(MemberShell, { payload, now: NOW, today: DAY, refreshError: null, onLogout: noop, ...(basePath !== undefined && { basePath }), children: analysis() })))
-    expect(links(at('', '/'))).toEqual(['/', '/istatistik'])
-    expect(links(at('/uye', '/uye'))).toEqual(['/uye', '/uye/istatistik'])
-    expect(links(at(undefined, '/uye'))).toEqual(['/uye', '/uye/istatistik'])
+    expect(links(at('', '/'))).toEqual(['/', '/istatistik', '/seri'])
+    expect(links(at('/uye', '/uye'))).toEqual(['/uye', '/uye/istatistik', '/uye/seri'])
+    expect(links(at(undefined, '/uye'))).toEqual(['/uye', '/uye/istatistik', '/uye/seri'])
     // Etkin sekme doğru işaretlenir.
     expect(/<a [^>]*aria-current="page"[^>]*href="\/"|<a [^>]*href="\/"[^>]*aria-current="page"/.test(at('', '/'))).toBe(true)
     expect(/href="\/istatistik"[^>]*aria-current="page"|aria-current="page"[^>]*href="\/istatistik"/.test(at('', '/istatistik'))).toBe(true)
   })
 
-  it('yalnızca iki sekme ve Çıkış vardır; admin gezinmesi yoktur', () => {
+  it('yalnızca üç sekme ve Çıkış vardır; admin gezinmesi yoktur', () => {
     const markup = shell(analysis())
-    expect([...markup.matchAll(/<a [^>]*href="([^"]+)"/g)].map((m) => m[1])).toEqual(['/uye', '/uye/istatistik'])
+    expect([...markup.matchAll(/<a [^>]*href="([^"]+)"/g)].map((m) => m[1])).toEqual(['/uye', '/uye/istatistik', '/uye/seri'])
     expect(markup).toContain('data-testid="member-logout"')
     const text = textOf(markup)
     for (const word of ['ADMİN', 'SKOR GİRİŞİ', 'AI ANALİZİ', 'CSV', 'Yedek', 'Görsele ekle', 'paylaşıldı']) expect(text).not.toContain(word)
@@ -387,6 +388,7 @@ describe('kategori listeleri ve üye kartı', () => {
   it('sürüm 6 paketteki maç geneli satır gösterilmez; paket yine açılır', () => {
     const v6 = JSON.parse(JSON.stringify(payload)) as MemberPayload
     ;(v6 as { v: number }).v = 6
+    delete v6.streak
     const row = v6.days[0].lists.find((l) => l.categoryId === 'over25')!.items.find((i) => i.ai)!.ai!
     for (const d of v6.days) for (const l of d.lists) for (const i of l.items) delete i.ai
     for (const m of v6.days[0].matches) m.ai = row
@@ -722,5 +724,82 @@ describe('geçmiş veri rozeti ve tahmini maç sayısı', () => {
     expect(badges(html(createElement(MemberAnalysis, { payload: unknown, today: DAY, initialCategory: 'over25' })))[0]).toBe('Geçmiş veri: Bilinmiyor')
     for (const text of badges(html(analysis(0, 'corners85')))) expect(text).toBe('Geçmiş veri: Ölçülemedi')
     for (const text of badges(html(analysis(0, 'homeWin15')))) expect(text).toMatch(/^(Model tabanlı( \(kısmi\))?|Geçmiş veri: .+)$/)
+  })
+})
+
+describe('seri takibi sayfası', () => {
+  const streak = payload.streak!
+  const page = html(createElement(MemberStreak, { streak }))
+  const text = textOf(page)
+  const block = (testId: string) => page.slice(page.indexOf(`data-testid="${testId}"`))
+
+  it('başlıkta "deneme" notu, altta yasal not', () => {
+    expect(text).toContain('Seri Takibi deneme')
+    expect(page).toContain('data-testid="member-streak-trial"')
+    expect(textOf(block('member-streak-note'))).toContain('İstatistik takibidir, bahis tavsiyesi değildir. 18+')
+  })
+
+  it('sayılar paketten olduğu gibi gösterilir; az örnek uyarısı çıkar', () => {
+    const totals = textOf(block('member-streak-totals').split('data-testid="member-streak-active"')[0])
+    expect(totals).toContain('En uzun seri 1')
+    expect(totals).toContain('Mevcut seri 1')
+    expect(totals).toContain('Toplam seri 1')
+    expect(totals).toContain('Seri başına tutan (ort.) 1,0')
+    expect(totals).toContain('Tuttu 2')
+    expect(totals).toContain('Tutmadı 1')
+    expect(totals).toContain('⚠ az örnek')
+    expect(streakMeanText(null)).toBe('—')
+    expect(streakMeanText(2.5)).toBe('2,5')
+    const enough = { ...streak, totals: { ...streak.totals, lowSample: false } }
+    expect(html(createElement(MemberStreak, { streak: enough }))).not.toContain('member-streak-low-sample')
+  })
+
+  it('aktif seri: maç, kategori, gün ve saat, adım numarası ve durum; kaldırılan adımın numarası yok', () => {
+    const rows = block('member-streak-active').split('data-testid="member-streak-past"')[0].split('data-testid="member-streak-step"').slice(1).map(textOf)
+    expect(rows.length).toBe(3)
+    expect(rows[0]).toMatch(/Kuzey Yıldızı – Güney Spor 2\.5 ÜST · 5 Eki 2026 \d{2}:\d{2}/)
+    expect(rows[0]).toContain('1. adım')
+    expect(rows[0]).toContain('✓ Tuttu')
+    expect(rows[1]).toContain('— Oynanmadı')
+    expect(rows[1]).not.toContain('adım')
+    expect(rows[2]).toContain('2. adım')
+    expect(rows[2]).toContain('··· Bekliyor')
+  })
+
+  it('geçmiş seriler: uzunluk, bitiş günü ve seriyi bitiren maç', () => {
+    const past = textOf(block('member-streak-past').split('data-testid="member-streak-note"')[0])
+    expect(past).toContain('GEÇMİŞ SERİLER 1')
+    expect(past).toContain('1 adım tuttu')
+    expect(past).toContain('5 Eki 2026')
+    expect(past).toContain('Seriyi bitiren maç: Doğu Gençlik –')
+  })
+
+  it('yüzde, yıldız, skor ve yasak sözcükler yazmaz', () => {
+    expect(text).not.toContain('%')
+    expect(text).not.toMatch(/[★☆]/)
+    expect(text).not.toMatch(/(İY|MS) \d/)
+    expect(text.replace(MEMBER_STREAK_TEXTS.note, '').toLocaleLowerCase('tr')).not.toMatch(/güvenilirlik|oran|tutar|kupon|kasa|bahis|katla|rolling|kazanç|ortalama/)
+  })
+
+  it('boş seri: "Henüz seri yok"; biten seri varken aktif seri yoksa ayrı metin', () => {
+    const none = buildMemberPayload(memberInput({ streak: undefined })).streak!
+    const empty = textOf(html(createElement(MemberStreak, { streak: none })))
+    expect(empty).toContain('Henüz seri yok.')
+    expect(empty).toContain('Seri başına tutan (ort.) —')
+    const idle = { ...streak, status: 'idle' as const, steps: [], totals: { ...streak.totals, current: 0, won: 1 } }
+    expect(textOf(html(createElement(MemberStreak, { streak: idle })))).toContain('Şu an aktif seri yok.')
+  })
+
+  it('sekme yalnızca seri alanı olan (sürüm 8) pakette çıkar; sürüm 7 pakette yoktur', () => {
+    expect(shell(analysis())).toContain('data-testid="member-tab-streak"')
+    expect(textOf(shell(analysis()))).toContain('SERİ TAKİBİ')
+    const v7 = JSON.parse(JSON.stringify(payload)) as MemberPayload
+    ;(v7 as { v: number }).v = 7
+    delete v7.streak
+    expect(() => assertMemberPayload(v7)).not.toThrow()
+    const old = shell(analysis(), NOW, null, v7)
+    expect(old).not.toContain('member-tab-streak')
+    expect([...old.matchAll(/<a [^>]*href="([^"]+)"/g)].map((m) => m[1])).toEqual(['/uye', '/uye/istatistik'])
+    expect(old).toContain('data-testid="member-card"')
   })
 })

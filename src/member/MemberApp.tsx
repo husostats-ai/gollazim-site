@@ -7,6 +7,7 @@ import MemberAnalysis from './MemberAnalysis'
 import MemberLogin from './MemberLogin'
 import MemberShell, { MemberFrame } from './MemberShell'
 import MemberStatsPage from './MemberStatsPage'
+import MemberStreak from './MemberStreak'
 
 const controller = createMemberController({
   url: MEMBER_PACKAGE_URL,
@@ -88,6 +89,8 @@ export default function MemberApp({ basePath = '/uye' }: { basePath?: string }) 
       <Routes>
         <Route index element={<MemberAnalysis payload={state.payload} today={today} />} />
         <Route path="istatistik" element={<MemberStatsPage payload={state.payload} />} />
+        {/* Sürüm 1-7 paketlerde seri takibi yoktur: sekme çıkmaz, adres ana sayfaya döner. */}
+        {state.payload.streak && <Route path="seri" element={<MemberStreak streak={state.payload.streak} />} />}
         <Route path="*" element={<Navigate to={home} replace />} />
       </Routes>
     </MemberShell>

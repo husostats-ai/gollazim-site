@@ -54,6 +54,7 @@ const ALLOWED = [
   'src/member/MemberLogin.tsx',
   'src/member/MemberShell.tsx',
   'src/member/MemberStatsPage.tsx',
+  'src/member/MemberStreak.tsx',
   'src/member/howToRead.ts',
   'src/member/legalNotice.ts',
   'src/member/main.tsx',

@@ -4,7 +4,7 @@ import { EDITABLE_STATS } from '../config/editableStats'
 import { syncUploadCounts } from '../services/csv/uploadService'
 import { movePicksToDate } from '../services/results/resultService'
 import { parseNumber } from '../services/csv/values'
-import { matchesRepo } from '../services/data'
+import { matchesRepo, streakRepo } from '../services/data'
 import type { Match, StatValue } from '../types'
 
 interface Props {
@@ -59,6 +59,8 @@ export default function MatchEditForm({ match, onDone, onCancel }: Props) {
       edited: true,
     })
     if (date !== match.date) await movePicksToDate(match.id, date)
+    // Seri takibindeki adımın günü ve saati maçla birlikte güncellenir (ertelenen maç).
+    await streakRepo.syncSchedule(match.id, { date, time: time || null })
     onDone()
   }
 

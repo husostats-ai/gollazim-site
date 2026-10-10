@@ -70,6 +70,8 @@ export async function publish(repo: MemberAdminRepo, sources: PublishSources, da
   if (draft.highlightIds.length > 0) await sources.markHighlightsPublished(draft.highlightIds, now)
   // "AI öneri güveni" satırı üyeye giden maçlar kaydedilir (ileride isabet karşılaştırması için).
   if (draft.aiShares.length > 0) await sources.recordAiShares(draft.aiShares, publication.record.n, now)
+  // Seri adımları artık üyelere açıktır: silinemez olarak işaretlenir.
+  if (draft.streakIds.length > 0) await sources.markStreakPublished(draft.streakIds, now)
   return publication
 }
 

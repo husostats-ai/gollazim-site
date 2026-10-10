@@ -4,17 +4,17 @@ import { describe, expect, it } from 'vitest'
 import type { AiVerdict, BackupFile, Match } from '../../types'
 import { toAppDateTime } from '../../utils/date'
 import { shiftDate } from '../../utils/format'
-import { aiInputsOf, highlightInputOf, PUBLISH_DAY_COUNT } from '../memberAdmin/publish'
+import { aiInputsOf, highlightInputOf, PUBLISH_DAY_COUNT, streakInputOf } from '../memberAdmin/publish'
 import { analyzeDay } from '../analysis/engine'
 import { estimateSampleSize, levelForSample, RELIABILITY_LIMITS } from '../analysis/reliability'
 import { CATEGORIES, getCategory } from '../../config/categories'
 import { TEXT_FIELDS } from '../../config/columnAliases'
 import { isBackupFile } from '../data/backupFormat'
-import { AI_REASON_CANARY, AI_RISK_CANARY, AI_SAVED_AT, AI_VERDICTS, dayVerdicts, DAY, dayHighlights, dayMatches, HIGHLIGHT_PERCENT, HIGHLIGHTS, MATCHES, memberInput, PICKS, PREVIOUS_DAY, RAW_CANARIES, RAW_HEADERS, RAW_STAT_KEYS, RESULTS, URL_CANARY } from './__fixtures__/rawData'
+import { AI_REASON_CANARY, AI_RISK_CANARY, AI_SAVED_AT, AI_VERDICTS, dayVerdicts, DAY, dayHighlights, dayMatches, HIGHLIGHT_PERCENT, HIGHLIGHTS, MATCHES, memberInput, PICKS, PREVIOUS_DAY, RAW_CANARIES, RAW_HEADERS, RAW_STAT_KEYS, RESULTS, STREAK_ADDED_AT, STREAK_INPUT, STREAK_STEPS, streakView, URL_CANARY } from './__fixtures__/rawData'
 import { AI_CATEGORY_IDS, AI_DECISIONS, AI_PROVIDERS, decisionLabel } from '../../config/ai'
 import { MEMBER_AI_LEVEL_LABELS, MEMBER_AI_PROVIDER_LABELS, memberAiSummary, memberAiTitle } from './labels'
-import { buildMemberPayload, buildMemberPublication, type MemberPayload, type MemberPayloadInput } from './payload'
-import { MEMBER_AI_CATEGORIES, MEMBER_AI_MAJORITY_LEVELS, MEMBER_AI_PROVIDERS, MEMBER_AI_VOTE_LEVELS, assertMemberPayload, MEMBER_KEYS, MemberPayloadError, SAMPLE_LEVEL_LIMITS, SAMPLE_RANGE } from './schema'
+import { buildMemberPayload, buildMemberPublication, MEMBER_PAYLOAD_VERSION, type MemberPayload, type MemberPayloadInput, type MemberStreak } from './payload'
+import { MEMBER_AI_CATEGORIES, MEMBER_AI_MAJORITY_LEVELS, MEMBER_AI_PROVIDERS, MEMBER_AI_VOTE_LEVELS, assertMemberPayload, MEMBER_KEYS, MEMBER_STREAK_LIMITS, MemberPayloadError, SAMPLE_LEVEL_LIMITS, SAMPLE_RANGE } from './schema'
 
 // SIZINTI TESTLERİ: yayın paketinin düz hâlinde ham veriden hiçbir iz bulunmamalı.
 // Veri (bkz. __fixtures__/rawData.ts) gerçek dışa aktarımın 107 kolonunu taşır ve ham
@@ -86,6 +86,11 @@ const FORBIDDEN_KEYS = [
   'top',
   'best',
   'source',
+  'seq',
+  'addedAt',
+  'removed',
+  'lastOutcome',
+  'revisedAt',
 ]
 
 describe('yayın paketi: ham veri sızıntısı', () => {
@@ -147,7 +152,13 @@ describe('yayın paketi: ham veri sızıntısı', () => {
 
   it('izinli anahtar listesi bilinçli değişir: liste bu testte sabitlenmiştir', () => {
     expect(MEMBER_KEYS).toEqual({
-      payload: ['v', 'n', 'publishedAt', 'texts', 'days', 'statistics'],
+      payload: ['v', 'n', 'publishedAt', 'texts', 'days', 'statistics', 'streak'],
+      payloadV7: ['v', 'n', 'publishedAt', 'texts', 'days', 'statistics'],
+      streak: ['status', 'steps', 'past', 'totals'],
+      streakStep: ['date', 'home', 'away', 'league', 'time', 'categoryId', 'state', 'step'],
+      streakRun: ['length', 'ended', 'last'],
+      streakLast: ['home', 'away', 'league', 'categoryId'],
+      streakTotals: ['longest', 'current', 'count', 'mean', 'won', 'lost', 'lowSample'],
       texts: ['disclaimer', 'account'],
       day: ['date', 'matches', 'lists', 'highlights'],
       dayV3: ['date', 'matches', 'lists'],
@@ -245,7 +256,7 @@ describe('yayın paketi: şema denetimi fazladan ya da eksik alanı reddeder', (
     expect(broken((p) => void ((firstItem(p) as { conflict: unknown }).conflict = 'piyasa'))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days[0].lists[0].items[0].conflict = 'hesap'))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days[0].lists.find((l) => l.categoryId === 'homeWin15')!.items[0].conflict = 'model'))).toThrow(MemberPayloadError)
-    expect(broken((p) => void ((p as { v: number }).v = 8))).toThrow(MemberPayloadError)
+    expect(broken((p) => void ((p as { v: number }).v = 9))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days = []))).toThrow(MemberPayloadError)
     expect(broken((p) => void p.days[0].lists.reverse())).toThrow(MemberPayloadError)
   })
@@ -277,7 +288,7 @@ describe('yayın paketi: "aynı maçın diğer önerileri" yalnızca paketteki �
           entries += item.others!.length
         }
     expect(entries).toBeGreaterThan(100)
-    expect(payload.v).toBe(7)
+    expect(payload.v).toBe(8)
   })
 
   it('pakete girmeyen (ilk 15 dışında kalan) öneri bu satıra da girmez', () => {
@@ -310,6 +321,7 @@ describe('yayın paketi: "aynı maçın diğer önerileri" yalnızca paketteki �
   it('sürüm 1 paket (bu alan olmadan) hâlâ kabul edilir; sürümler karıştırılamaz', () => {
     const v1 = copy()
     ;(v1 as { v: number }).v = 1
+    delete v1.streak
     for (const scope of ['all', 'shared'] as const) delete v1.statistics[scope].main
     for (const day of v1.days) for (const list of day.lists) for (const item of list.items) delete item.others
     for (const day of v1.days) for (const list of day.lists) for (const item of list.items) delete item.sample
@@ -352,6 +364,7 @@ describe('yayın paketi: ana kategorilerin toplu başarısı (sürüm 3)', () =>
   it('sürüm 2 paket (bu alan olmadan) hâlâ kabul edilir; sürümler karıştırılamaz', () => {
     const v2 = copy()
     ;(v2 as { v: number }).v = 2
+    delete v2.streak
     for (const scope of ['all', 'shared'] as const) delete v2.statistics[scope].main
     for (const day of v2.days) delete day.highlights
     for (const day of v2.days) for (const list of day.lists) for (const item of list.items) delete item.sample
@@ -447,6 +460,7 @@ describe('yayın paketi: günün öne çıkanları (sürüm 4)', () => {
   it('sürüm 3 paket (bu alan olmadan) hâlâ kabul edilir; sürümler karıştırılamaz', () => {
     const v3 = copy()
     ;(v3 as { v: number }).v = 3
+    delete v3.streak
     for (const day of v3.days) delete day.highlights
     for (const day of v3.days) for (const list of day.lists) for (const item of list.items) delete item.sample
     for (const day of v3.days) for (const list of day.lists) for (const item of list.items) delete item.ai
@@ -541,12 +555,14 @@ describe('yayın paketi: tahmini maç sayısı (sürüm 5)', () => {
   it('sürüm 4 paket (bu alan olmadan) hâlâ kabul edilir; sürüm 4 pakette alan bulunamaz', () => {
     const v4 = copy()
     ;(v4 as { v: number }).v = 4
+    delete v4.streak
     for (const day of v4.days) for (const list of day.lists) for (const item of list.items) delete item.sample
     for (const day of v4.days) for (const list of day.lists) for (const item of list.items) delete item.ai
     expect(() => assertMemberPayload(v4)).not.toThrow()
     expect(
       rejects((p) => {
         ;(p as { v: number }).v = 4
+        delete p.streak
         for (const day of p.days) for (const list of day.lists) for (const item of list.items) delete item.ai
       }),
     ).toThrow('izinli olmayan alan: sample')
@@ -818,6 +834,7 @@ describe('yayın paketi: "AI öneri güveni" satırı (kategori bazlı)', () => 
   it('sürüm 6 paket (satır maçta) hâlâ açılır; sürümler karıştırılamaz', () => {
     const v6 = copy()
     ;(v6 as { v: number }).v = 6
+    delete v6.streak
     const row = aiOf(v6, 'Kuzey Yıldızı', 'over25')!
     for (const d of v6.days) for (const l of d.lists) for (const i of l.items) delete i.ai
     v6.days[0].matches.find((m) => m.home === 'Kuzey Yıldızı')!.ai = row
@@ -827,6 +844,7 @@ describe('yayın paketi: "AI öneri güveni" satırı (kategori bazlı)', () => 
     rejects((p) => void ((p as { v: number }).v = 5))
     const v5 = copy()
     ;(v5 as { v: number }).v = 5
+    delete v5.streak
     for (const d of v5.days) for (const l of d.lists) for (const i of l.items) delete i.ai
     expect(() => assertMemberPayload(v5)).not.toThrow()
   })
@@ -840,5 +858,124 @@ describe('yayın paketi: "AI öneri güveni" satırı (kategori bazlı)', () => 
     expect(memberAiSummary(aiOf(payload, 'Kuzey Yıldızı', 'over25')!)).toBe('3/3 · Orta')
     expect(memberAiSummary(aiOf(payload, 'Kuzey Yıldızı', 'btts')!)).toBe('2/3 · Orta')
     expect(AI_CATEGORY_IDS.map((id) => memberAiTitle(getCategory(id).label))).toEqual(['AI öneri güveni (2.5 Üst)', 'AI öneri güveni (İlk Yarı 0.5 Üst)', 'AI öneri güveni (KG Var)', 'AI öneri güveni (2.5 Üst & KG Var)'])
+  })
+})
+
+describe('yayın paketi: seri takibi (sürüm 8)', () => {
+  const copy = (): MemberPayload => JSON.parse(text) as MemberPayload
+  const rejects = (change: (streak: MemberStreak, p: MemberPayload) => void) => {
+    const p = copy()
+    change(p.streak!, p)
+    return () => assertMemberPayload(p)
+  }
+  const streak = payload.streak!
+
+  it('aktif serinin adımları, geçmiş seriler ve sayılar; paket sürümü 8', () => {
+    expect(MEMBER_PAYLOAD_VERSION).toBe(8)
+    expect(payload.v).toBe(8)
+    expect(streak).toEqual({
+      status: 'active',
+      steps: [
+        { date: DAY, home: 'Kuzey Yıldızı', away: expect.any(String), league: expect.any(String), time: expect.stringMatching(/^\d{2}:\d{2}$/), categoryId: 'over25', state: 'won', step: 1 },
+        { date: DAY, home: 'Ova Belediyespor', away: expect.any(String), league: expect.any(String), time: expect.any(String), categoryId: 'over25', state: 'unplayed', step: null },
+        { date: DAY, home: 'İç Anadolu FK', away: expect.any(String), league: expect.any(String), time: expect.any(String), categoryId: 'over25', state: 'pending', step: 2 },
+      ],
+      past: [{ length: 1, ended: DAY, last: { home: 'Doğu Gençlik', away: expect.any(String), league: expect.any(String), categoryId: 'over25' } }],
+      totals: { longest: 1, current: 1, count: 1, mean: 1, won: 2, lost: 1, lowSample: true },
+    })
+  })
+
+  it('yalnızca izinli alanlar: yüzde, geçmiş veri, skor, AI kararı, kimlik, sıra ve eklenme zamanı pakete girmez', () => {
+    const { keys, numbers, strings } = collect(streak)
+    expect([...keys].sort()).toEqual([...new Set([...MEMBER_KEYS.streak, ...MEMBER_KEYS.streakStep, ...MEMBER_KEYS.streakRun, ...MEMBER_KEYS.streakLast, ...MEMBER_KEYS.streakTotals])].sort())
+    const streakText = JSON.stringify(streak)
+    for (const word of ['percent', 'reliability', 'score', 'outcome', 'ai', 'votes', 'matchId', 'seq', 'addedAt', 'publishedAt', 'removed', 'lastOutcome', 'revisedAt']) expect(streakText).not.toContain(`"${word}"`)
+    expect(text).not.toContain(STREAK_ADDED_AT)
+    expect(text).not.toContain(STREAK_ADDED_AT.slice(0, 19))
+    for (const step of STREAK_STEPS) {
+      expect(text).not.toContain(step.id)
+      expect(text).not.toContain(step.matchId)
+    }
+    // Skor biçiminde metin ("MS 3-1") seri alanında yoktur; sayılar yalnızca adım numarası ve sayımlardır.
+    for (const value of strings) expect(value).not.toMatch(/(İY|MS) \d|^\d{1,2}-\d{1,2}$/)
+    expect(Math.max(...numbers)).toBeLessThanOrEqual(2)
+  })
+
+  it('seri güne bağlı değildir: paketteki günler değişse de aynıdır; verilmezse boş seri yazılır', () => {
+    const today = buildMemberPayload(memberInput({ days: memberInput().days.slice(0, 1) }))
+    expect(today.streak).toEqual(streak)
+    const none = buildMemberPayload(memberInput({ streak: undefined }))
+    expect(none.streak).toEqual({ status: 'idle', steps: [], past: [], totals: { longest: 0, current: 0, count: 0, mean: null, won: 0, lost: 0, lowSample: true } })
+    expect({ ...none, streak: undefined }).toEqual({ ...payload, streak: undefined })
+  })
+
+  it('sınır: en fazla son 100 aktif adım ve en yeni 30 geçmiş seri girer; sayılar tam kalır', () => {
+    const step = STREAK_INPUT.steps[0]
+    const run = STREAK_INPUT.past[0]
+    const long = buildMemberPayload(
+      memberInput({
+        streak: {
+          status: 'active',
+          steps: Array.from({ length: 130 }, (_, i) => ({ ...step, home: `Ev ${i + 1}`, state: 'won' as const, step: i + 1 })),
+          past: Array.from({ length: 45 }, (_, i) => ({ ...run, length: i % 3 })),
+          totals: { longest: 130, current: 130, count: 45, mean: 1, won: 175, lost: 45, lowSample: false },
+        },
+      }),
+    )
+    expect(MEMBER_STREAK_LIMITS).toEqual({ steps: 100, past: 30 })
+    expect(long.streak!.steps.length).toBe(100)
+    expect(long.streak!.steps[0].step).toBe(31)
+    expect(long.streak!.steps[99].step).toBe(130)
+    expect(long.streak!.past.length).toBe(30)
+    expect(long.streak!.totals).toMatchObject({ current: 130, count: 45 })
+  })
+
+  it('paket kurucunun girdisi adım kayıtlarından alan alan indirgenir; maç silinmişse adlar kayıttan gelir', () => {
+    const renamed = STREAK_STEPS.map((s) => ({ ...s, home: `Kayıt ${s.seq}` }))
+    expect(streakInputOf(streakView(renamed), MATCHES).steps.map((s) => s.home)).toEqual(['Kuzey Yıldızı', 'Ova Belediyespor', 'İç Anadolu FK'])
+    // Maç ve önerisi silinmiş: ad kayıttan, sonuç son görülen kesin sonuçtan.
+    const withOutcome = renamed.map((s) => (s.seq === 3 ? { ...s, lastOutcome: 'won' as const } : s))
+    const gone = streakInputOf(streakView(withOutcome, MATCHES.filter((m) => m.home !== 'Kuzey Yıldızı'), RESULTS.filter((r) => !r.matchId.includes('Kuzey Yıldızı')), PICKS.filter((p) => !p.matchId.includes('Kuzey Yıldızı'))), MATCHES.filter((m) => m.home !== 'Kuzey Yıldızı'))
+    expect(gone.steps[0]).toMatchObject({ home: 'Kayıt 3', state: 'won', step: 1 })
+    expect(gone.totals).toEqual(STREAK_INPUT.totals)
+  })
+
+  it('şema: fazladan alan, bozuk değer ve tutarsız sayı reddedilir', () => {
+    expect(() => assertMemberPayload(copy())).not.toThrow()
+    expect(rejects((s) => void ((s.steps[0] as unknown as Record<string, unknown>).percent = 82))).toThrow('izinli olmayan alan: percent')
+    expect(rejects((s) => void ((s.steps[0] as unknown as Record<string, unknown>).score = 'MS 3-1'))).toThrow('izinli olmayan alan: score')
+    expect(rejects((s) => void ((s as unknown as Record<string, unknown>).addedAt = STREAK_ADDED_AT))).toThrow('izinli olmayan alan: addedAt')
+    expect(rejects((s) => void ((s.past[0].last as unknown as Record<string, unknown>).time = '20:00'))).toThrow(MemberPayloadError)
+    // Aktif seride tutmayan adım bulunamaz; durum serbest metin değildir.
+    expect(rejects((s) => void (s.steps[0].state = 'lost'))).toThrow(MemberPayloadError)
+    expect(rejects((s) => void ((s.steps[0] as { state: string }).state = 'kazandı'))).toThrow(MemberPayloadError)
+    expect(rejects((s) => void (s.steps[0].time = '8:00'))).toThrow(MemberPayloadError)
+    expect(rejects((s) => void (s.steps[0].date = '05.10.2026'))).toThrow(MemberPayloadError)
+    expect(rejects((s) => void ((s.steps[0] as { categoryId: string }).categoryId = 'yok'))).toThrow(MemberPayloadError)
+    // Adım numaraları ardışıktır; kaldırılan adımın numarası yoktur.
+    expect(rejects((s) => void (s.steps[2].step = 5))).toThrow('adım numaraları ardışık olmalı')
+    expect(rejects((s) => void (s.steps[1].step = 2))).toThrow('seriden kaldırılan adımın numarası olamaz')
+    expect(rejects((s) => void (s.steps[0].step = null))).toThrow(MemberPayloadError)
+    // Sayılar birbiriyle ve adımlarla tutarlıdır.
+    expect(rejects((s) => void (s.status = 'idle'))).toThrow('adımlarla tutarlı olmalı')
+    expect(rejects((s) => void (s.totals.lost = 0))).toThrow('biten seri sayısına eşit olmalı')
+    expect(rejects((s) => void (s.totals.lowSample = false))).toThrow('biten seri sayısıyla tutarlı olmalı')
+    expect(rejects((s) => void (s.totals.mean = 3.5))).toThrow('sayılarla tutarlı olmalı')
+    expect(rejects((s) => void (s.totals.mean = null))).toThrow('sayılarla tutarlı olmalı')
+    expect(rejects((s) => void (s.totals.current = 0))).toThrow(MemberPayloadError)
+    expect(rejects((s) => void (s.totals.longest = 0))).toThrow(MemberPayloadError)
+    expect(rejects((s) => void (s.past[0].length = 9))).toThrow(MemberPayloadError)
+    expect(rejects((s) => void s.past.push(s.past[0]))).toThrow('biten seri sayısından fazla olamaz')
+    expect(rejects((s) => void (s.steps = Array.from({ length: 101 }, () => s.steps[1])))).toThrow('en fazla 100 öğe olabilir')
+  })
+
+  it('sürüm 7 paket (bu alan olmadan) hâlâ açılır; sürümler karıştırılamaz', () => {
+    const v7 = copy()
+    ;(v7 as { v: number }).v = 7
+    delete v7.streak
+    expect(() => assertMemberPayload(v7)).not.toThrow()
+    // Sürüm 7 pakette alan bulunamaz; sürüm 8 pakette bulunmak zorundadır.
+    expect(rejects((_, p) => void ((p as { v: number }).v = 7))).toThrow('izinli olmayan alan: streak')
+    expect(rejects((_, p) => void delete p.streak)).toThrow('eksik alan: streak')
   })
 })

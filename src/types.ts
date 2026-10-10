@@ -244,6 +244,40 @@ export interface Highlight {
   publishedAt?: string
 }
 
+/** Kaldırılan adımın nedeni. unplayed: maç oynanmadı (ertelendi / iptal). void: maç oynandı ama değerlendirilemedi. */
+export type StreakRemovalReason = 'unplayed' | 'void'
+
+/**
+ * "Seri takibi" adımı: admin'in maç başlamadan önce seriye gönderdiği bir öneri (maç + kategori).
+ * Seriler ayrı tutulmaz; adımların sırasından (seq) ve sonuçlarından türetilir. Sonuç kayıtta
+ * tutulmaz: dondurulmuş önerinin sonucundan okunur (lastOutcome yalnızca maç verisi silinirse kullanılır).
+ */
+export interface StreakStep {
+  /** matchId + categoryId */
+  id: string
+  matchId: string
+  categoryId: CategoryId
+  /** Adımın sırası: her yeni adımda bir artar. Serinin sırası budur (başlama ya da sonuçlanma anı değil). */
+  seq: number
+  /** Eklenme anı (ISO) */
+  addedAt: string
+  // Eklenme anındaki görünüm: maç verisi sonradan silinse de liste bu alanlardan gösterilir.
+  date: string
+  home: string
+  away: string
+  /** HH:mm (Türkiye saati); saati bilinmeyen maç eklenemez */
+  time: string
+  league?: string
+  /** Adımın üye paketiyle ilk yayınlandığı an (ISO). Yayınlanan adım silinemez. */
+  publishedAt?: string
+  /** Adım seriden kaldırıldı (kayıt durur): seriyi ne ilerletir ne bozar. publishedAt: kaldırmanın yayınlandığı an. */
+  removed?: { at: string; reason: StreakRemovalReason; publishedAt?: string }
+  /** Son görülen kesin sonuç. Maç ve dondurulmuş önerisi silinirse sonuç buradan okunur. */
+  lastOutcome?: 'won' | 'lost'
+  /** Kesin sonuç sonradan değişti (skor düzeltildi): değişikliğin görüldüğü an (ISO) */
+  revisedAt?: string
+}
+
 /** Yapıştırılan lig tablosundan saklanan satır (yalnızca gösterim içindir) */
 export interface LeagueTableRow {
   team: string
@@ -304,4 +338,6 @@ export interface BackupFile {
   highlights?: Highlight[]
   /** "AI öneri güveni" satırı üyeye giden maçların kaydı; eski yedeklerde ve hiç kayıt yokken bulunmaz */
   aiShares?: AiShare[]
+  /** "Seri takibi" adımları; eski yedeklerde ve hiç adım yokken bulunmaz */
+  streakSteps?: StreakStep[]
 }

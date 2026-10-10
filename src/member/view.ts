@@ -44,6 +44,9 @@ export function listFor(day: MemberDay, categoryId: CategoryId | null): MemberLi
   return filled.find((list) => list.categoryId === categoryId) ?? filled[0] ?? null
 }
 
+/** Seri başına tutan adım: "2,5"; biten seri yoksa "—" */
+export const streakMeanText = (mean: number | null): string => (mean === null ? '—' : mean.toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }))
+
 export const categoryLabel = (categoryId: string): string => CATEGORIES.find((c) => c.id === categoryId)?.label ?? categoryId
 
 /**

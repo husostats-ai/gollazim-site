@@ -147,7 +147,17 @@ async function memberLogin(browser, username, password) {
     const box = document.querySelector('[data-testid="member-highlights"]')
     return box ? `${box.querySelectorAll('[data-testid="member-highlight"]').length}:${box.innerText.includes('%') ? 'yüzde-var' : 'yüzde-yok'}:${box.innerText.includes('deneme') ? 'deneme' : 'not-yok'}` : 'yok'
   })
-  const result = (await page.$(sel('member-cards'))) ? `ok:${await text(page, 'member-publish-no')}|${await text(page, 'member-disclaimer')}|öne-çıkan=${highlights}` : `hata:${await text(page, 'member-error')}`
+  // Seri takibi sayfası: aktif adım + geçmiş seri sayısı, "deneme" notu ve sayfada yüzde geçip geçmediği
+  let streak = 'yok'
+  if (await page.$(sel('member-tab-streak'))) {
+    await page.$eval(sel('member-tab-streak'), (el) => el.click())
+    await page.waitForSelector(sel('member-streak'))
+    streak = await page.evaluate(() => {
+      const box = document.querySelector('[data-testid="member-streak"]')
+      return `${box.querySelectorAll('[data-testid="member-streak-step"]').length + box.querySelectorAll('[data-testid="member-streak-run"]').length}:${box.innerText.includes('%') ? 'yüzde-var' : 'yüzde-yok'}:${box.innerText.includes('deneme') ? 'deneme' : 'not-yok'}`
+    })
+  }
+  const result = (await page.$(sel('member-cards'))) || streak !== 'yok' ? `ok:${await text(page, 'member-publish-no')}|${await text(page, 'member-disclaimer')}|seri=${streak}|öne-çıkan=${highlights}` : `hata:${await text(page, 'member-error')}`
   await page.close()
   return result
 }
@@ -335,8 +345,10 @@ try {
           db.transaction('matches').objectStore('matches').getAll().onsuccess = (e) => {
             const match = e.target.result.find((m) => m.date === day && m.time)
             const record = { id: `${day}|${match.id}|over25`, date: day, matchId: match.id, categoryId: 'over25', addedAt: new Date().toISOString(), home: match.home, away: match.away, time: match.time, percent: 87, reliability: 'low' }
-            const tx = db.transaction('highlights', 'readwrite')
+            // Seri takibi adımı da aynı yolla yazılır (aynı maç, sıra 1).
+            const tx = db.transaction(['highlights', 'streakSteps'], 'readwrite')
             tx.objectStore('highlights').put(record)
+            tx.objectStore('streakSteps').put({ id: `${match.id}|over25`, matchId: match.id, categoryId: 'over25', seq: 1, addedAt: new Date().toISOString(), date: day, home: match.home, away: match.away, time: match.time })
             tx.oncomplete = () => {
               db.close()
               done(record)
@@ -349,6 +361,9 @@ try {
   await page.reload({ waitUntil: 'networkidle0' })
   await page.waitForFunction((s) => document.querySelector(s)?.textContent.includes('1 öne çıkan'), { timeout: 20000 }, sel('publish-summary'))
   step('yayın özeti: gün başına öne çıkan sayısı', (await text(page, 'publish-summary')).includes('1 öne çıkan'), `${publishDay}: ${seeded.home} – ${seeded.away}`)
+  const streakSummary = await text(page, 'publish-summary-streak')
+  step('yayın özeti: seri takibi satırı (1 adım)', /^Seri takibi: aktif seride [01] adım \([01] bekleyen\) · [01] geçmiş seri$/.test(streakSummary) && streakSummary !== 'Seri takibi: aktif seride 0 adım (0 bekleyen) · 0 geçmiş seri', streakSummary)
+  step('admin: Seri Takibi panelinde adım görünüyor', (await page.$$eval(`${sel('streak-panel')} ${sel('streak-row')}`, (els) => els.length)) === 1 && (await text(page, 'streak-note')) === 'İstatistik takibidir, bahis tavsiyesi değildir. 18+')
   const order = await text(page, 'publish-order')
   step('yayın kartında sıra notu: önce uye-yayinla, sonra yayinla', order.indexOf('npm run uye-yayinla') > 0 && order.indexOf('npm run uye-yayinla') < order.indexOf('npm run yayinla'), order.slice(0, 90))
   await tap(page, 'publish-start')
@@ -379,6 +394,7 @@ try {
   for (const name of ['ali', 'veli', 'zeynep']) {
     const result = await memberLogin(browser, name, passwords[name])
     step(`üye girişi (yayın 1): ${name}`, result.startsWith('ok:Yayın no 1') && result.includes('E2E özel uyarı metni. 18+'), result.slice(0, 60))
+    step(`üye sayfası (yayın 1): Seri Takibi sekmesinde 1 kayıt, "deneme" notu var, yüzde yok: ${name}`, result.includes('|seri=1:yüzde-yok:deneme|'), result.split('|').slice(-2)[0])
     step(`üye sayfası (yayın 1): öne çıkanlar kutusunda 1 satır, "deneme" notu var, yüzde yok: ${name}`, result.endsWith('öne-çıkan=1:yüzde-yok:deneme'), result.split('|').pop())
   }
 
