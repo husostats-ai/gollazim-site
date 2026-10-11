@@ -16,7 +16,7 @@ import TrendChart from '../components/stats/TrendChart'
 import { getCategory, GROUPS } from '../config/categories'
 import { DATA_LABELS } from '../services/analysis/reliability'
 import { AI_CATEGORY_IDS } from '../config/ai'
-import { buildLegacyAiStats, buildPreMatchAiStats } from '../services/ai/aiStats'
+import { buildLegacyAiStats, buildPreMatchAiStats, statsMatchIds } from '../services/ai/aiStats'
 import { aiRepo, matchesRepo, picksRepo, resultsRepo, sharedRepo } from '../services/data'
 import { buildStarStats, recomputedNote } from '../services/stats/starStats'
 import { SCOPE_LABELS, sharedPicksOnly, type StatsScope } from '../services/story/shared'
@@ -81,13 +81,13 @@ export default function StatsPage() {
   const [scope, setScope] = useState<StatsScope>('all')
 
   useEffect(() => {
-    void Promise.all([picksRepo.listAll(), resultsRepo.listAll()]).then(async ([all, allResults]) => {
-      // Önerisi ya da girilmiş skoru olan maçların kayıtları
-      setLegacyMatches(await matchesRepo.getMany([...new Set([...all.map((p) => p.matchId), ...allResults.map((r) => r.matchId)])]))
+    void Promise.all([picksRepo.listAll(), resultsRepo.listAll(), aiRepo.listVerdicts()]).then(async ([all, allResults, allVerdicts]) => {
+      // Önerisi, girilmiş skoru ya da yapay zekâ kararı olan maçların kayıtları
+      setLegacyMatches(await matchesRepo.getMany(statsMatchIds(all, allResults, allVerdicts)))
       setResults(allResults)
+      setVerdicts(allVerdicts)
       setPicks(all)
     })
-    void aiRepo.listVerdicts().then(setVerdicts)
     void sharedRepo.listAll().then(setShared)
   }, [dataVersion])
 

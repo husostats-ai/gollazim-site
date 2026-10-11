@@ -77,6 +77,15 @@ export function buildCategoryAiStats(picks: Pick[], verdicts: AiVerdict[]): AiSt
   return statsFrom(picks, decisions, (p) => pairKey(p.matchId, p.categoryId))
 }
 
+/**
+ * İstatistik sayfasının yüklemesi gereken maç kayıtları: önerisi, girilmiş skoru ya da yapay zekâ kararı olanlar.
+ * Skoru henüz girilmemiş maçın önerisi dondurulmamıştır; kaydı yüklenmezse başlama saati bilinemez ve
+ * maç öncesi kaydedilmiş kararı "saati bilinmeyen" sayılırdı.
+ */
+export const statsMatchIds = (picks: readonly { matchId: string }[], results: readonly { matchId: string }[], verdicts: readonly { matchId: string }[]): string[] => [
+  ...new Set([...picks, ...results, ...verdicts].map((r) => r.matchId)),
+]
+
 /** İstatistik sayfasındaki kategori bazlı kart: yalnızca maç başlamadan önce kaydedilmiş kararlar */
 export interface PreMatchAiStats extends AiStats {
   /** En az bir yapay zekânın kararı olan tüm öneriler (onay ya da eleme fark etmez); her öneri bir kez */

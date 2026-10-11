@@ -7,7 +7,7 @@ import { formatPoints } from '../../utils/format'
 import { analyzeDay } from '../analysis/engine'
 import { makeMatch } from '../analysis/testUtils'
 import { isBackupFile } from '../data/backupFormat'
-import { AI_SOURCES, approvalEdge, buildCategoryAiStats, buildLegacyAiStats, buildPreMatchAiStats } from './aiStats'
+import { AI_SOURCES, approvalEdge, buildCategoryAiStats, buildLegacyAiStats, buildPreMatchAiStats, statsMatchIds } from './aiStats'
 import { agreementLabel, agreementText, majorityDecision, summarizeVerdicts } from './consensus'
 import { collectAiMatches } from './collect'
 import { askedMap, numberMap, OLD_FORMAT_MESSAGE, parseAiResponse, parseLine } from './parser'
@@ -515,6 +515,21 @@ describe('yapay zekâ istatistikleri: maç öncesi kararlar, karşılaştırma s
     // Kayıt anı okunamıyorsa da girmez
     const broken = verdicts.map((v) => (v.id === 'B|gemini' ? { ...v, savedAt: 'x' } : v))
     expect(buildPreMatchAiStats(picks, broken, matches)!.excluded).toEqual({ late: 1, noKickoff: 0 })
+  })
+
+  it('skoru bekleyen maç: kaydı kararı üzerinden yüklenir, kararı hariç sayılmaz ve hiçbir oranı değiştirmez', () => {
+    // C: kararları var, skoru girilmediği için önerisi henüz dondurulmamış.
+    const waiting = [fresh('C', 'chatgpt', { over25: 'strong' }), fresh('C', 'gemini', { over25: 'strong' }), fresh('C', 'claude', { over25: 'medium' })]
+    const all = [...verdicts, ...waiting]
+    const ids = statsMatchIds(picks, [{ matchId: 'A' }], all)
+    expect(ids).toEqual(['A', 'B', 'C'])
+    const s = buildPreMatchAiStats(picks, all, [...matches, match('C')].filter((m) => ids.includes(m.id)))!
+    expect(s.excluded).toEqual({ late: 0, noKickoff: 0 })
+    expect(s.units).toEqual({ chatgpt: 5, gemini: 4, claude: 4, majority: 3 })
+    expect(s.approved).toEqual(stats.approved)
+    expect(s.rejected).toEqual(stats.rejected)
+    expect(s.all).toEqual(stats.all)
+    expect(s.byDecision).toEqual(stats.byDecision)
   })
 
   it('başlama saati ya da maç kaydı yoksa karar ölçüme girmez', () => {
