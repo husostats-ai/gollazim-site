@@ -357,13 +357,63 @@ describe('her yayın yenidir; sarmal listesi opak ve sabit uzunluktadır', () =>
     expect(Math.max(...positions)).toBeGreaterThan(3)
   }, SLOW)
 
+  // Paketin opak alanları rastgele ya da şifreli baytların base64'üdür. Bu metinde 4 harflik bir
+  // ad ("ayse") tesadüfen çıkabilir: ~100 bin karakterlik pakette her çalıştırmada ~%0,6. Bu yüzden
+  // kısa kelimeler yalnızca içeriği belirli olan açık alanlarda aranır; opak alanlarda ise tesadüfen
+  // çıkması ihmal edilebilir uzunlukta (en az 16 bayt) işaretler, çözülmüş baytlarda aranır.
+  const OPAQUE = ['ciphertext', 'slots', 'nonce', 'publishNonce', 'siteSalt'] as const
+  const latin1 = (text: string): string => Buffer.from(text, 'utf8').toString('latin1')
+  /** Paketin dışarıdan okunabilen her şeyi: açık alanların metni ve opak alanların çözülmüş baytları */
+  const exposed = (e: MemberEnvelope): { clear: string; bytes: string } => {
+    const clear = Object.fromEntries(Object.entries(e).filter(([key]) => !(OPAQUE as readonly string[]).includes(key)))
+    const fields = [e.ciphertext, ...e.slots, e.nonce, e.publishNonce, e.siteSalt]
+    for (const field of fields) expect(field).toMatch(/^[A-Za-z0-9+/]+={0,2}$/)
+    return { clear: JSON.stringify(clear), bytes: fields.map((f) => Buffer.from(fromBase64(f, 'test')).toString('latin1')).join('\n') }
+  }
+  /** Pakette açıkça görünen işaretler; hiçbiri görünmüyorsa boş dizi */
+  const leaked = (e: MemberEnvelope, markers: string[]): string[] => {
+    for (const marker of markers) expect(Buffer.byteLength(marker), marker).toBeGreaterThanOrEqual(16)
+    const { clear, bytes } = exposed(e)
+    return markers.filter((m) => clear.includes(m) || bytes.includes(latin1(m)) || JSON.stringify(e).includes(m))
+  }
+  const SHORT_WORDS = ['ayse', 'mehmet', 'Kuzey', 'Deneme Ligi', 'percent', 'statistics', 'disclaimer']
+  const plain = JSON.stringify(payload)
+  /** İçeriğin kendisinden alınan uzun parçalar: alan adları, takım ve lig adları, metinler */
+  const CONTENT_MARKERS = [payload.texts.disclaimer, payload.texts.account, ...[0, 0.2, 0.4, 0.6, 0.8].map((at) => plain.slice(Math.floor(plain.length * at), Math.floor(plain.length * at) + 24))]
+
   it('paketin açık kısmında kullanıcı adı, içerik ya da alan adı yoktur', () => {
-    const text = JSON.stringify(envelope)
     expect(Object.keys(envelope).sort()).toEqual(['ciphertext', 'format', 'kdf', 'n', 'nonce', 'publishNonce', 'publishedAt', 'siteSalt', 'slots', 'v'])
     expect(envelope.format).toBe(ENVELOPE_FORMAT)
-    for (const word of ['ayse', 'mehmet', 'Kuzey', 'Deneme Ligi', 'percent', 'statistics', 'disclaimer']) expect(text).not.toContain(word)
+    // Açık alanların içeriği bellidir; burada kısa kelime aramak tesadüfe bağlı değildir.
+    const { clear } = exposed(envelope)
+    for (const word of SHORT_WORDS) expect(clear).not.toContain(word)
+    expect(leaked(envelope, CONTENT_MARKERS)).toEqual([])
     expect(envelope.n).toBe(payload.n)
     expect(envelope.publishedAt).toBe(payload.publishedAt)
+  })
+
+  it('uzun ve ayırt edici bir kullanıcı adı pakette hiçbir biçimde geçmez', async () => {
+    const username = 'isaret-uye-7f3a9c1e5b2d4086-xqzv'
+    const marked = await deriveMemberKeys({ username, password: passwords.ayse, siteSalt })
+    const sealed = await sealPayload({ payload, members: [marked], siteSalt })
+    expect(await openWithKeys(sealed, marked)).toEqual(payload)
+    expect(leaked(sealed, [username, ...CONTENT_MARKERS])).toEqual([])
+  }, SLOW)
+
+  it('denetim tesadüfe bağlı değildir: opak alanda kısa ad geçse de düşmez, gerçek sızıntıyı yakalar', () => {
+    // Eski denetimi düşüren durum: şifreli metnin base64'ünde tesadüfen "ayse" çıkması.
+    const unlucky = { ...clone(envelope), ciphertext: `ayse${envelope.ciphertext.slice(4)}`, nonce: 'mehmetKuzeyayse+' }
+    expect(JSON.stringify(unlucky)).toContain('ayse')
+    for (const word of SHORT_WORDS) expect(exposed(unlucky).clear).not.toContain(word)
+    expect(leaked(unlucky, CONTENT_MARKERS)).toEqual([])
+    // Gerçek sızıntılar: içerik şifrelenmeden yazılmış; ad açık alana ya da yuvaya girmiş.
+    const unencrypted = { ...clone(envelope), ciphertext: Buffer.from(plain, 'utf8').toString('base64') }
+    expect(leaked(unencrypted, CONTENT_MARKERS)).toEqual(CONTENT_MARKERS)
+    const username = 'isaret-uye-7f3a9c1e5b2d4086-xqzv'
+    const inSlot = { ...clone(envelope), slots: [Buffer.from(`${username}:${'x'.repeat(23)}`, 'utf8').toString('base64'), ...envelope.slots.slice(1)] }
+    expect(leaked(inSlot, [username])).toEqual([username])
+    const inClear = { ...clone(envelope), uye: 'ayse' } as MemberEnvelope
+    expect(exposed(inClear).clear).toContain('ayse')
   })
 
   it('izinli olmayan alan taşıyan paket şifrelenmez', async () => {
