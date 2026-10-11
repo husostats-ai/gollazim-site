@@ -7,6 +7,7 @@ import { parseLeagueTable, type TableParseResult } from '../services/league/pars
 import { tableAgeText } from '../services/league/standing'
 import { useApp } from '../state/AppContext'
 import type { LeagueTableRow, TeamAlias } from '../types'
+import SearchSelect from './SearchSelect'
 
 const BUTTON = 'rounded-xl px-4 py-2.5 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-50'
 const FIELD = 'min-w-0 rounded-lg border border-navy-500 bg-navy-800 px-2.5 py-2 text-sm text-white outline-none focus:border-brand'
@@ -105,24 +106,20 @@ export default function LeagueTablePanel() {
         <p className="mt-3 text-sm text-muted">Henüz maç verisi yok.</p>
       ) : (
         <>
-          <label className="mt-3 flex max-w-full min-w-0 flex-wrap items-center gap-2 text-sm font-semibold">
-            Lig
-            <select
+          <div className="mt-3 flex max-w-full min-w-0 flex-wrap items-center gap-2 text-sm font-semibold">
+            <span>Lig</span>
+            <SearchSelect
               value={selected}
-              onChange={(e) => {
-                setLeague(e.target.value)
+              options={leagues.map((name) => ({ value: name, label: name }))}
+              onChange={(value) => {
+                setLeague(value)
                 reset()
               }}
-              data-testid="league-select"
-              className={`${FIELD} max-w-full flex-1 font-bold`}
-            >
-              {leagues.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          </label>
+              ariaLabel="Lig"
+              testId="league-select"
+              className="max-w-full flex-1"
+            />
+          </div>
 
           <p className="mt-2 text-xs text-muted" data-testid="league-stored">
             {stored
@@ -255,24 +252,18 @@ export default function LeagueTablePanel() {
                       </span>
                     </span>
                     {m.kind !== 'exact' && (
-                      <label className="flex min-w-0 max-w-full items-center gap-1.5 text-xs text-muted">
-                        Bu takım hangisi?
-                        <select
+                      <div className="flex min-w-0 max-w-full items-center gap-1.5 text-xs text-muted">
+                        <span>Bu takım hangisi?</span>
+                        <SearchSelect
                           value={draft[m.csvTeam] ?? (m.kind === 'alias' || m.reason === 'declared-absent' || m.reason === 'alias-missing' ? (aliases.find((a) => a.csvTeam === m.csvTeam)?.tableTeam ?? AUTO) : AUTO)}
-                          onChange={(e) => setDraft({ ...draft, [m.csvTeam]: e.target.value })}
-                          aria-label={`${m.csvTeam} hangi takım`}
-                          data-testid="league-alias"
-                          className={`${FIELD} max-w-[12rem] py-1.5 text-xs`}
-                        >
-                          <option value={AUTO}>Kendiliğinden eşleşsin</option>
-                          {rows.map((r) => (
-                            <option key={r.team} value={r.team}>
-                              {r.team}
-                            </option>
-                          ))}
-                          <option value={NOT_IN_TABLE}>Tabloda yok</option>
-                        </select>
-                      </label>
+                          options={[{ value: AUTO, label: 'Kendiliğinden eşleşsin' }, ...rows.map((r) => ({ value: r.team, label: r.team })), { value: NOT_IN_TABLE, label: 'Tabloda yok' }]}
+                          onChange={(value) => setDraft({ ...draft, [m.csvTeam]: value })}
+                          ariaLabel={`${m.csvTeam} hangi takım`}
+                          testId="league-alias"
+                          size="sm"
+                          className="w-[12rem] max-w-full"
+                        />
+                      </div>
                     )}
                   </li>
                 ))}
