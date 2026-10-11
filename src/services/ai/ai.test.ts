@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { createHash } from 'node:crypto'
 import { AI_CATEGORY_IDS, AI_CHUNK_SIZE, AI_PROVIDERS, type AiDecision } from '../../config/ai'
 import { defaultThresholds } from '../../config/categories'
-import type { AiVerdict, Pick } from '../../types'
+import type { AiVerdict, Match, Pick } from '../../types'
+import { formatPoints } from '../../utils/format'
 import { analyzeDay } from '../analysis/engine'
 import { makeMatch } from '../analysis/testUtils'
 import { isBackupFile } from '../data/backupFormat'
-import { AI_SOURCES, buildCategoryAiStats, buildLegacyAiStats } from './aiStats'
+import { AI_SOURCES, approvalEdge, buildCategoryAiStats, buildLegacyAiStats, buildPreMatchAiStats } from './aiStats'
 import { agreementLabel, agreementText, majorityDecision, summarizeVerdicts } from './consensus'
 import { collectAiMatches } from './collect'
 import { askedMap, numberMap, OLD_FORMAT_MESSAGE, parseAiResponse, parseLine } from './parser'
@@ -440,6 +441,92 @@ describe('yapay zekâ istatistikleri: kategori bazlı ve eski kararlar ayrı öl
     const mixed = [both, legacy('L', 'gemini', 'strong')]
     expect(row(buildLegacyAiStats(picks, mixed)!.approved.chatgpt)).toEqual([1, 1, 50, 2])
     expect(row(level(buildCategoryAiStats(picks, mixed)!, 'weak').chatgpt)).toEqual([1, 0, 100, 1])
+  })
+})
+
+describe('yapay zekâ istatistikleri: maç öncesi kararlar, karşılaştırma satırları', () => {
+  let n = 0
+  const pick = (matchId: string, categoryId: Pick['categoryId'], outcome: Pick['outcome']): Pick => ({ id: `q${++n}`, matchId, categoryId, date: '2026-10-05', percent: 80, threshold: 75, outcome, frozenAt: 'x' })
+  // Maçlar 20:00 (Türkiye) = 17:00 UTC başlar.
+  const BEFORE = '2026-10-05T10:00:00.000Z'
+  const AT_KICKOFF = '2026-10-05T17:00:00.000Z'
+  const match = (id: string, time: string | null = '20:00') => ({ id, date: '2026-10-05', time }) as unknown as Match
+  const fresh = (matchId: string, provider: AiVerdict['provider'], byCategory: AiVerdict['byCategory'], savedAt = BEFORE): AiVerdict => ({ id: `${matchId}|${provider}`, matchId, date: '2026-10-05', provider, reason: 'r', risk: 'k', savedAt, byCategory, asked: Object.keys(byCategory!) as AiVerdict['asked'] })
+  const row = (t: { won: number; lost: number; rate: number | null; decided: number }) => [t.won, t.lost, t.rate, t.decided]
+
+  // A: 2.5 ÜST 3/3 Güçlü -> tuttu · KG VAR 2 Orta + 1 Zayıf -> tutmadı · 2. yarı önerisi (karar yok) -> tuttu
+  // B: 2.5 ÜST üç farklı karar -> tuttu · İY 0.5 ÜST yalnızca ChatGPT Eleme -> tutmadı
+  const picks = [pick('A', 'over25', 'won'), pick('A', 'btts', 'lost'), pick('A', 'sh05', 'won'), pick('B', 'over25', 'won'), pick('B', 'ht05', 'lost')]
+  const verdicts = [
+    fresh('A', 'chatgpt', { over25: 'strong', btts: 'medium' }), fresh('A', 'gemini', { over25: 'strong', btts: 'medium' }), fresh('A', 'claude', { over25: 'strong', btts: 'weak' }),
+    fresh('B', 'chatgpt', { over25: 'strong', ht05: 'reject' }), fresh('B', 'gemini', { over25: 'medium' }), fresh('B', 'claude', { over25: 'weak' }),
+  ]
+  const matches = [match('A'), match('B')]
+  const stats = buildPreMatchAiStats(picks, verdicts, matches)!
+
+  it('hepsi maç öncesi kaydedildiyse mevcut hesapla aynı sayılar çıkar', () => {
+    const plain = buildCategoryAiStats(picks, verdicts)!
+    expect(stats.approved).toEqual(plain.approved)
+    expect(stats.byDecision).toEqual(plain.byDecision)
+    expect(stats.units).toEqual(plain.units)
+    expect(stats.excluded).toEqual({ late: 0, noKickoff: 0 })
+  })
+
+  it('Tümü: kararı olan her öneri bir kez; kararı olmayan öneri girmez', () => {
+    // A 2.5 ÜST (tuttu), A KG VAR (tutmadı), B 2.5 ÜST (tuttu), B İY 0.5 ÜST (tutmadı); A'nın 2. yarı önerisi yok
+    expect(row(stats.all)).toEqual([2, 2, 50, 4])
+    expect(stats.all.total).toBe(4)
+  })
+
+  it('onaylamadığı: Zayıf + Eleme; onay ile birlikte kaynağın karar verdiği bütün önerileri verir', () => {
+    expect(row(stats.rejected.chatgpt)).toEqual([0, 1, 0, 1]) // B İY 0.5 ÜST Eleme
+    expect(row(stats.rejected.gemini)).toEqual([0, 0, null, 0])
+    expect(row(stats.rejected.claude)).toEqual([1, 1, 50, 2]) // A KG VAR Zayıf (tutmadı), B 2.5 ÜST Zayıf (tuttu)
+    expect(row(stats.rejected.majority)).toEqual([0, 0, null, 0])
+    for (const s of AI_SOURCES) {
+      expect(stats.approved[s].total + stats.rejected[s].total, s).toBe(stats.judged[s].total)
+      expect(stats.approved[s].won + stats.rejected[s].won, s).toBe(stats.judged[s].won)
+    }
+  })
+
+  it('fark: onayladıkları − o kaynağın karar verdiği bütün öneriler (yüzde puan); çoğunlukta çoğunluk kararı olanlar', () => {
+    expect(row(stats.judged.chatgpt)).toEqual([2, 2, 50, 4])
+    expect(approvalEdge(stats.approved.chatgpt, stats.judged.chatgpt)).toBe(16.7) // 66,7 − 50
+    expect(row(stats.judged.claude)).toEqual([2, 1, 66.7, 3])
+    expect(approvalEdge(stats.approved.claude, stats.judged.claude)).toBe(33.3) // 100 − 66,7
+    expect(row(stats.judged.majority)).toEqual([1, 1, 50, 2]) // yalnızca A'nın iki kategorisi
+    expect(approvalEdge(stats.approved.majority, stats.judged.majority)).toBe(0)
+    expect(approvalEdge(stats.rejected.gemini, stats.judged.gemini)).toBeNull()
+    expect(formatPoints(16.7)).toBe('+16,7')
+    expect(formatPoints(-3)).toBe('−3,0')
+    expect(formatPoints(0)).toBe('0,0')
+  })
+
+  it('maç başladığı anda ya da sonra kaydedilen karar ölçüme girmez; çoğunluk kalanlardan hesaplanır', () => {
+    const late = verdicts.map((v) => (v.id === 'A|claude' ? { ...v, savedAt: AT_KICKOFF } : v))
+    const s = buildPreMatchAiStats(picks, late, matches)!
+    expect(s.excluded).toEqual({ late: 2, noKickoff: 0 }) // Claude'un A'daki iki kategori kararı
+    expect(s.units.claude).toBe(1)
+    expect(row(s.judged.claude)).toEqual([1, 0, 100, 1]) // yalnızca B 2.5 ÜST (Zayıf, tuttu)
+    expect(row(s.rejected.claude)).toEqual([1, 0, 100, 1])
+    expect(row(s.approved.claude)).toEqual([0, 0, null, 0])
+    expect(s.approved.chatgpt).toEqual(stats.approved.chatgpt)
+    expect(row(s.all)).toEqual([2, 2, 50, 4])
+    // Kayıt anı okunamıyorsa da girmez
+    const broken = verdicts.map((v) => (v.id === 'B|gemini' ? { ...v, savedAt: 'x' } : v))
+    expect(buildPreMatchAiStats(picks, broken, matches)!.excluded).toEqual({ late: 1, noKickoff: 0 })
+  })
+
+  it('başlama saati ya da maç kaydı yoksa karar ölçüme girmez', () => {
+    const s = buildPreMatchAiStats(picks, verdicts, [match('A'), match('B', null)])!
+    expect(s.excluded).toEqual({ late: 0, noKickoff: 4 }) // B: ChatGPT 2, Gemini 1, Claude 1
+    expect(row(s.all)).toEqual([1, 1, 50, 2])
+    expect(buildPreMatchAiStats(picks, verdicts, [match('A')])!.excluded).toEqual({ late: 0, noKickoff: 4 })
+    // Hepsi hariç kalsa da bölüm görünür (sayılar sıfır); hiç kategori kararı yoksa null
+    const none = buildPreMatchAiStats(picks, verdicts, [])!
+    expect(none.excluded).toEqual({ late: 0, noKickoff: 10 })
+    expect(row(none.all)).toEqual([0, 0, null, 0])
+    expect(buildPreMatchAiStats(picks, [], matches)).toBeNull()
   })
 })
 

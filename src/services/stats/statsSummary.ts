@@ -4,7 +4,7 @@ import { CATEGORIES, categoriesInGroup, getCategory, type CategoryId } from '../
 import type { AiVerdict, Match, MatchResult, Pick, ScoreLine, SharedPick, Thresholds } from '../../types'
 import { toAppDateTime } from '../../utils/date'
 import { formatDay, formatNumber, formatRate, shiftDate } from '../../utils/format'
-import { AI_SOURCES, buildCategoryAiStats, buildLegacyAiStats, type AiSource, type AiStats } from '../ai/aiStats'
+import { AI_SOURCES, buildLegacyAiStats, buildPreMatchAiStats, type AiSource, type AiStats } from '../ai/aiStats'
 import { MODEL_CONFLICT_LIMIT } from '../analysis/goalModel'
 import { RELIABILITY_LABELS, SAMPLE_HINT } from '../analysis/reliability'
 import { stat } from '../analysis/stat'
@@ -239,13 +239,14 @@ export function buildStatsSummary(input: SummaryInput): string {
     table(['Karar', ...AI_SOURCES.map((s) => SOURCE_LABELS[s])], stats.byDecision.map((row) => [decisionLabel(row.decision), ...AI_SOURCES.map((s) => rateCell(row.tallies[s]))])),
     '',
   ]
-  const aiCategory = buildCategoryAiStats(picks, verdicts)
+  // İstatistik sayfasındaki kartla aynı hesap: yalnızca maç başlamadan önce kaydedilmiş kararlar.
+  const aiCategory = buildPreMatchAiStats(picks, verdicts, input.matches)
   out.push('## Yapay zekâ kararlarının başarısı: kategori bazlı kararlar', '')
   if (!aiCategory) out.push('Kayıtlı kategori bazlı yapay zekâ kararı yok.', '')
   else {
     out.push(
       ...aiTables(aiCategory, 'öneri (maç + kategori)'),
-      `Karar yalnızca şu kategoriler için alınır: ${AI_CATEGORY_IDS.map((id) => getCategory(id).label).join(', ')}. Her karar yalnızca o maçın o kategorideki dondurulmuş önerisinin sonucuyla ölçülür. Çoğunluk kararı: o kategoride karar veren yapay zekâların yarısından fazlasının aynı seviyede verdiği karar (ortalama alınmaz).`,
+      `Karar yalnızca şu kategoriler için alınır: ${AI_CATEGORY_IDS.map((id) => getCategory(id).label).join(', ')}. Her karar yalnızca o maçın o kategorideki dondurulmuş önerisinin sonucuyla ölçülür. Çoğunluk kararı: o kategoride karar veren yapay zekâların yarısından fazlasının aynı seviyede verdiği karar (ortalama alınmaz). Yalnızca maç başlamadan önce kaydedilmiş kararlar ölçülür; bu yüzden hariç kalan karar (yapay zekâ + maç + kategori): ${aiCategory.excluded.late + aiCategory.excluded.noKickoff}.`,
       '',
     )
   }

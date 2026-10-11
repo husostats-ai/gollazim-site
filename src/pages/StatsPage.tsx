@@ -16,7 +16,7 @@ import TrendChart from '../components/stats/TrendChart'
 import { getCategory, GROUPS } from '../config/categories'
 import { DATA_LABELS } from '../services/analysis/reliability'
 import { AI_CATEGORY_IDS } from '../config/ai'
-import { buildCategoryAiStats, buildLegacyAiStats } from '../services/ai/aiStats'
+import { buildLegacyAiStats, buildPreMatchAiStats } from '../services/ai/aiStats'
 import { aiRepo, matchesRepo, picksRepo, resultsRepo, sharedRepo } from '../services/data'
 import { buildStarStats, recomputedNote } from '../services/stats/starStats'
 import { SCOPE_LABELS, sharedPicksOnly, type StatsScope } from '../services/story/shared'
@@ -104,7 +104,8 @@ export default function StatsPage() {
   /** İY 0.5 ÜST önerilip ilk yarısı 0-0 biten maçlarda 2. yarı; seçili ölçüde */
   const htScoreless = useMemo(() => buildHtScorelessStats(scopedPicks, results), [scopedPicks, results])
   // Kategori bazlı kararlar ile eski maç geneli kararlar ayrı ölçülür; aynı orana karışmaz.
-  const aiCategoryStats = useMemo(() => buildCategoryAiStats(picks ?? [], verdicts), [picks, verdicts])
+  // Kategori bazlı kartta yalnızca maç başlamadan önce kaydedilmiş kararlar sayılır.
+  const aiCategoryStats = useMemo(() => buildPreMatchAiStats(picks ?? [], verdicts, legacyMatches), [picks, verdicts, legacyMatches])
   const aiLegacyStats = useMemo(() => buildLegacyAiStats(picks ?? [], verdicts), [picks, verdicts])
   const marketStats = useMemo(
     () => buildMarketStats(backfillMarket(picks ?? [], legacyMatches, marketConflictLimit)),

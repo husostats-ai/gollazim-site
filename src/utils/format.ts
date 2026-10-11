@@ -40,6 +40,10 @@ const dayMonthYear = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: '
 /** "%77,2"; oran yoksa "—" */
 export const formatRate = (value: number | null): string => (value === null ? '—' : `%${rate.format(value)}`)
 
+const points = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+/** Yüzde puan farkı, işaretiyle: "+4,2", "−3,0", "0,0" */
+export const formatPoints = (value: number): string => `${value > 0 ? '+' : value < 0 ? '−' : ''}${points.format(Math.abs(value))}`
+
 export const formatDay = (date: string): string => dayMonthYear.format(asUtc(date))
 
 /** Pazartesi tarihinden "5 – 11 Eki 2026" */

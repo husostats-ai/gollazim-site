@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { CATEGORIES, defaultThresholds, type CategoryId } from '../../config/categories'
 import type { AiVerdict, Match, Pick, PickOutcome } from '../../types'
 import { formatRate } from '../../utils/format'
-import { buildLegacyAiStats } from '../ai/aiStats'
+import { AI_SOURCES, buildLegacyAiStats, buildPreMatchAiStats } from '../ai/aiStats'
 import { analyzeCategory } from '../analysis/engine'
 import { makeMatch } from '../analysis/testUtils'
 import { recordShare, sharedPicksOnly } from '../story/shared'
@@ -273,7 +273,7 @@ describe('özet metni', () => {
 
   it('kategori bazlı kararlar ayrı bölümde ölçülür ve eski bölümü değiştirmez', () => {
     // picks[0] ve picks[1]: 2.5 ÜST, tuttu. picks[12]: 2.5 ÜST, tutmadı.
-    const fresh = (matchId: string, provider: AiVerdict['provider'], decision: NonNullable<AiVerdict['decision']>): AiVerdict => ({ id: `${matchId}|${provider}`, matchId, date: '2026-10-09', provider, byCategory: { over25: decision }, asked: ['over25'], reason: 'gizli gerekçe metni', risk: 'gizli risk metni', savedAt: '' })
+    const fresh = (matchId: string, provider: AiVerdict['provider'], decision: NonNullable<AiVerdict['decision']>): AiVerdict => ({ id: `${matchId}|${provider}`, matchId, date: '2026-10-09', provider, byCategory: { over25: decision }, asked: ['over25'], reason: 'gizli gerekçe metni', risk: 'gizli risk metni', savedAt: '2026-10-01T00:00:00.000Z' })
     const category = [
       ...(['chatgpt', 'gemini', 'claude'] as const).map((p) => fresh(picks[1].matchId, p, 'medium')),
       fresh(picks[13].matchId, 'chatgpt', 'strong'),
@@ -290,6 +290,33 @@ describe('özet metni', () => {
     // Eski bölüm, kategori kararları eklenince değişmez.
     const legacyTitle = 'Yapay zekâ kararlarının başarısı: maç geneli kararlar (eski)'
     expect(section(mixed, legacyTitle)).toBe(section(text, legacyTitle))
+  })
+
+  it('kategori bazlı bölüm, istatistik sayfasındaki kartla aynı hesaptan gelir: yalnızca maç öncesi kararlar', () => {
+    const BEFORE = '2026-10-01T00:00:00.000Z'
+    const AFTER = '2026-12-31T00:00:00.000Z'
+    const fresh = (matchId: string, provider: AiVerdict['provider'], decision: NonNullable<AiVerdict['decision']>, savedAt = BEFORE): AiVerdict => ({ id: `${matchId}|${provider}`, matchId, date: '2026-10-09', provider, byCategory: { over25: decision }, asked: ['over25'], reason: 'r', risk: 'k', savedAt })
+    const category = [
+      ...(['chatgpt', 'gemini', 'claude'] as const).map((p) => fresh(picks[1].matchId, p, 'medium')),
+      fresh(picks[13].matchId, 'chatgpt', 'strong'),
+      fresh(picks[13].matchId, 'gemini', 'weak'),
+      // Maç başladıktan sonra kaydedildi: ne kartta ne özette sayılır.
+      fresh(picks[13].matchId, 'claude', 'strong', AFTER),
+      fresh(picks[14].matchId, 'chatgpt', 'reject', AFTER),
+    ]
+    const all = [...verdicts, ...category]
+    // Kartın hesabı (StatsPage): tüm öneriler, tüm kararlar, maç kayıtları
+    const card = buildPreMatchAiStats(picks, all, matches)!
+    expect(card.excluded).toEqual({ late: 2, noKickoff: 0 })
+    const body = section(buildStatsSummary(input({ kind: 'all' }, { verdicts: all })), 'Yapay zekâ kararlarının başarısı: kategori bazlı kararlar')
+    const labels = { chatgpt: 'ChatGPT', gemini: 'Gemini', claude: 'Claude', majority: 'Çoğunluk kararı' }
+    for (const s of AI_SOURCES) expect(row(body, labels[s]), s).toEqual([labels[s], String(card.units[s]), rateCell(card.approved[s])])
+    const levels = { strong: 'Güçlü', medium: 'Orta', weak: 'Zayıf', reject: 'Eleme' }
+    for (const { decision, tallies } of card.byDecision) expect(row(body, levels[decision]), decision).toEqual([levels[decision], ...AI_SOURCES.map((s) => rateCell(tallies[s]))])
+    // Geç kaydedilen kararlar gerçekten dışarıda: Claude'un tek kararı kaldı, ChatGPT'nin Eleme'si yok.
+    expect(card.units.claude).toBe(1)
+    expect(row(body, 'Eleme')[1]).toBe('— · n=0')
+    expect(body).toContain('Yalnızca maç başlamadan önce kaydedilmiş kararlar ölçülür; bu yüzden hariç kalan karar (yapay zekâ + maç + kategori): 2.')
   })
 
   it('ayrıntı CSV\'si: üç yapay zekâ sütunu; yeni kararlarda hücre önerinin kendi kategorisinin kararıdır', () => {
