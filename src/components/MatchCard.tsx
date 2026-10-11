@@ -101,8 +101,34 @@ export default function MatchCard({ prediction, rank, sortMode, storySelection, 
                 <p key={side} className="break-words">
                   <span className="font-semibold text-white">{side}:</span> {info.text}
                   {info.stale && <span className="font-bold text-warn"> · ⚠ güncel değil</span>}
+                  {info.detail?.maybeOld && (
+                    <span className="font-bold text-warn" data-testid="league-maybe-old">
+                      {' '}
+                      · ⚠ tablo eski olabilir
+                    </span>
+                  )}
                 </p>
               ),
+          )}
+          {(standings.home?.detail?.text || standings.away?.detail?.text) && (
+            // Yalnızca gösterim: Last 5 (ham), attığı–yediği gol ve gol yememe yüzdesi. Kapalı gelir.
+            <details className="mt-1" data-testid="league-detail">
+              <summary className="cursor-pointer font-semibold">Tablo ayrıntısı</summary>
+              {([['Ev', standings.home], ['Dep', standings.away]] as const).map(
+                ([side, info]) =>
+                  info?.detail?.text && (
+                    <p key={side} className="break-words">
+                      <span className="font-semibold text-white">{side}:</span> {info.detail.text}
+                    </p>
+                  ),
+              )}
+              {(standings.home ?? standings.away)!.detail!.gameWeek !== null && (
+                <p className="opacity-80">
+                  CSV turu {(standings.home ?? standings.away)!.detail!.gameWeek} · tablo MP{' '}
+                  {[standings.home?.played, standings.away?.played].filter((n) => n !== undefined).join(' / ')}
+                </p>
+              )}
+            </details>
           )}
         </div>
       )}

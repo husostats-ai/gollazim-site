@@ -6,13 +6,14 @@ import { isCategoryId } from '../../../config/categories'
 import { normalizeSelections } from '../../story/selection'
 import { normalizeShared } from '../../story/shared'
 import { normalizeAliases, normalizeLeagueTables } from '../../league/matching'
+import { normalizeSnapshots, seedSnapshots } from '../../league/history'
 import { normalizeHighlights } from '../../highlights/highlights'
 import { normalizeAiShares } from '../../ai/memberShare'
 import { normalizeStreakSteps } from '../../streak/streak'
 
 export const backupRepo: BackupRepo = {
   async exportAll() {
-    const [uploads, matches, results, picks, thresholds, aiVerdicts, aiPrompts, storyTexts, marketConflictLimit, storySelections, sharedPicks, leagueTables, teamAliases, highlights, aiShares, streakSteps] =
+    const [uploads, matches, results, picks, thresholds, aiVerdicts, aiPrompts, storyTexts, marketConflictLimit, storySelections, sharedPicks, leagueTables, teamAliases, highlights, aiShares, streakSteps, leagueTableSnapshots] =
       await Promise.all([
       db.uploads.toArray(),
       db.matches.toArray(),
@@ -30,12 +31,13 @@ export const backupRepo: BackupRepo = {
       db.highlights.toArray(),
       db.aiShares.toArray(),
       db.streakSteps.toArray(),
+      db.leagueTableSnapshots.toArray(),
     ])
-    return assembleBackup({ uploads, matches, results, picks, thresholds, aiVerdicts, aiPrompts, storyTexts, marketConflictLimit, storySelections, sharedPicks, leagueTables, teamAliases, highlights, aiShares, streakSteps }, new Date())
+    return assembleBackup({ uploads, matches, results, picks, thresholds, aiVerdicts, aiPrompts, storyTexts, marketConflictLimit, storySelections, sharedPicks, leagueTables, teamAliases, highlights, aiShares, streakSteps, leagueTableSnapshots }, new Date())
   },
 
   async importAll(backup) {
-    const tables = [db.uploads, db.matches, db.results, db.picks, db.settings, db.aiVerdicts, db.aiPrompts, db.storySelections, db.sharedPicks, db.leagueTables, db.teamAliases, db.highlights, db.aiShares, db.streakSteps]
+    const tables = [db.uploads, db.matches, db.results, db.picks, db.settings, db.aiVerdicts, db.aiPrompts, db.storySelections, db.sharedPicks, db.leagueTables, db.teamAliases, db.highlights, db.aiShares, db.streakSteps, db.leagueTableSnapshots]
     await db.transaction('rw', tables, async () => {
       // Son yedek zamanı bu tarayıcıya aittir: yedekten gelmez, içe aktarma da onu silmez.
       const lastBackup = await db.settings.get(LAST_BACKUP_KEY)
@@ -54,6 +56,7 @@ export const backupRepo: BackupRepo = {
         db.highlights.clear(),
         db.aiShares.clear(),
         db.streakSteps.clear(),
+        db.leagueTableSnapshots.clear(),
       ])
       await db.uploads.bulkPut(backup.uploads)
       await db.matches.bulkPut(backup.matches)
@@ -70,7 +73,11 @@ export const backupRepo: BackupRepo = {
       // Seçimi olmayan eski yedeklerde hiçbir maç seçili gelmez.
       await db.storySelections.bulkPut(normalizeSelections(backup.storySelections, isCategoryId))
       await db.sharedPicks.bulkPut(normalizeShared(backup.sharedPicks, isCategoryId))
-      await db.leagueTables.bulkPut(normalizeLeagueTables(backup.leagueTables))
+      const leagueTables = normalizeLeagueTables(backup.leagueTables)
+      await db.leagueTables.bulkPut(leagueTables)
+      // Geçmişi olmayan eski yedeklerde her tablo geçmişin ilk görüntüsü sayılır.
+      const snapshots = normalizeSnapshots(backup.leagueTableSnapshots)
+      await db.leagueTableSnapshots.bulkPut([...snapshots, ...seedSnapshots(leagueTables, snapshots)])
       await db.teamAliases.bulkPut(normalizeAliases(backup.teamAliases))
       // Seçimi olmayan eski yedeklerde öne çıkan gelmez.
       await db.highlights.bulkPut(normalizeHighlights(backup.highlights, isCategoryId))

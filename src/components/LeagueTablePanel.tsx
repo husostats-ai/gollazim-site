@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { LEAGUE_TABLE_STALE_DAYS } from '../config/reminders'
 import { daysBetween } from '../services/daily/checklist'
 import { leagueRepo, matchesRepo } from '../services/data'
-import { aliasId, matchTeams, NOT_IN_TABLE, type TeamMatch } from '../services/league/matching'
+import { aliasId, canonicalRow, matchTeams, NOT_IN_TABLE, type TeamMatch } from '../services/league/matching'
 import { parseLeagueTable, type TableParseResult } from '../services/league/parser'
 import { tableAgeText } from '../services/league/standing'
 import { useApp } from '../state/AppContext'
@@ -33,8 +33,16 @@ export default function LeagueTablePanel() {
   const [draft, setDraft] = useState<Record<string, string>>({})
   const [message, setMessage] = useState<string | null>(null)
 
+  /** Lig başına geçmişteki görüntü sayısı */
+  const [snapshotCounts, setSnapshotCounts] = useState<Record<string, number>>({})
+
   useEffect(() => {
     void matchesRepo.listTeamsByLeague().then(setTeamsByLeague)
+    void leagueRepo.listSnapshots().then((snapshots) => {
+      const counts: Record<string, number> = {}
+      for (const s of snapshots) counts[s.league] = (counts[s.league] ?? 0) + 1
+      setSnapshotCounts(counts)
+    })
   }, [dataVersion])
 
   const leagues = Object.keys(teamsByLeague)
@@ -44,7 +52,7 @@ export default function LeagueTablePanel() {
 
   // Önizlemede yapıştırılan (henüz kaydedilmemiş) satırlar, yoksa kayıtlı tablo
   const rows: LeagueTableRow[] = useMemo(
-    () => (preview ? preview.rows.map((r) => ({ team: r.team, rank: r.rank, played: r.played, points: r.points, ppg: r.ppg })) : (stored?.rows ?? [])),
+    () => (preview ? preview.rows.flatMap((r) => canonicalRow(r) ?? []) : (stored?.rows ?? [])),
     [preview, stored],
   )
   // Kayıtlı seçimlerin üzerine taslak seçimler uygulanır.
@@ -118,7 +126,7 @@ export default function LeagueTablePanel() {
 
           <p className="mt-2 text-xs text-muted" data-testid="league-stored">
             {stored
-              ? `Kayıtlı tablo: ${stored.rows.length} takım, ${tableAgeText(storedAge!)}${storedAge! > LEAGUE_TABLE_STALE_DAYS ? ' (güncel değil)' : ''}.`
+              ? `Kayıtlı tablo: ${stored.rows.length} takım, ${tableAgeText(storedAge!)}${storedAge! > LEAGUE_TABLE_STALE_DAYS ? ' (güncel değil)' : ''}. Geçmişte ${snapshotCounts[selected] ?? 0} görüntü.`
               : 'Bu lig için kayıtlı tablo yok.'}
           </p>
 
@@ -170,6 +178,7 @@ export default function LeagueTablePanel() {
                 <span className="font-bold">Önizleme (kaydedilmedi):</span>{' '}
                 <span data-testid="league-preview-summary">
                   {preview.rows.length} satır okundu · {preview.errors.length} satır sağlamadan geçmedi
+                  {preview.warnings.length > 0 && ` · ${preview.warnings.length} satırın ek alanları boş`}
                 </span>
               </p>
               {preview.errors.length > 0 && (
@@ -182,12 +191,21 @@ export default function LeagueTablePanel() {
                   ))}
                 </ul>
               )}
+              {preview.warnings.length > 0 && (
+                <ul className="mt-2 space-y-1.5 text-xs" data-testid="league-warnings">
+                  {preview.warnings.map((w) => (
+                    <li key={w.line} className="break-words text-warn">
+                      <span className="font-bold">Satır {w.line}:</span> {w.message} Satır kaydedilir.
+                    </li>
+                  ))}
+                </ul>
+              )}
               {preview.rows.length > 0 && (
                 <div className="mt-2 overflow-x-auto">
                   <table className="w-full min-w-[520px] text-left text-xs" data-testid="league-rows">
                     <thead className="text-muted">
                       <tr className="border-b border-line">
-                        {['#', 'Takım', 'MP', 'W', 'D', 'L', 'GF', 'GA', 'Pts', 'PPG', 'Sağlama'].map((h) => (
+                        {['#', 'Takım', 'MP', 'W', 'D', 'L', 'GF', 'GA', 'Pts', 'PPG', 'Last 5', 'CS', 'BTTS', 'xGF', 'Kart', 'Korner', '1.5+', '2.5+', 'AVG', 'Sağlama'].map((h) => (
                           <th key={h} className="py-1.5 pr-2 font-semibold">
                             {h}
                           </th>
@@ -205,6 +223,11 @@ export default function LeagueTablePanel() {
                             </td>
                           ))}
                           <td className="py-1.5 pr-2">{r.ppg ?? '—'}</td>
+                          {[r.last5, r.cs, r.btts, r.xgf, r.cards, r.corners, r.over15, r.over25, r.avgGoals].map((v, i) => (
+                            <td key={i} className="py-1.5 pr-2">
+                              {v ?? '—'}
+                            </td>
+                          ))}
                           <td className="py-1.5 text-win">✓ tuttu</td>
                         </tr>
                       ))}

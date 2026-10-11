@@ -1,7 +1,8 @@
 import Dexie, { type EntityTable } from 'dexie'
 import { getCategory } from '../../../config/categories'
-import type { AiPromptBatch, AiShare, AiVerdict, Highlight, LeagueTable, TeamAlias, Match, MatchResult, Pick, SharedPick, StorySelection, StreakStep, Upload } from '../../../types'
+import type { AiPromptBatch, AiShare, AiVerdict, Highlight, LeagueTable, LeagueTableSnapshot, TeamAlias, Match, MatchResult, Pick, SharedPick, StorySelection, StreakStep, Upload } from '../../../types'
 import { assessReliability } from '../../analysis/reliability'
+import { seedSnapshots } from '../../league/history'
 import type { MemberRecord, PublicationRecord } from '../../memberAdmin/types'
 
 export interface SettingRow {
@@ -27,6 +28,7 @@ export const db = new Dexie('gollazim') as Dexie & {
   highlights: EntityTable<Highlight, 'id'>
   aiShares: EntityTable<AiShare, 'id'>
   streakSteps: EntityTable<StreakStep, 'id'>
+  leagueTableSnapshots: EntityTable<LeagueTableSnapshot, 'id'>
 }
 
 db.version(1).stores({
@@ -97,3 +99,14 @@ db.version(9).stores({
 db.version(10).stores({
   streakSteps: 'id, seq',
 })
+
+// v11: lig tablosu yapıştırma geçmişi (ölçüm için veri toplar; analize girmez). Mevcut tablolara
+// dokunmaz; kayıtlı her tablo geçmişin ilk görüntüsü olarak kopyalanır.
+db.version(11)
+  .stores({
+    leagueTableSnapshots: 'id, league, pastedAt',
+  })
+  .upgrade(async (tx) => {
+    const tables = await tx.table<LeagueTable, string>('leagueTables').toArray()
+    await tx.table<LeagueTableSnapshot, string>('leagueTableSnapshots').bulkPut(seedSnapshots(tables, []))
+  })

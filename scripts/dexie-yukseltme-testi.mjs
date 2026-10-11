@@ -138,9 +138,9 @@ try {
     return raw
   })
   const oldSummary = summarize(before)
-  step('eski sürümün veritabanı sürümü 9', before.version === 90, `IndexedDB sürümü ${before.version} (Dexie sürümü x10)`)
+  step('eski sürümün veritabanı sürümü 10', before.version === 100, `IndexedDB sürümü ${before.version} (Dexie sürümü x10)`)
   const oldTables = Object.keys(before.tables)
-  step('eski sürümde 16 tablo', oldTables.length === 16, oldTables.join(', '))
+  step('eski sürümde 17 tablo', oldTables.length === 17, oldTables.join(', '))
 
   // 2) YENİ sürüm: aynı profil
   dist = newDist
@@ -157,7 +157,7 @@ try {
     return { raw, rate, exported }
   })
   const newSummary = summarize(after.raw)
-  step('yeni sürümün veritabanı sürümü 10', after.raw.version === 100, `IndexedDB sürümü ${after.raw.version}`)
+  step('yeni sürümün veritabanı sürümü 11', after.raw.version === 110, `IndexedDB sürümü ${after.raw.version}`)
 
   let same = true
   for (const name of oldTables) {
@@ -167,16 +167,23 @@ try {
     same &&= equal
     report.tablolar.push({ tablo: name, kayit: a.count, once: a.sha256.slice(0, 16), sonra: b?.sha256.slice(0, 16) ?? '-', sonuc: equal ? 'AYNI' : 'FARKLI' })
   }
-  step(`eski ${oldTables.length} tablonun kayıt sayısı, içerik özeti, anahtarı ve indeksleri birebir aynı`, same && oldTables.length === 16, report.tablolar.map((t) => `${t.tablo} ${t.kayit}`).join(' · '))
+  step(`eski ${oldTables.length} tablonun kayıt sayısı, içerik özeti, anahtarı ve indeksleri birebir aynı`, same && oldTables.length === 17, report.tablolar.map((t) => `${t.tablo} ${t.kayit}`).join(' · '))
   const added = Object.keys(after.raw.tables).filter((n) => !oldTables.includes(n))
-  step('bir yeni tablo eklendi ve boş', added.join() === 'streakSteps' && added.every((n) => after.raw.tables[n].count === 0), added.map((n) => `${n}: ${after.raw.tables[n].count}`).join(', '))
+  // Yeni tablo boş değildir: kayıtlı her lig tablosu geçmişin ilk görüntüsü olarak kopyalanır.
+  const tables = JSON.parse(after.raw.tables.leagueTables.json).map(([, t]) => t)
+  const snapshots = JSON.parse(after.raw.tables.leagueTableSnapshots?.json ?? '[]').map(([, s]) => s)
+  const seeded = JSON.stringify(snapshots) === JSON.stringify(tables.map((t) => ({ id: `${t.league}|${t.pastedAt}`, league: t.league, pastedAt: t.pastedAt, rows: t.rows })))
+  step('bir yeni tablo eklendi: her lig tablosu geçmişin ilk görüntüsü oldu', added.join() === 'leagueTableSnapshots' && seeded, `${added.join(', ')}: ${snapshots.length} görüntü / ${tables.length} lig tablosu`)
   step('dondurulmuş öneriler birebir aynı', before.tables.picks.json === after.raw.tables.picks.json, `${before.tables.picks.count} öneri`)
   step('istatistik sayfası dolu', /^%\d/.test(after.rate), after.rate)
 
   // Dışa aktarılan yedek özgün yedekle aynı mı (dışa aktarma anı dışında)
   const exportedBackup = JSON.parse(after.exported)
-  const normalized = JSON.stringify({ ...exportedBackup, exportedAt: originalBackup.exportedAt })
-  step('yeni sürümden alınan yedek özgün yedekle bayt bayt aynı (dışa aktarma anı dışında)', normalized === original.trimEnd(), `${normalized.length} / ${original.trimEnd().length} bayt · sha256 ${sha(normalized).slice(0, 16)}`)
+  // Yedeğe yalnızca yapıştırma geçmişi eklenir; kalan her alan özgün yedekle aynı olmalıdır.
+  const { leagueTableSnapshots: exportedSnapshots, ...withoutSnapshots } = exportedBackup
+  step('yedekte yapıştırma geçmişi var ve veritabanındakiyle aynı', JSON.stringify(exportedSnapshots) === JSON.stringify(snapshots), `${exportedSnapshots?.length ?? 0} görüntü`)
+  const normalized = JSON.stringify({ ...withoutSnapshots, exportedAt: originalBackup.exportedAt })
+  step('yeni sürümden alınan yedek özgün yedekle bayt bayt aynı (dışa aktarma anı ve yapıştırma geçmişi dışında)', normalized === original.trimEnd(), `${normalized.length} / ${original.trimEnd().length} bayt · sha256 ${sha(normalized).slice(0, 16)}`)
   step('normal yedekte üye alanı yok', !/member|uye|publication/i.test(Object.keys(exportedBackup).join()))
   // Adım 0 referansı bu dosyayla yeniden üretilebilir.
   writeFileSync(join(outDir, 'yukseltme-sonrasi-yedek.json'), normalized)
@@ -194,7 +201,7 @@ try {
   })
   report.geriDonus = rollback
   console.log(`\nGERİ DÖNÜŞ DENEMESİ (yükseltilmiş profil + eski sürüm):\n  konsol/sayfa hatası: ${rollback.errors.length ? rollback.errors.join(' | ').slice(0, 300) : 'yok'}\n  eski sürüm veriyi gösteriyor mu: ana sayfada ${rollback.rows} öneri satırı, istatistik ${rollback.rate ?? 'YOK'}\n  veritabanı sürümü: ${rollback.version}, dondurulmuş öneri: ${rollback.picks} (içerik ${rollback.samePicks ? 'aynı' : 'FARKLI'})`)
-  step('geri dönüş denemesinde veri silinmedi (veritabanı yerinde ve aynı)', rollback.version === 100 && rollback.samePicks === true)
+  step('geri dönüş denemesinde veri silinmedi (veritabanı yerinde ve aynı)', rollback.version === 110 && rollback.samePicks === true)
 } catch (error) {
   failed = true
   step('beklenmeyen hata', false, error?.stack?.split('\n').slice(0, 2).join(' ') ?? String(error))

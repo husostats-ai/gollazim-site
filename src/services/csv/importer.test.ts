@@ -39,8 +39,8 @@ describe('importCsv (FootyStats biçimi)', () => {
   it('tüm maçları okur', () => {
     expect(result.matches).toHaveLength(3)
     expect(result.warnings).toEqual([])
-    // test verisinde saat kolonu ve 2.5 Üst dışındaki oran kolonları yok
-    expect(result.missingFields).toEqual(['time', 'oddsHome', 'oddsDraw', 'oddsAway', 'oddsUnder25'])
+    // test verisinde saat kolonu, 2.5 Üst dışındaki oran kolonları, genel PPG ve lig turu yok
+    expect(result.missingFields).toEqual(['time', 'oddsHome', 'oddsDraw', 'oddsAway', 'oddsUnder25', 'homeOverallPpg', 'awayOverallPpg', 'gameWeek'])
   })
 
   it('ilk maçın alanlarını doğru çıkarır', () => {

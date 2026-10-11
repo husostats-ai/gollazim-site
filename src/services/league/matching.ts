@@ -108,17 +108,53 @@ export function findStanding(
   return match?.row ? { row: match.row, table } : null
 }
 
+const isCount = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 0
+const isAmount = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0
+const isPercent = (n: unknown): n is number => isAmount(n) && n <= 100
+const LAST5 = /^[WDL]{1,5}$/
+
+/**
+ * Satırın saklanan biçimi: alanlar sabit sırada, tanınmayan alanlar atılmış. Zorunlu alanlardan
+ * biri bozuksa null. Ek alanlardan (W, D, L, GF, GA, GD, Last 5, CS, BTTS, xGF, kart, korner,
+ * 1.5+, 2.5+, AVG) bozuk olan yalnızca kendisi atılır; satır kalır.
+ */
+export function canonicalRow(value: unknown): LeagueTableRow | null {
+  if (typeof value !== 'object' || value === null) return null
+  const r = value as Partial<Record<keyof LeagueTableRow, unknown>>
+  if (typeof r.team !== 'string' || ![r.rank, r.played, r.points].every((n) => Number.isInteger(n)) || !(r.ppg === null || typeof r.ppg === 'number')) return null
+  return {
+    team: r.team,
+    rank: r.rank as number,
+    played: r.played as number,
+    points: r.points as number,
+    ppg: r.ppg,
+    ...(isCount(r.won) && { won: r.won }),
+    ...(isCount(r.drawn) && { drawn: r.drawn }),
+    ...(isCount(r.lost) && { lost: r.lost }),
+    ...(isCount(r.goalsFor) && { goalsFor: r.goalsFor }),
+    ...(isCount(r.goalsAgainst) && { goalsAgainst: r.goalsAgainst }),
+    ...(Number.isInteger(r.goalDiff) && { goalDiff: r.goalDiff as number }),
+    ...(typeof r.last5 === 'string' && LAST5.test(r.last5) && { last5: r.last5 }),
+    ...(isPercent(r.cs) && { cs: r.cs }),
+    ...(isPercent(r.btts) && { btts: r.btts }),
+    ...(isAmount(r.xgf) && { xgf: r.xgf }),
+    ...(isAmount(r.cards) && { cards: r.cards }),
+    ...(isAmount(r.corners) && { corners: r.corners }),
+    ...(isPercent(r.over15) && { over15: r.over15 }),
+    ...(isPercent(r.over25) && { over25: r.over25 }),
+    ...(isAmount(r.avgGoals) && { avgGoals: r.avgGoals }),
+  }
+}
+
+const canonicalRows = (rows: unknown[]): LeagueTableRow[] => rows.map(canonicalRow).filter((r): r is LeagueTableRow => r !== null)
+
 /** Yedekten gelen tabloları doğrular; bozuk tablo ve satırlar atılır. */
 export function normalizeLeagueTables(value: unknown): LeagueTable[] {
   if (!Array.isArray(value)) return []
   const byLeague = new Map<string, LeagueTable>()
   for (const table of value as Partial<LeagueTable>[]) {
     if (typeof table !== 'object' || table === null || typeof table.league !== 'string' || typeof table.pastedAt !== 'string' || !Array.isArray(table.rows)) continue
-    const rows = table.rows.filter(
-      (r): r is LeagueTableRow =>
-        typeof r === 'object' && r !== null && typeof r.team === 'string' && [r.rank, r.played, r.points].every((n) => Number.isInteger(n)) && (r.ppg === null || typeof r.ppg === 'number'),
-    )
-    byLeague.set(table.league, { id: table.league, league: table.league, pastedAt: table.pastedAt, rows: rows.map((r) => ({ team: r.team, rank: r.rank, played: r.played, points: r.points, ppg: r.ppg })) })
+    byLeague.set(table.league, { id: table.league, league: table.league, pastedAt: table.pastedAt, rows: canonicalRows(table.rows) })
   }
   return [...byLeague.values()]
 }

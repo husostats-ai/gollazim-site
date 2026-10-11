@@ -287,6 +287,31 @@ export interface LeagueTableRow {
   points: number
   /** Tabloda yazan maç başı puan; okunamadıysa null */
   ppg: number | null
+  // Tablonun kalan sütunları: ileride analiz kalitesini ölçmek için saklanır, hesaba girmez.
+  // Bu alanlardan önce kaydedilmiş tablolarda ve okunamayan satırlarda bulunmaz.
+  won?: number
+  drawn?: number
+  lost?: number
+  goalsFor?: number
+  goalsAgainst?: number
+  goalDiff?: number
+  /** "Last 5" sütunu, yapıştırıldığı gibi ("WWDDL"); yönü belirtilmez */
+  last5?: string
+  /** Gol yememe yüzdesi (0-100) */
+  cs?: number
+  /** Karşılıklı gol yüzdesi (0-100) */
+  btts?: number
+  xgf?: number
+  /** Maç başı kart ortalaması (başlıksız sütun) */
+  cards?: number
+  /** Maç başı korner ortalaması (başlıksız sütun) */
+  corners?: number
+  /** 1.5 üst yüzdesi (0-100) */
+  over15?: number
+  /** 2.5 üst yüzdesi (0-100) */
+  over25?: number
+  /** Maç başı gol (AVG) */
+  avgGoals?: number
 }
 
 /** Bir ligin en son yapıştırılan tablosu; aynı lig yeniden yapıştırılınca üzerine yazılır */
@@ -297,6 +322,21 @@ export interface LeagueTable {
   league: string
   /** Yapıştırma anı (ISO) */
   pastedAt: string
+  rows: LeagueTableRow[]
+}
+
+/**
+ * Bir yapıştırmanın geçmişte kalan kopyası: "o gün hangi tablo değerleri vardı" sorusu için.
+ * Güncel tablo (LeagueTable) üzerine yazılır, anlık görüntüler silinmez.
+ */
+export interface LeagueTableSnapshot {
+  /** league + pastedAt */
+  id: string
+  league: string
+  /** Bu içeriğin ilk yapıştırıldığı an (ISO) */
+  pastedAt: string
+  /** Aynı içerik yeniden yapıştırıldıysa son yapıştırma anı (ISO) */
+  lastSeenAt?: string
   rows: LeagueTableRow[]
 }
 
@@ -334,6 +374,8 @@ export interface BackupFile {
   /** Yapıştırılan lig tabloları ve takım adı eşleştirmeleri; eski yedeklerde bulunmaz */
   leagueTables?: LeagueTable[]
   teamAliases?: TeamAlias[]
+  /** Lig tablosu yapıştırma geçmişi; eski yedeklerde ve hiç tablo yokken bulunmaz */
+  leagueTableSnapshots?: LeagueTableSnapshot[]
   /** "Günün öne çıkanları" seçimleri; eski yedeklerde ve hiç seçim yokken bulunmaz */
   highlights?: Highlight[]
   /** "AI öneri güveni" satırı üyeye giden maçların kaydı; eski yedeklerde ve hiç kayıt yokken bulunmaz */

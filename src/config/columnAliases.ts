@@ -36,6 +36,10 @@ export const COLUMN_ALIASES = {
   oddsAway: ['Odds_Away_Win'],
   oddsOver25: ['Odds_Over25'],
   oddsUnder25: ['Odds_Under25'],
+  // Yalnızca lig tablosunun güncelliğini denetlemek içindir; analize girmez.
+  homeOverallPpg: ['Home Team Overall Points Per Game (Pre-Match)'],
+  awayOverallPpg: ['Away Team Overall Points Per Game (Pre-Match)'],
+  gameWeek: ['Game Week'],
 } as const satisfies Record<string, readonly string[]>
 
 export type FieldKey = keyof typeof COLUMN_ALIASES
@@ -74,6 +78,9 @@ export const FIELD_LABELS: Record<FieldKey, string> = {
   oddsAway: 'Deplasman galibiyet oranı',
   oddsOver25: '2.5 Üst oranı',
   oddsUnder25: '2.5 Alt oranı',
+  homeOverallPpg: 'Ev sahibi genel maç başı puan',
+  awayOverallPpg: 'Deplasman genel maç başı puan',
+  gameWeek: 'Lig turu',
 }
 
 /** Metin olarak saklanan alanlar; diğer tüm tanınan alanlar sayıdır */

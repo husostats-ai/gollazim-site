@@ -8,6 +8,7 @@ import type {
   BackupFile,
   Highlight,
   LeagueTable,
+  LeagueTableSnapshot,
   Match,
   MatchResult,
   Pick,
@@ -81,8 +82,13 @@ export interface StorySelectionsRepo {
 
 export interface LeagueRepo {
   listTables(): Promise<LeagueTable[]>
-  /** Ligin tablosunu kaydeder; aynı lig için eski tablo varsa üzerine yazar */
+  /**
+   * Ligin tablosunu kaydeder; aynı lig için eski tablo varsa üzerine yazar. Yapıştırma ayrıca
+   * geçmişe eklenir (içerik son görüntüyle aynıysa yeni kayıt açılmaz).
+   */
   saveTable(table: LeagueTable): Promise<void>
+  /** Tüm liglerin yapıştırma geçmişi */
+  listSnapshots(): Promise<LeagueTableSnapshot[]>
   listAliases(): Promise<TeamAlias[]>
   saveAliases(aliases: TeamAlias[]): Promise<void>
   removeAlias(id: string): Promise<void>
