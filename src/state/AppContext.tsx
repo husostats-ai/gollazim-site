@@ -9,7 +9,7 @@ import { findActiveShared, recordShare } from '../services/story/shared'
 import type { StreakCandidate, StreakRefusal, StreakView } from '../services/streak/streak'
 import { loadStreak, removePendingFromStreak, sendToStreak, takeBackFromStreak, undoStreakRemoval } from '../services/streak/streakService'
 import { selectionsForDate, type DaySelections } from '../services/story/selection'
-import type { AiShare, AiVerdict, Highlight, LeagueTable, Match, MatchResult, Pick, SharedPick, TeamAlias, Thresholds } from '../types'
+import type { AiShare, AiVerdict, Highlight, LeagueTable, LeagueTableSnapshot, Match, MatchResult, Pick, SharedPick, TeamAlias, Thresholds } from '../types'
 import { todayInAppZone } from '../utils/date'
 
 interface AppState {
@@ -62,6 +62,8 @@ interface AppState {
   undoStreakRemoval: (id: string) => Promise<StreakRefusal | null>
   /** Yapıştırılan lig tabloları ve takım adı eşleştirmeleri; yalnızca kartta gösterim içindir */
   leagueTables: LeagueTable[]
+  /** Yapıştırma geçmişi: karttaki form satırları maçtan önceki son görüntüden okunur */
+  leagueSnapshots: LeagueTableSnapshot[]
   teamAliases: TeamAlias[]
   sortMode: SortMode
   setSortMode: (mode: SortMode) => void
@@ -105,6 +107,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [streak, setStreak] = useState<StreakView | null>(null)
   const [leagueTables, setLeagueTables] = useState<LeagueTable[]>([])
   const [teamAliases, setTeamAliases] = useState<TeamAlias[]>([])
+  const [leagueSnapshots, setLeagueSnapshots] = useState<LeagueTableSnapshot[]>([])
   // Seçim yazmaları sırayla yapılır ki art arda işaretlemelerde son durum kalsın.
   const selectionWrites = useRef<Promise<void>>(Promise.resolve())
   const [thresholds, setThresholds] = useState<Thresholds>(defaultThresholds)
@@ -116,12 +119,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false
     void (async () => {
-      const [nextDates, nextThresholds, nextMarketLimit, nextTables, nextAliases] = await Promise.all([
+      const [nextDates, nextThresholds, nextMarketLimit, nextTables, nextAliases, nextSnapshots] = await Promise.all([
         matchesRepo.listDates(),
         settingsRepo.getThresholds(),
         settingsRepo.getMarketConflictLimit(),
         leagueRepo.listTables(),
         leagueRepo.listAliases(),
+        leagueRepo.listSnapshots(),
       ])
       if (cancelled) return
       const date = selectedDate && nextDates.includes(selectedDate) ? selectedDate : pickDefaultDate(nextDates, today)
@@ -141,6 +145,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setMarketConflictLimit(nextMarketLimit)
       setLeagueTables(nextTables)
       setTeamAliases(nextAliases)
+      setLeagueSnapshots(nextSnapshots)
       setSelectedDate(date)
       setMatches(nextMatches)
       setResults(Object.fromEntries(nextResults.map((r) => [r.matchId, r])))
@@ -296,6 +301,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     undoStreakRemoval: undoStreakRemovalAction,
     leagueTables,
     teamAliases,
+    leagueSnapshots,
     sharedPicks,
     recordShared,
     removeShared,

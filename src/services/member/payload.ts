@@ -1,11 +1,11 @@
 import { CATEGORIES, getCategory, MAX_MATCHES_PER_CATEGORY, type CategoryId } from '../../config/categories'
 import type { MemberTexts } from '../../config/memberTexts'
-import type { LeagueTable, Match, MatchResult, MatchStatus, Pick, PickOutcome, SharedPick, TeamAlias, Thresholds } from '../../types'
+import type { LeagueTable, LeagueTableSnapshot, Match, MatchResult, MatchStatus, Pick, PickOutcome, SharedPick, TeamAlias, Thresholds } from '../../types'
 import { formatScore } from '../../utils/score'
 import { analyzeDay } from '../analysis/engine'
 import { highlightOutcome } from '../highlights/highlights'
 import type { Prediction, ReliabilityLevel } from '../analysis/types'
-import { matchStandings, type StandingInfo } from '../league/standing'
+import { matchForms, matchStandings, type StandingInfo, type TeamForm } from '../league/standing'
 import { resultDetail } from '../stats/categoryResult'
 import { buildMainStats } from '../stats/mainStats'
 import { buildStarStats } from '../stats/starStats'
@@ -34,11 +34,14 @@ import { assertMemberPayload, MEMBER_STREAK_LIMITS } from './schema'
  * 6: maçlarda "AI öneri güveni" satırı (ai) bulunabilir (maç geneli; artık üretilmez).
  * 7: "AI öneri güveni" satırı önerinin kendisindedir (kategori bazlı); maçta bulunmaz.
  * 8: "seri takibi" (streak) var: aktif serinin adımları, geçmiş seriler ve sayılar.
+ * 9: maçlarda lig tablosundan form, gol ve "gol yemediği maç" (homeForm, awayForm) bulunabilir;
+ *    alanlar yalnızca doluyken yazılır.
  * Sürüm 1 (others alanı olmayan), sürüm 2 (main alanı olmayan), sürüm 3 (highlights alanı olmayan),
  * sürüm 4 (sample alanı olmayan), sürüm 5 (ai alanı olmayan), sürüm 6 (ai alanı maçta olan) ve
- * sürüm 7 (streak alanı olmayan) paketler üye sayfasında hâlâ açılır; sürüm 6'daki maç geneli satır gösterilmez.
+ * sürüm 7 (streak alanı olmayan) ve sürüm 8 (form alanları olmayan) paketler üye sayfasında hâlâ açılır;
+ * sürüm 6'daki maç geneli satır gösterilmez.
  */
-export const MEMBER_PAYLOAD_VERSION = 8
+export const MEMBER_PAYLOAD_VERSION = 9
 
 /** Günlük dökümde pakete giren en fazla gün sayısı (en yeniler) */
 export const MEMBER_DAILY_LIMIT = 90
@@ -101,6 +104,20 @@ export interface MemberStanding {
 }
 
 /**
+ * Lig tablosundan, maçtan önceki son görüntüden: son maçlar, attığı–yediği gol, gol yemediği
+ * maçların yüzdesi. Tablonun başka hiçbir sütunu pakete girmez. Tablo doğrulanamıyorsa
+ * (eski olabilir, karşılaştırılamıyor, maçtan çok önce yapıştırılmış) alan pakete hiç yazılmaz.
+ */
+export interface MemberForm {
+  /** "WWDDL": soldan sağa eskiden yeniye; yoksa null */
+  last: string | null
+  gf: number
+  ga: number
+  /** 0-100; yoksa null */
+  cs: number | null
+}
+
+/**
  * Çelişki türü. model: hazır yüzde ile gol modeli çelişiyor (ana gol kategorileri).
  * hesap: iki ayrı hesap birbiriyle çelişiyor (Taraf & Gol).
  */
@@ -118,6 +135,9 @@ export interface MemberMatch {
   score: string | null
   homeStanding: MemberStanding | null
   awayStanding: MemberStanding | null
+  /** Yalnızca sürüm 9 ve yalnızca doluyken; satır yoksa anahtar da yoktur */
+  homeForm?: MemberForm
+  awayForm?: MemberForm
   /**
    * YALNIZCA SÜRÜM 6 paketlerde: maçın tüm önerilerini birlikte kapsayan eski "AI öneri güveni"
    * satırı. Artık üretilmez ve üye sayfasında gösterilmez; kategori bazlı satır önerinin
@@ -281,7 +301,7 @@ export interface MemberStreak {
 }
 
 export interface MemberPayload {
-  v: 1 | 2 | 3 | 4 | 5 | 6 | 7 | typeof MEMBER_PAYLOAD_VERSION
+  v: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | typeof MEMBER_PAYLOAD_VERSION
   /** Yayın numarası */
   n: number
   /** Yayın anı (ISO) */
@@ -352,6 +372,8 @@ export interface MemberPayloadInput {
   /** Yayınlanacak günler; seçilen gün ilk sırada */
   days: MemberDayInput[]
   leagueTables: LeagueTable[]
+  /** Lig tablosu yapıştırma geçmişi (form satırları için); verilmezse form satırı yazılmaz */
+  leagueTableSnapshots?: LeagueTableSnapshot[]
   teamAliases: TeamAlias[]
   /** Tüm dondurulmuş öneriler (sonuçlar ve istatistik için) */
   picks: Pick[]
@@ -401,6 +423,8 @@ function statsOf(picks: Pick[]): MemberStats {
 }
 
 const standingOf = (info: StandingInfo | null): MemberStanding | null => (info ? { rank: info.rank, played: info.played, stale: info.stale } : null)
+/** Yalnızca doğrulanmış satır ve yalnızca dört alan pakete girer */
+const formOf = (form: TeamForm | null): MemberForm | null => (form && form.blocked === null ? { last: form.last5, gf: form.goalsFor, ga: form.goalsAgainst, cs: form.cs } : null)
 
 /** Taraf & Gol listelerinde çelişki iki hesabın, diğerlerinde hazır yüzde ile modelin çelişkisidir */
 export const conflictKindOf = (categoryId: CategoryId): MemberConflict => (getCategory(categoryId).group === 'sidegoals' ? 'hesap' : 'model')
@@ -420,6 +444,7 @@ function dayOf(input: MemberPayloadInput, day: MemberDayInput, now: Date, sentAi
     if (known !== undefined) return known
     const result = resultById.get(match.id)
     const standings = matchStandings(match, day.matches, input.leagueTables, input.teamAliases, now)
+    const forms = matchForms(match, day.matches, input.leagueTableSnapshots ?? [], input.teamAliases)
     indexById.set(match.id, matches.length)
     const entry: MemberMatch = {
       home: match.home,
@@ -431,6 +456,11 @@ function dayOf(input: MemberPayloadInput, day: MemberDayInput, now: Date, sentAi
       homeStanding: standingOf(standings.home),
       awayStanding: standingOf(standings.away),
     }
+    // Form satırı yalnızca doluyken yazılır: tablosu olmayan maçlar pakette yer tutmaz.
+    const homeForm = formOf(forms.home)
+    const awayForm = formOf(forms.away)
+    if (homeForm) entry.homeForm = homeForm
+    if (awayForm) entry.awayForm = awayForm
     matches.push(entry)
     return matches.length - 1
   }

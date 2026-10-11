@@ -80,6 +80,7 @@ it.runIf(process.env.UYE_ORNEK && process.env.UYE_BACKUP)(
         listMatchesByIds: async (ids) => backup.matches.filter((m) => ids.includes(m.id)),
         markStreakPublished: async () => undefined,
         listLeagueTables: async () => backup.leagueTables ?? [],
+        listLeagueSnapshots: async () => backup.leagueTableSnapshots ?? [],
         listAliases: async () => backup.teamAliases ?? [],
         getThresholds: async () => backup.thresholds,
         getMarketConflictLimit: async () => backup.marketConflictLimit ?? 25,

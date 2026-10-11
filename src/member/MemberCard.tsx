@@ -1,4 +1,5 @@
 import Stars from '../components/Stars'
+import TeamForm from '../components/TeamForm'
 import type { ReliabilityLevel } from '../services/analysis/types'
 import { MEMBER_AI_LEVEL_LABELS, MEMBER_AI_PROVIDER_LABELS, memberAiSummary, memberAiTitle, MEMBER_CONFLICT_LABELS, MEMBER_DATA_TERM, MEMBER_OUTCOMES, MEMBER_RELIABILITY_LABELS, memberSampleText, MEMBER_STATUS_LABELS, STALE_TABLE_LABEL, standingText } from '../services/member/labels'
 import type { MemberItem, MemberMatch, MemberStanding } from '../services/member/payload'
@@ -166,6 +167,13 @@ export default function MemberCard({ rank, match, item, categoryLabel, percentLa
         <div className="border-t border-line pt-2.5 text-xs text-muted" data-testid="member-standing">
           <Standing side="Ev" standing={match.homeStanding} />
           <Standing side="Dep" standing={match.awayStanding} />
+        </div>
+      )}
+
+      {/* Sürüm 9: lig tablosundan form, gol ve gol yemediği maç; alan yalnızca doluyken pakette bulunur. */}
+      {(match.homeForm || match.awayForm) && (
+        <div className="border-t border-line pt-2.5">
+          <TeamForm home={match.homeForm ?? null} away={match.awayForm ?? null} testId="member-form" />
         </div>
       )}
     </article>

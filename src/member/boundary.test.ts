@@ -78,6 +78,7 @@ const ALLOWED = [
   'src/components/EmptyState.tsx',
   'src/components/PageTitle.tsx',
   'src/components/Stars.tsx',
+  'src/components/TeamForm.tsx',
   'src/components/stats/chartTheme.ts',
 ].sort()
 

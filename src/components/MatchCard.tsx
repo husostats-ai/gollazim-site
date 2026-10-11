@@ -1,7 +1,7 @@
 import { getCategory, supportsCautious } from '../config/categories'
 import { marketNotes } from '../services/analysis/market'
 import { statSummary } from '../services/analysis/summary'
-import { DETAIL_HINT, matchStandings, playedHint } from '../services/league/standing'
+import { FORM_BLOCK_TEXT, matchForms, matchStandings, playedHint, type TeamForm as TeamFormInfo } from '../services/league/standing'
 import type { Prediction, SortMode } from '../services/analysis/types'
 import { useApp } from '../state/AppContext'
 import type { SharedPick } from '../types'
@@ -14,8 +14,11 @@ import OutcomeBadge from './OutcomeBadge'
 import ReliabilityBadge from './ReliabilityBadge'
 import ScoreOdds from './ScoreOdds'
 import SharedBadge from './SharedBadge'
+import TeamForm, { type TeamFormValue } from './TeamForm'
 import Stars from './Stars'
 import StreakButton from './StreakButton'
+
+const formValue = (form: TeamFormInfo | null): TeamFormValue | null => form && { last: form.last5, gf: form.goalsFor, ga: form.goalsAgainst, cs: form.cs }
 
 interface Props {
   prediction: Prediction
@@ -32,9 +35,11 @@ export default function MatchCard({ prediction, rank, sortMode, storySelection, 
     prediction
   const category = getCategory(categoryId)
   const summary = statSummary(match, categoryId)
-  const { pickFor, results, marketConflictLimit, matches, leagueTables, teamAliases } = useApp()
+  const { pickFor, results, marketConflictLimit, matches, leagueTables, leagueSnapshots, teamAliases } = useApp()
   // Lig tablosu yalnızca gösterilir; tablo yoksa kartta hiçbir şey değişmez.
   const standings = matchStandings(match, matches, leagueTables, teamAliases, new Date())
+  const forms = matchForms(match, matches, leagueSnapshots, teamAliases)
+  const gameWeek = (standings.home ?? standings.away)?.detail?.gameWeek
   const pick = pickFor(match.id, categoryId)
   const score = formatScore(results[match.id])
 
@@ -110,28 +115,17 @@ export default function MatchCard({ prediction, rank, sortMode, storySelection, 
                 </p>
               ),
           )}
-          {(standings.home?.detail?.text || standings.away?.detail?.text) && (
-            // Yalnızca gösterim: form (eski → yeni), attığı–yediği gol ve gol yememe yüzdesi. Kapalı gelir.
-            <details className="mt-1" data-testid="league-detail">
-              <summary className="cursor-pointer font-semibold">Tablo ayrıntısı</summary>
-              {([['Ev', standings.home], ['Dep', standings.away]] as const).map(
-                ([side, info]) =>
-                  info?.detail?.text && (
-                    <p key={side} className="break-words" title={DETAIL_HINT}>
-                      <span className="font-semibold text-white">{side}:</span> {info.detail.text}
-                    </p>
-                  ),
-              )}
-              {(standings.home ?? standings.away)!.detail!.gameWeek !== null && (
-                <p className="opacity-80">
-                  CSV turu {(standings.home ?? standings.away)!.detail!.gameWeek} · tablo MP{' '}
-                  {[standings.home?.played, standings.away?.played].filter((n) => n !== undefined).join(' / ')}
-                </p>
-              )}
-            </details>
-          )}
         </div>
       )}
+
+      {/* Yalnızca gösterim: maçtan önceki son tablo görüntüsünden form, gol ve gol yemediği maç. */}
+      <TeamForm
+        home={formValue(forms.home)}
+        away={formValue(forms.away)}
+        notes={{ home: forms.home?.blocked && FORM_BLOCK_TEXT[forms.home.blocked], away: forms.away?.blocked && FORM_BLOCK_TEXT[forms.away.blocked] }}
+        footer={gameWeek != null ? `CSV turu ${gameWeek} · tablo MP ${[standings.home?.played, standings.away?.played].filter((n) => n !== undefined).join(' / ')}` : null}
+        testId="league-form"
+      />
 
       <div className="flex flex-wrap items-center gap-1.5">
         <HighlightButton prediction={prediction} />

@@ -1,5 +1,5 @@
 import type { MemberTexts } from '../../config/memberTexts'
-import type { AiVerdict, Highlight, LeagueTable, Match, MatchResult, Pick, SharedPick, StreakStep, TeamAlias, Thresholds } from '../../types'
+import type { AiVerdict, Highlight, LeagueTable, LeagueTableSnapshot, Match, MatchResult, Pick, SharedPick, StreakStep, TeamAlias, Thresholds } from '../../types'
 import { shiftDate } from '../../utils/format'
 import { fromBase64, sealPayload, type MemberEnvelope } from '../member/crypto'
 import { AI_CATEGORY_IDS } from '../../config/ai'
@@ -36,6 +36,8 @@ export interface PublishSources {
   /** Pakete giren adımları yayınlandı olarak işaretler (yayınlanan adım silinemez) */
   markStreakPublished(ids: string[], publishedAt: string): Promise<void>
   listLeagueTables(): Promise<LeagueTable[]>
+  /** Lig tablosu yapıştırma geçmişi: form satırları maçtan önceki son görüntüden okunur */
+  listLeagueSnapshots(): Promise<LeagueTableSnapshot[]>
   listAliases(): Promise<TeamAlias[]>
   getThresholds(): Promise<Thresholds>
   getMarketConflictLimit(): Promise<number>
@@ -142,7 +144,7 @@ export const PUBLISH_DAY_COUNT = 7
  */
 export async function draftPublication(sources: PublishSources, options: { day: string; n: number; publishedAt: string; texts: MemberTexts }): Promise<PublishDraft> {
   const dates = Array.from({ length: PUBLISH_DAY_COUNT }, (_, back) => shiftDate(options.day, -back))
-  const [dayData, picks, shared, leagueTables, teamAliases, thresholds, marketConflictLimit, streakSteps] = await Promise.all([
+  const [dayData, picks, shared, leagueTables, teamAliases, thresholds, marketConflictLimit, streakSteps, leagueTableSnapshots] = await Promise.all([
     Promise.all(
       dates.map(async (date) => {
         const [matches, records, verdicts] = await Promise.all([sources.listMatchesByDate(date), sources.listHighlightsByDate(date), sources.listAiVerdictsByDate(date)])
@@ -159,13 +161,14 @@ export async function draftPublication(sources: PublishSources, options: { day: 
     sources.getThresholds(),
     sources.getMarketConflictLimit(),
     sources.listStreakSteps(),
+    sources.listLeagueSnapshots(),
   ])
   // Seri güne bağlı değildir: adımların maçları ve skorları, günü pakette olmasa da okunur.
   const streakMatchIds = [...new Set(streakSteps.map((s) => s.matchId))]
   const [streakMatches, streakResults] = await Promise.all([sources.listMatchesByIds(streakMatchIds), sources.listResultsByMatchIds(streakMatchIds)])
   const streakWanted = new Set(streakSteps.map((s) => s.id))
   const streak = streakInputOf(buildStreak(streakSteps, factsFrom({ matches: streakMatches, results: streakResults, picks: picks.filter((p) => streakWanted.has(p.id)) })), streakMatches)
-  const input: MemberPayloadInput = { n: options.n, publishedAt: options.publishedAt, texts: options.texts, thresholds, marketConflictLimit, days: dayData.map((d) => ({ date: d.date, matches: d.matches, results: d.results, highlights: d.highlights, ai: d.ai.inputs })), leagueTables, teamAliases, picks, shared, streak }
+  const input: MemberPayloadInput = { n: options.n, publishedAt: options.publishedAt, texts: options.texts, thresholds, marketConflictLimit, days: dayData.map((d) => ({ date: d.date, matches: d.matches, results: d.results, highlights: d.highlights, ai: d.ai.inputs })), leagueTables, leagueTableSnapshots, teamAliases, picks, shared, streak }
   const full = buildMemberPublication(input)
   // Listeler paket kurulurken hesaplandığı için boş günler ancak şimdi bilinir.
   const keep = dayData.map((d, i) => i === 0 || full.payload.days[i].lists.some((list) => list.items.length > 0) || d.highlights.length > 0)

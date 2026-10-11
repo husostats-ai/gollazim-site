@@ -1,9 +1,10 @@
 import { LEAGUE_TABLE_STALE_DAYS } from '../../config/reminders'
-import type { LeagueTable, LeagueTableRow, Match, TeamAlias } from '../../types'
+import type { LeagueTable, LeagueTableSnapshot, Match, TeamAlias } from '../../types'
 import { stat } from '../analysis/stat'
 import { daysBetween } from '../daily/checklist'
 import { kickoffOf } from '../highlights/highlights'
-import { findStanding, type Standing } from './matching'
+import { snapshotAt } from './history'
+import { findStanding, matchTeams, type Standing } from './matching'
 
 // Kartta gösterilen lig tablosu bilgisi. Yalnızca gösterimdir: analize, güvenilirlik
 // seviyesine, yıldıza, sıralamaya, dondurmaya ve AI prompt'una girmez.
@@ -17,7 +18,7 @@ export interface StandingInfo {
   ageDays: number
   /** Tablo LEAGUE_TABLE_STALE_DAYS günden eski */
   stale: boolean
-  /** Yalnızca admin kartındaki açılır satır ve "tablo eski olabilir" işareti; matchStandings doldurur */
+  /** Yalnızca admin kartındaki "tablo eski olabilir" işareti ve lig turu; matchStandings doldurur */
   detail?: StandingDetail
 }
 
@@ -25,25 +26,10 @@ export interface StandingInfo {
 export const PPG_TOLERANCE = 0.01
 
 export interface StandingDetail {
-  /** "Form (eski → yeni): WWDDL · 6–4 · CS %60"; tabloda bu sütunlar yoksa null */
-  text: string | null
   /** Tablodaki PPG, CSV'deki maç öncesi genel PPG'den farklı (yalnızca başlamamış maçlarda) */
   maybeOld: boolean
   /** CSV'deki lig turu; yoksa null. Yalnızca bilgi içindir, uyarı üretmez */
   gameWeek: number | null
-}
-
-/** Açılır satırın ipucu (title) */
-export const DETAIL_HINT = 'Form: son maçlar, soldan sağa eskiden yeniye (en sağdaki en son oynanan maç). Ardından attığı–yediği gol ve gol yememe yüzdesi (CS).'
-
-/** Açılır satırın metni: Last 5 (soldan sağa eskiden yeniye), attığı–yediği gol, gol yememe yüzdesi */
-export function detailText(row: LeagueTableRow): string | null {
-  const parts = [
-    row.last5 !== undefined ? `Form (eski → yeni): ${row.last5}` : undefined,
-    row.goalsFor !== undefined && row.goalsAgainst !== undefined ? `${row.goalsFor}–${row.goalsAgainst}` : undefined,
-    row.cs !== undefined ? `CS %${row.cs}` : undefined,
-  ].filter((p) => p !== undefined)
-  return parts.length > 0 ? parts.join(' · ') : null
 }
 
 /** Tablo PPG'si CSV'deki genel PPG'den toleranstan fazla mı ayrışıyor; biri yoksa ayrışmıyor sayılır */
@@ -77,7 +63,6 @@ export function matchStandings(match: Match, dayMatches: Match[], tables: League
     const standing = findStanding(match.league, team, leagueTeams, tables, aliases)
     if (!standing) return null
     const detail: StandingDetail = {
-      text: detailText(standing.row),
       maybeOld: upcoming && ppgDiffers(standing.row.ppg, stat(match, ppgField)),
       gameWeek: gameWeek !== null && gameWeek > 0 ? gameWeek : null,
     }
@@ -92,4 +77,63 @@ export function playedHint({ home, away }: MatchStandings): string | null {
   const parts = [home && `ev sahibi ${home.played}`, away && `deplasman ${away.played}`].filter(Boolean).join(', ')
   const age = tableAgeText((home ?? away)!.ageDays)
   return `Lig tablosuna göre oynanan maç: ${parts} (${age}).`
+}
+
+// FORM, GOL ve "gol yemediği maç": kartta sabit satırlar olarak gösterilen tablo sütunları.
+// Kaynak, maçın başlama saatinden ÖNCE yapıştırılmış son görüntüdür: maç oynandıktan sonra tablo
+// yenilense de kart o maçtan önceki değerleri gösterir (maçın kendi sonucu forma karışmaz).
+// Yalnızca gösterimdir; analize, yıldıza, sıralamaya, dondurmaya ve AI prompt'una girmez.
+
+/**
+ * Satırın üyeye GİTMEME nedeni. ppg-differs: tablo PPG'si CSV'deki maç öncesi genel PPG'den farklı
+ * (tablo eski olabilir). unverifiable: iki PPG'den biri yok, karşılaştırılamıyor.
+ * old-snapshot: görüntü maç saatinden LEAGUE_TABLE_STALE_DAYS günden eski.
+ */
+export type FormBlock = 'ppg-differs' | 'unverifiable' | 'old-snapshot'
+
+export interface TeamForm {
+  /** "Last 5", yapıştırıldığı gibi: soldan sağa eskiden yeniye; yoksa null */
+  last5: string | null
+  goalsFor: number
+  goalsAgainst: number
+  /** Gol yememe yüzdesi (0-100); yoksa null */
+  cs: number | null
+  /** Üyeye gitmeme nedeni; null ise satır doğrulanmıştır ve üye kartında da gösterilir */
+  blocked: FormBlock | null
+}
+
+export interface MatchForms {
+  home: TeamForm | null
+  away: TeamForm | null
+}
+
+/** Admin kartında, üyeye gitmeyen satırın yanına yazılan not */
+export const FORM_BLOCK_TEXT: Record<FormBlock, string> = {
+  'ppg-differs': '⚠ tablo eski olabilir · üyeye gitmez',
+  unverifiable: 'doğrulanamadı · üyeye gitmez',
+  'old-snapshot': `tablo maçtan ${LEAGUE_TABLE_STALE_DAYS} günden eski · üyeye gitmez`,
+}
+
+/**
+ * Maçın iki takımının form satırı. Saat bilinmiyorsa, maçtan önce yapıştırılmış görüntü yoksa,
+ * takım o görüntüde güvenle eşleşmiyorsa ya da görüntüde gol sütunları yoksa ilgili taraf null.
+ */
+export function matchForms(match: Match, dayMatches: Match[], snapshots: LeagueTableSnapshot[], aliases: TeamAlias[]): MatchForms {
+  const kickoff = kickoffOf(match)
+  if (!match.league || !kickoff || snapshots.length === 0) return { home: null, away: null }
+  const snapshot = snapshotAt(snapshots, match.league, kickoff)
+  if (!snapshot) return { home: null, away: null }
+  const leagueTeams = [...new Set([...dayMatches.filter((m) => m.league === match.league).flatMap((m) => [m.home, m.away]), match.home, match.away])]
+  const matched = matchTeams(match.league, leagueTeams, snapshot.rows, aliases)
+  // Aynı içerik maçtan önce yeniden yapıştırıldıysa tablo o an da günceldi.
+  const seenAt = snapshot.lastSeenAt && Date.parse(snapshot.lastSeenAt) < kickoff.getTime() ? snapshot.lastSeenAt : snapshot.pastedAt
+  const old = daysBetween(new Date(seenAt), kickoff) > LEAGUE_TABLE_STALE_DAYS
+  const form = (team: string, ppgField: 'homeOverallPpg' | 'awayOverallPpg'): TeamForm | null => {
+    const row = matched.find((m) => m.csvTeam === team)?.row
+    if (!row || row.goalsFor === undefined || row.goalsAgainst === undefined) return null
+    const csvPpg = stat(match, ppgField)
+    const blocked: FormBlock | null = ppgDiffers(row.ppg, csvPpg) ? 'ppg-differs' : row.ppg === null || csvPpg === null ? 'unverifiable' : old ? 'old-snapshot' : null
+    return { last5: row.last5 ?? null, goalsFor: row.goalsFor, goalsAgainst: row.goalsAgainst, cs: row.cs !== undefined && Number.isInteger(row.cs) ? row.cs : null, blocked }
+  }
+  return { home: form(match.home, 'homeOverallPpg'), away: form(match.away, 'awayOverallPpg') }
 }

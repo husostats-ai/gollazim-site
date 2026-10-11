@@ -25,6 +25,10 @@ export const MEMBER_KEYS = {
   dayV3: ['date', 'matches', 'lists'],
   highlight: ['home', 'away', 'league', 'time', 'categoryId', 'status', 'score', 'outcome'],
   match: ['home', 'away', 'league', 'time', 'status', 'score', 'homeStanding', 'awayStanding'],
+  /** Sürüm 9: maçın isteğe bağlı alanları; yalnızca doluyken yazılır (boşsa anahtar hiç bulunmaz, null olamaz) */
+  matchOptionalV9: ['homeForm', 'awayForm'],
+  /** Lig tablosundan: son maçlar, attığı ve yediği gol, gol yemediği maçların yüzdesi; başka sütun bulunamaz */
+  form: ['last', 'gf', 'ga', 'cs'],
   /** YALNIZCA sürüm 6: maçın isteğe bağlı alanı (eski, maç geneli "AI öneri güveni" satırı) */
   matchOptional: ['ai'],
   ai: ['votes', 'count', 'level'],
@@ -94,6 +98,8 @@ const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/
 const SCORE = /^(İY \d{1,2}-\d{1,2}|MS \d{1,2}-\d{1,2}|İY \d{1,2}-\d{1,2} · MS \d{1,2}-\d{1,2})$/
 /** resultDetail çıktısı */
 const DETAIL = /^((İY|2Y) \d{1,2}-\d{1,2}|(Korner|Kart) \d{1,3})$/
+/** Son maçlar: en fazla beş sonuç, soldan sağa eskiden yeniye */
+const FORM = /^[WDL]{1,5}$/
 
 type Obj = Record<string, unknown>
 
@@ -215,13 +221,21 @@ function aiRow(value: unknown, path: string, time: unknown): void {
   if (levels.filter((l) => l === level).length !== count) fail(`${path}.count`, 'kararlarla tutarlı olmalı')
 }
 
+function form(value: unknown, path: string): void {
+  const f = object(value, path, MEMBER_KEYS.form)
+  nullable(f.last, (v) => text(v, `${path}.last`, 5, FORM))
+  integer(f.gf, `${path}.gf`, 0, 999)
+  integer(f.ga, `${path}.ga`, 0, 999)
+  nullable(f.cs, (v) => integer(v, `${path}.cs`, 0, 100))
+}
+
 function day(value: unknown, path: string, version: number): void {
   const d = object(value, path, version >= 4 ? MEMBER_KEYS.day : MEMBER_KEYS.dayV3)
   text(d.date, `${path}.date`, 10, DATE)
   const matches = array(d.matches, `${path}.matches`, CATEGORIES.length * MAX_MATCHES_PER_CATEGORY)
   matches.forEach((entry, i) => {
     const p = `${path}.matches[${i}]`
-    const m = object(entry, p, MEMBER_KEYS.match, version === 6 ? MEMBER_KEYS.matchOptional : [])
+    const m = object(entry, p, MEMBER_KEYS.match, version === 6 ? MEMBER_KEYS.matchOptional : version >= 9 ? MEMBER_KEYS.matchOptionalV9 : [])
     text(m.home, `${p}.home`, MAX_NAME)
     text(m.away, `${p}.away`, MAX_NAME)
     nullable(m.league, (v) => text(v, `${p}.league`, MAX_NAME))
@@ -230,6 +244,8 @@ function day(value: unknown, path: string, version: number): void {
     nullable(m.score, (v) => text(v, `${p}.score`, 20, SCORE))
     nullable(m.homeStanding, (v) => standing(v, `${p}.homeStanding`))
     nullable(m.awayStanding, (v) => standing(v, `${p}.awayStanding`))
+    if (m.homeForm !== undefined) form(m.homeForm, `${p}.homeForm`)
+    if (m.awayForm !== undefined) form(m.awayForm, `${p}.awayForm`)
     if (m.ai !== undefined) aiRow(m.ai, `${p}.ai`, m.time)
   })
   if (version >= 4) {
@@ -363,7 +379,7 @@ function streak(value: unknown, path: string): void {
 /** Paketi şemaya karşı denetler; uymuyorsa MemberPayloadError fırlatır. */
 export function assertMemberPayload(value: unknown): asserts value is MemberPayload {
   const version = typeof value === 'object' && value !== null ? (value as Obj).v : undefined
-  if (version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8) fail('paket.v', 'desteklenmeyen paket sürümü')
+  if (version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8 && version !== 9) fail('paket.v', 'desteklenmeyen paket sürümü')
   const p = object(value, 'paket', (version as number) >= 8 ? MEMBER_KEYS.payload : MEMBER_KEYS.payloadV7)
   integer(p.n, 'paket.n', 1, COUNT_MAX)
   text(p.publishedAt, 'paket.publishedAt', 24, ISO)

@@ -389,6 +389,7 @@ describe('kategori listeleri ve üye kartı', () => {
     const v6 = JSON.parse(JSON.stringify(payload)) as MemberPayload
     ;(v6 as { v: number }).v = 6
     delete v6.streak
+    for (const d of v6.days) for (const m of d.matches) { delete m.homeForm; delete m.awayForm }
     const row = v6.days[0].lists.find((l) => l.categoryId === 'over25')!.items.find((i) => i.ai)!.ai!
     for (const d of v6.days) for (const l of d.lists) for (const i of l.items) delete i.ai
     for (const m of v6.days[0].matches) m.ai = row
@@ -504,9 +505,9 @@ describe('kategori listeleri ve üye kartı', () => {
     expect(JSON.stringify(payload)).not.toContain('Nasıl okunur')
     expect(all.toLocaleLowerCase('tr')).not.toMatch(/oran|piyasa|xg|csv|kaynak|footystats|bağlantı|odds|ortalama|https?:/)
     // Sayı olarak yalnızca yıldız ölçeği (1–5), örnek yüzde (%100), örnek maç sayısı ("en az 4 maç"),
-    // liste adları ("2.5 Üst", "İlk Yarı 0.5 Üst"), "AI öneri güveni" özet örnekleri ("3/3 · Orta", "2/3 · Güçlü") ve "18+" geçer;
+    // liste adları ("2.5 Üst", "İlk Yarı 0.5 Üst"), "AI öneri güveni" özet örnekleri ("3/3 · Orta", "2/3 · Güçlü"), karttaki satır adı ("Son 5 maç") ve "18+" geçer;
     // eşik sayıları (8, 16) geçmez.
-    expect(all.replace(/1–5|%100|en az 4 maç|2\.5 Üst|0\.5 Üst|3\/3 · Orta|2\/3 · Güçlü|18\+/g, '').match(/\d/g)).toBeNull()
+    expect(all.replace(/1–5|%100|en az 4 maç|2\.5 Üst|0\.5 Üst|3\/3 · Orta|2\/3 · Güçlü|18\+|Son 5 maç/g, '').match(/\d/g)).toBeNull()
     // Etiketin ne OLMADIĞI açıkça yazılıdır.
     const data = HOW_TO_READ.find((i) => i.title === 'Geçmiş veri')!.paragraphs.join(' ')
     expect(data).toContain('maçın sonucuna duyulan güveni DEĞİL, yalnızca eldeki veri miktarını anlatır')
@@ -796,10 +797,63 @@ describe('seri takibi sayfası', () => {
     const v7 = JSON.parse(JSON.stringify(payload)) as MemberPayload
     ;(v7 as { v: number }).v = 7
     delete v7.streak
+    for (const d of v7.days) for (const m of d.matches) { delete m.homeForm; delete m.awayForm }
     expect(() => assertMemberPayload(v7)).not.toThrow()
     const old = shell(analysis(), NOW, null, v7)
     expect(old).not.toContain('member-tab-streak')
     expect([...old.matchAll(/<a [^>]*href="([^"]+)"/g)].map((m) => m[1])).toEqual(['/uye', '/uye/istatistik'])
     expect(old).toContain('data-testid="member-card"')
+  })
+})
+
+describe('üye kartı: form, gol ve gol yemediği maç satırları (sürüm 9)', () => {
+  const cardsOf = (markup: string): string[] => markup.split('data-testid="member-card"').slice(1)
+  const cardOf = (home: string, p: MemberPayload = payload): string => cardsOf(html(createElement(MemberAnalysis, { payload: p, today: DAY, initialDay: 0, initialCategory: 'over25' }))).find((c) => c.includes(home))!
+
+  it('doğrulanan maçta sabit satırlar: G/B/M kutucukları, gol ve gol yemediği maç; açılır kutu yok', () => {
+    const card = cardOf('Kuzey Yıldızı')
+    expect(card).toContain('data-testid="member-form"')
+    const text = textOf(card)
+    expect(text).toContain('Son 5 maç (sağdaki en yeni) · Gol: attığı–yediği')
+    // Ham W W D W W -> G G B G G; L W D W L -> M G B G M (en sağdaki en yeni)
+    expect(text).toContain('Ev Galibiyet, Galibiyet, Beraberlik, Galibiyet, Galibiyet G G B G G Gol: 18–6 Gol yemediği maç: %50')
+    expect(text).toContain('Dep Mağlubiyet, Galibiyet, Beraberlik, Galibiyet, Mağlubiyet M G B G M Gol: 10–9 Gol yemediği maç: %29')
+    expect(card).not.toMatch(/<details|<summary/)
+    // Mevcut sıra satırı aynen durur.
+    expect(text).toContain('Ev: 1. sıra · 8 maç')
+    // Ham harfler ve admin notları üyeye görünmez.
+    expect(text).not.toMatch(/WWDWW|LWDWL|üyeye gitmez|doğrulanamadı|tablo eski olabilir|turu/)
+  })
+
+  it('tablo eski olabilir ya da takım eşleşmiyorsa satırlar hiç çizilmez; sıra satırı kalır', () => {
+    const card = cardOf('Doğu Gençlik')
+    expect(card).not.toContain('data-testid="member-form"')
+    expect(textOf(card)).not.toContain('Son 5 maç')
+    expect(textOf(card)).toContain('Ev: 9. sıra · 8 maç')
+    const noTable = cardOf('İç Anadolu FK')
+    expect(noTable).not.toContain('data-testid="member-form"')
+    expect(noTable).not.toContain('data-testid="member-standing"')
+  })
+
+  it('sürüm 8 paket (alanlar yok) eskisi gibi çizilir', () => {
+    const v8 = JSON.parse(JSON.stringify(payload)) as MemberPayload
+    ;(v8 as { v: number }).v = 8
+    for (const d of v8.days) for (const m of d.matches) { delete m.homeForm; delete m.awayForm }
+    expect(() => assertMemberPayload(v8)).not.toThrow()
+    const card = cardOf('Kuzey Yıldızı', v8)
+    expect(card).not.toContain('data-testid="member-form"')
+    expect(textOf(card)).toContain('Ev: 1. sıra · 8 maç')
+  })
+
+  it('satırlarda yasak kelime ve bahis terimi yok', () => {
+    const text = textOf(cardOf('Kuzey Yıldızı')).toLocaleLowerCase('tr')
+    expect(/oran|piyasa|xg|csv|kaynak|footystats|bağlantı|odds|ortalama|bahis|kupon|iddaa|banko|clean sheet/.exec(text)?.[0] ?? null).toBeNull()
+  })
+
+  it('"Nasıl okunur?" tek cümleyle açıklar: form son 5 maç; gol ve gol yemediği maç tüm lig maçları', () => {
+    const paragraphs = HOW_TO_READ.find((i) => i.title === 'Lig sırası ve oynanan maç')!.paragraphs
+    expect(paragraphs).toHaveLength(2)
+    expect(paragraphs[1]).toBe('“Son 5 maç” satırı takımın son beş maçıdır (G galibiyet, B beraberlik, M mağlubiyet; en sağdaki en yeni); “Gol” ve “Gol yemediği maç” ise ligde şimdiye kadar oynanan tüm maçlara aittir.')
+    expect(paragraphs[1].match(/[.!?](\s|$)/g)).toHaveLength(1)
   })
 })

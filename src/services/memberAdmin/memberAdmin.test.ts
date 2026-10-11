@@ -8,7 +8,7 @@ import { recordAiShares } from '../ai/memberShare'
 import { shiftDate } from '../../utils/format'
 import { assembleBackup } from '../data/backupFormat'
 import type { MemberAdminRepo } from '../data/types'
-import { AI_REASON_CANARY, AI_VERDICTS, DAY, dayMatches, HIGHLIGHTS, LEAGUE_TABLES, MARKET_LIMIT, MATCHES, PICKS, PREVIOUS_DAY, RESULTS, SHARED, STREAK_ADDED_AT, STREAK_INPUT, STREAK_STEPS, streakView, THRESHOLDS } from '../member/__fixtures__/rawData'
+import { AI_REASON_CANARY, AI_VERDICTS, DAY, dayMatches, HIGHLIGHTS, LEAGUE_SNAPSHOTS, LEAGUE_TABLES, MARKET_LIMIT, MATCHES, PICKS, PREVIOUS_DAY, RESULTS, SHARED, STREAK_ADDED_AT, STREAK_INPUT, STREAK_STEPS, streakView, THRESHOLDS } from '../member/__fixtures__/rawData'
 import { generatePassword, MemberAccessError, openEnvelope, openWithKeys, PASSWORD_ALPHABET, type MemberKeys } from '../member/crypto'
 import type { MemberPayload } from '../member/payload'
 import { markPublished, removeHighlight } from '../highlights/highlights'
@@ -83,6 +83,7 @@ const sourcesBase = (matches: Match[]): PublishSources => ({
   listMatchesByIds: async (ids) => matches.filter((m) => ids.includes(m.id)),
   markStreakPublished: async () => undefined,
   listLeagueTables: async () => LEAGUE_TABLES,
+  listLeagueSnapshots: async () => LEAGUE_SNAPSHOTS,
   listAliases: async () => [],
   getThresholds: async () => THRESHOLDS,
   getMarketConflictLimit: async () => MARKET_LIMIT,
@@ -402,7 +403,7 @@ describe('üye ekleme', () => {
       expect(publication.text).not.toContain(AI_REASON_CANARY)
       const opened = (await openEnvelope(publication.text, login.username, login.password)).payload
       const plain = JSON.stringify(opened)
-      expect(opened.v).toBe(8)
+      expect(opened.v).toBe(9)
       const day = opened.days[0]
       expect(day.lists.flatMap((l) => l.items.filter((i) => i.ai).map((i) => `${day.matches[i.match].home}|${l.categoryId}|${i.ai!.count}|${i.ai!.level}`)).sort()).toEqual(EXPECTED.map((e) => e.join('|')).sort())
       expect(day.matches.some((m) => 'ai' in m)).toBe(false)

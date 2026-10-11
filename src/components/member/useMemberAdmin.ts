@@ -44,6 +44,7 @@ export const publishSources: PublishSources = {
   listMatchesByIds: (ids) => matchesRepo.getMany(ids),
   markStreakPublished: (ids, publishedAt) => streakRepo.markPublished(ids, publishedAt),
   listLeagueTables: () => leagueRepo.listTables(),
+  listLeagueSnapshots: () => leagueRepo.listSnapshots(),
   listAliases: () => leagueRepo.listAliases(),
   getThresholds: () => settingsRepo.getThresholds(),
   getMarketConflictLimit: () => settingsRepo.getMarketConflictLimit(),

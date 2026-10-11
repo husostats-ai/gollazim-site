@@ -57,6 +57,7 @@ export const HOW_TO_READ: HowToReadItem[] = [
     title: 'Lig sırası ve oynanan maç',
     paragraphs: [
       'Kartın altındaki “Ev” ve “Dep” satırları takımın lig tablosundaki sırasını ve oynadığı maç sayısını gösterir. Tablo elle güncellenir; “⚠ tablo eski” yazıyorsa bilgi güncel olmayabilir. Tablosu girilmemiş liglerde bu satır görünmez.',
+      '“Son 5 maç” satırı takımın son beş maçıdır (G galibiyet, B beraberlik, M mağlubiyet; en sağdaki en yeni); “Gol” ve “Gol yemediği maç” ise ligde şimdiye kadar oynanan tüm maçlara aittir.',
     ],
   },
   {

@@ -36,7 +36,7 @@ const server = createServer((req, res) => {
   // Admin sayfası üye sitesinin sürüm bilgisini aynı alan adından okur; burada sabit bir yanıt verilir.
   if (path === '/gollazim-uye/surum.json') {
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
-    return res.end('{"commit":"deneme","payloadVersion":8}\n')
+    return res.end('{"commit":"deneme","payloadVersion":9}\n')
   }
   const file = path.startsWith('/gollazim-site/') ? normalize(join(dist, path.slice('/gollazim-site/'.length) || 'index.html')) : null
   if (!file || !file.startsWith(dist) || !existsSync(file)) {

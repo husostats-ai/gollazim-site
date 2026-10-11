@@ -8,7 +8,7 @@ import { makeMatch } from '../analysis/testUtils'
 import { assembleBackup, isBackupFile } from '../data/backupFormat'
 import { ageGroup, aliasId, findStanding, matchTeams, normalizeAliases, normalizeLeagueTables, normalizeTeam, NOT_IN_TABLE } from './matching'
 import { fitsAverage, checkRow, parseLeagueTable } from './parser'
-import { DETAIL_HINT, detailText, matchStandings, playedHint, ppgDiffers, standingInfo, tableAgeText } from './standing'
+import { FORM_BLOCK_TEXT, matchForms, matchStandings, playedHint, ppgDiffers, standingInfo, tableAgeText } from './standing'
 import { nextSnapshot, normalizeSnapshots, sameRows, seedSnapshots, snapshotAt, snapshotId } from './history'
 import { buildMemberPayload } from '../member/payload'
 import { memberInput } from '../member/__fixtures__/rawData'
@@ -408,7 +408,7 @@ describe('yapıştırma geçmişi', () => {
   })
 })
 
-describe('admin kartı: açılır satır ve "tablo eski olabilir"', () => {
+describe('admin kartı: "tablo eski olabilir" işareti ve lig turu', () => {
   const fullTable: LeagueTable = { id: LEAGUE, league: LEAGUE, pastedAt: '2026-10-05T09:00:00.000Z', rows: FULL_ROWS }
   // Maç 7 Ekim 20:00 (TSİ) = 17:00 UTC
   const before = new Date('2026-10-07T09:00:00.000Z')
@@ -419,18 +419,6 @@ describe('admin kartı: açılır satır ve "tablo eski olabilir"', () => {
     const s = matchStandings(match, [match], tables, [], now)
     return [s.home?.detail?.maybeOld, s.away?.detail?.maybeOld]
   }
-
-  it('açılır satır: form (eski → yeni), attığı–yediği gol, CS; sütunlar yoksa satır yok', () => {
-    expect(detailText(FULL_ROWS[0])).toBe('Form (eski → yeni): WWWWW · 13–5 · CS %40')
-    // Form yoksa etiket de yazılmaz.
-    expect(detailText({ ...FULL_ROWS[0], last5: undefined })).toBe('13–5 · CS %40')
-    expect(DETAIL_HINT).toContain('soldan sağa eskiden yeniye')
-    expect(detailText({ ...rows[0], last5: 'WD' })).toBe('Form (eski → yeni): WD')
-    expect(detailText(rows[0])).toBeNull()
-    const match = game({})
-    expect(matchStandings(match, [match], [fullTable], [], before).away?.detail).toEqual({ text: 'Form (eski → yeni): WLDWW · 9–9 · CS %60', maybeOld: false, gameWeek: null })
-    expect(matchStandings(match, [match], [table()], [], before).home?.detail?.text).toBeNull()
-  })
 
   it('tablo PPG ile CSV genel PPG farklıysa işaretlenir; 0,01 tolerans', () => {
     expect(ppgDiffers(0.25, 0.4)).toBe(true)
@@ -471,15 +459,17 @@ describe('admin kartı: açılır satır ve "tablo eski olabilir"', () => {
 })
 
 describe('koruma: ek sütunlar ve yeni CSV alanları analize, prompt\'a ve üye paketine girmez', () => {
-  it('üye paketi tablo ek sütunlarıyla ve onlarsız birebir aynıdır', () => {
+  it('üye paketine tablodan yalnızca form, gol ve gol yemediği maç gider; kalan sütunlar gitmez', () => {
     const input = memberInput()
-    expect(input.leagueTables.length).toBeGreaterThan(0)
-    const extras = { won: 3, drawn: 1, lost: 1, goalsFor: 9, goalsAgainst: 7, goalDiff: 2, last5: 'WWDLW', cs: 40, btts: 60, xgf: 1.5, cards: 4, corners: 9, over15: 80, over25: 60, avgGoals: 3.2 }
-    const enriched = input.leagueTables.map((t) => ({ ...t, rows: t.rows.map((r) => ({ ...r, ...extras })) }))
-    const plain = JSON.stringify(buildMemberPayload(input))
-    expect(JSON.stringify(buildMemberPayload({ ...input, leagueTables: enriched }))).toBe(plain)
-    expect(plain).toMatch(/"homeStanding":\{/)
-    expect(plain).not.toMatch(/last5|maybeOld|goalsFor|avgGoals|gameWeek|OverallPpg/)
+    const text = JSON.stringify(buildMemberPayload(input))
+    expect(text).toContain('"homeForm":{"last":"WWDWW","gf":18,"ga":6,"cs":50}')
+    // Fikstürdeki ayırt edici değerler: BTTS, xGF, kart, korner, 1.5+, 2.5+, AVG ve PPG
+    for (const value of ['1.847', '4.617', '9.283', '1.393', '5.143', '8.857', '2.71', '1.57']) expect(text, value).not.toContain(value)
+    expect(text).not.toMatch(/last5|goalsFor|goalsAgainst|goalDiff|xgf|avgGoals|ppg|blocked|maybeOld|gameWeek/i)
+    // Güncel tablonun ek sütunları form satırının kaynağı değildir: geçmiş yoksa form da yoktur.
+    const withoutHistory = JSON.stringify(buildMemberPayload({ ...input, leagueTableSnapshots: [] }))
+    expect(withoutHistory).not.toMatch(/"(home|away)Form":\{/)
+    expect(withoutHistory).toContain('"homeStanding":{"rank":1,"played":8,"stale":false}')
   })
 
   it('analiz ve prompt, genel PPG ve lig turu alanlarıyla ve onlarsız aynıdır', () => {
@@ -491,5 +481,77 @@ describe('koruma: ek sütunlar ve yeni CSV alanları analize, prompt\'a ve üye 
       return { lists: JSON.stringify(lists), prompt: buildPrompts(collectAiMatches(analysis), 'chatgpt', '6 Ekim 2026 Salı').map((c) => c.text) }
     }
     expect(outcome({ ...base, homeOverallPpg: 0.4, awayOverallPpg: 2.9, gameWeek: 8 })).toEqual(outcome(base))
+  })
+})
+
+describe('form satırı: maçtan önceki son görüntü ve üyeye gitme kuralı', () => {
+  // Maç 7 Ekim 20:00 (TSİ) = 17:00 UTC. Tabloda ev 3.00, deplasman 2.00.
+  const snap = (pastedAt: string, tableRows: LeagueTableRow[] = FULL_ROWS, lastSeenAt?: string): LeagueTableSnapshot => ({ id: snapshotId(LEAGUE, pastedAt), league: LEAGUE, pastedAt, ...(lastSeenAt && { lastSeenAt }), rows: tableRows })
+  const game = (stats: Record<string, number>, overrides: Partial<Match> = {}): Match =>
+    makeMatch({ over25Pct: 90, ...stats }, { home: 'Kuzey Yıldızı', away: 'Güney Spor', league: LEAGUE, date: '2026-10-07', time: '20:00', ...overrides })
+  const OK = { homeOverallPpg: 3, awayOverallPpg: 2 }
+  const forms = (match: Match, snapshots: LeagueTableSnapshot[], aliases: TeamAlias[] = []) => matchForms(match, [match], snapshots, aliases)
+  const history = [snap('2026-10-05T09:00:00.000Z')]
+
+  it('doğrulanan satır: form (ham), attığı ve yediği gol, gol yememe yüzdesi', () => {
+    expect(forms(game(OK), history)).toEqual({
+      home: { last5: 'WWWWW', goalsFor: 13, goalsAgainst: 5, cs: 40, blocked: null },
+      away: { last5: 'WLDWW', goalsFor: 9, goalsAgainst: 9, cs: 60, blocked: null },
+    })
+  })
+
+  it('tablo PPG ile CSV genel PPG farklıysa satır üyeye gitmez (tablo eski olabilir)', () => {
+    const result = forms(game({ homeOverallPpg: 2.5, awayOverallPpg: 2 }), history)
+    expect(result.home).toMatchObject({ last5: 'WWWWW', blocked: 'ppg-differs' })
+    expect(result.away?.blocked).toBeNull()
+    expect(FORM_BLOCK_TEXT['ppg-differs']).toBe('⚠ tablo eski olabilir · üyeye gitmez')
+  })
+
+  it('CSV\'de ya da tabloda PPG yoksa doğrulanamaz: üyeye gitmez', () => {
+    expect(forms(game({ awayOverallPpg: 2 }), history).home?.blocked).toBe('unverifiable')
+    const noPpg = FULL_ROWS.map((r) => ({ ...r, ppg: null }))
+    expect(forms(game(OK), [snap('2026-10-05T09:00:00.000Z', noPpg)]).home?.blocked).toBe('unverifiable')
+    expect(FORM_BLOCK_TEXT.unverifiable).toBe('doğrulanamadı · üyeye gitmez')
+  })
+
+  it('görüntü maç saatinden 7 günden eskiyse üyeye gitmez; tam 7 gün gider; aynı içerik sonradan yeniden yapıştırıldıysa gider', () => {
+    expect(forms(game(OK), [snap('2026-09-30T09:00:00.000Z')]).home?.blocked).toBeNull()
+    expect(forms(game(OK), [snap('2026-09-29T09:00:00.000Z')]).home?.blocked).toBe('old-snapshot')
+    expect(forms(game(OK), [snap('2026-09-29T09:00:00.000Z', FULL_ROWS, '2026-10-06T09:00:00.000Z')]).home?.blocked).toBeNull()
+    // Son görülme maçtan sonraysa sayılmaz.
+    expect(forms(game(OK), [snap('2026-09-29T09:00:00.000Z', FULL_ROWS, '2026-10-08T09:00:00.000Z')]).home?.blocked).toBe('old-snapshot')
+    // PPG farkı daha önemli nedendir.
+    expect(forms(game({ homeOverallPpg: 1, awayOverallPpg: 2 }), [snap('2026-09-29T09:00:00.000Z')]).home?.blocked).toBe('ppg-differs')
+    expect(FORM_BLOCK_TEXT['old-snapshot']).toBe('tablo maçtan 7 günden eski · üyeye gitmez')
+  })
+
+  it('maçtan sonra tablo yenilense de kaynak maçtan ÖNCEKİ görüntüdür', () => {
+    const afterMatch = FULL_ROWS.map((r, i) => (i === 0 ? { ...r, played: 6, won: 6, points: 18, goalsFor: 16, last5: 'WWWWW' as const, cs: 50 } : r))
+    const both = [snap('2026-10-08T09:00:00.000Z', afterMatch), ...history]
+    expect(forms(game(OK), both).home).toMatchObject({ goalsFor: 13, cs: 40, blocked: null })
+    // Yalnızca maçtan sonra yapıştırılmış görüntü varsa satır hiç yoktur.
+    expect(forms(game(OK), [snap('2026-10-08T09:00:00.000Z', afterMatch)])).toEqual({ home: null, away: null })
+    expect(forms(game(OK), [snap('2026-10-07T17:00:00.000Z')])).toEqual({ home: null, away: null })
+  })
+
+  it('satır yok: saat bilinmiyor, lig yok, geçmiş yok, takım eşleşmiyor, görüntüde gol sütunları yok', () => {
+    const none = { home: null, away: null }
+    expect(forms(game(OK, { time: undefined }), history)).toEqual(none)
+    expect(forms(game(OK, { league: undefined }), history)).toEqual(none)
+    expect(forms(game(OK), [])).toEqual(none)
+    expect(forms(game(OK, { league: 'Başka Lig' }), history)).toEqual(none)
+    expect(forms(game(OK), [snap('2026-10-05T09:00:00.000Z', rows)])).toEqual(none)
+    // Bir taraf eşleşmiyorsa yalnızca o taraf boş kalır; yaş grubu farklıysa kendiliğinden eşleşmez.
+    const partial = forms(game(OK, { away: 'Bilinmeyen FK' }), history)
+    expect(partial.home?.blocked).toBeNull()
+    expect(partial.away).toBeNull()
+    expect(forms(game(OK, { home: 'Kuzey Yıldızı U21' }), history).home).toBeNull()
+    expect(forms(game(OK, { home: 'Kuzey Yıldızı U21' }), history, [alias('Kuzey Yıldızı U21', 'Kuzey Yıldızı FC')]).home?.last5).toBe('WWWWW')
+    expect(forms(game(OK, { home: 'Kuzey Yıldızı' }), history, [alias('Kuzey Yıldızı', NOT_IN_TABLE)]).home).toBeNull()
+  })
+
+  it('eksik alanlar: form ya da CS yoksa o alan null; satır yine vardır', () => {
+    const bare = FULL_ROWS.map(({ last5: _last5, cs: _cs, ...r }) => r)
+    expect(forms(game(OK), [snap('2026-10-05T09:00:00.000Z', bare)]).home).toEqual({ last5: null, goalsFor: 13, goalsAgainst: 5, cs: null, blocked: null })
   })
 })

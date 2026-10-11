@@ -1,6 +1,6 @@
 import { COLUMN_ALIASES, TEXT_FIELDS, type FieldKey } from '../../../config/columnAliases'
 import { defaultThresholds } from '../../../config/categories'
-import type { AiVerdict, Highlight, LeagueTable, Match, MatchResult, Pick, SharedPick, StreakStep, TeamAlias } from '../../../types'
+import type { AiVerdict, Highlight, LeagueTable, LeagueTableSnapshot, Match, MatchResult, Pick, SharedPick, StreakStep, TeamAlias } from '../../../types'
 import { importCsv } from '../../csv/importer'
 import { addHighlight } from '../../highlights/highlights'
 import { aiInputsOf, highlightInputOf, streakInputOf } from '../../memberAdmin/publish'
@@ -197,13 +197,15 @@ const BASE: Partial<Record<Header, string>> = {
 }
 
 const ROWS: RowSpec[] = [
-  { home: 'Kuzey Yıldızı', away: 'Güney Spor', hourOffset: 0 },
+  // Genel PPG lig tablosundakiyle aynı (2.5 / 1.57): form satırları doğrulanır ve pakete girer
+  { home: 'Kuzey Yıldızı', away: 'Güney Spor', hourOffset: 0, values: { 'Home Team Overall Points Per Game (Pre-Match)': '2.5', 'Away Team Overall Points Per Game (Pre-Match)': '1.57', 'Game Week': '9' } },
   // Ev sahibi net favori ve xG yüksek: Ev kazanır listeleri ve 2.5 Üst & KG Var
   {
     home: 'Doğu Gençlik',
     away: 'Batı Akademi',
     hourOffset: 2,
-    values: { Odds_Home_Win: '1.213', Odds_Draw: '6.513', Odds_Away_Win: '11.317', Odds_Over25: '1.313', Odds_Under25: '3.417', 'Home Team Pre-Match xG': '2.713', 'Away Team Pre-Match xG': '2.413' },
+    // Genel PPG tablodakinden (0.75) farklı: tablo eski olabilir, form satırı pakete GİRMEZ
+    values: { 'Home Team Overall Points Per Game (Pre-Match)': '1.25', Odds_Home_Win: '1.213', Odds_Draw: '6.513', Odds_Away_Win: '11.317', Odds_Over25: '1.313', Odds_Under25: '3.417', 'Home Team Pre-Match xG': '2.713', 'Away Team Pre-Match xG': '2.413' },
   },
   // Hazır yüzde çok yüksek, xG çok düşük: model çelişkisi
   { home: 'İç Anadolu FK', away: 'Çağlayan Gücü', hourOffset: 3, values: { 'Over25 Average': '100', 'Home Team Pre-Match xG': '0.413', 'Away Team Pre-Match xG': '0.317' } },
@@ -355,12 +357,15 @@ export const LEAGUE_TABLES: LeagueTable[] = [
     league: LEAGUE,
     pastedAt: '2026-10-04T08:00:00.000Z',
     rows: [
-      { team: 'Kuzey Yıldızı', rank: 1, played: 8, points: 20, ppg: 2.5 },
-      { team: 'Güney Spor', rank: 4, played: 7, points: 11, ppg: 1.57 },
-      { team: 'Doğu Gençlik', rank: 9, played: 8, points: 6, ppg: 0.75 },
+      // Form, gol ve gol yemediği maç dışındaki sütunlar ayırt edici değerlerdir: pakette aranır ve bulunmamalıdır.
+      { team: 'Kuzey Yıldızı', rank: 1, played: 8, points: 20, ppg: 2.5, won: 6, drawn: 2, lost: 0, goalsFor: 18, goalsAgainst: 6, goalDiff: 12, last5: 'WWDWW', cs: 50, btts: 63, xgf: 1.847, cards: 4.617, corners: 9.283, over15: 87, over25: 71, avgGoals: 3 },
+      { team: 'Güney Spor', rank: 4, played: 7, points: 11, ppg: 1.57, won: 3, drawn: 2, lost: 2, goalsFor: 10, goalsAgainst: 9, goalDiff: 1, last5: 'LWDWL', cs: 29, btts: 57, xgf: 1.393, cards: 5.143, corners: 8.857, over15: 86, over25: 43, avgGoals: 2.71 },
+      { team: 'Doğu Gençlik', rank: 9, played: 8, points: 6, ppg: 0.75, won: 1, drawn: 3, lost: 4, goalsFor: 5, goalsAgainst: 12, goalDiff: -7, last5: 'LLDDL', cs: 13, btts: 38, xgf: 0.917, cards: 6.125, corners: 7.375, over15: 62, over25: 37, avgGoals: 2.13 },
     ],
   },
 ]
+/** Yapıştırma geçmişi: tablo maçlardan önce (4 Ekim 08:00 UTC) yapıştırılmıştır */
+export const LEAGUE_SNAPSHOTS: LeagueTableSnapshot[] = LEAGUE_TABLES.map((t) => ({ id: `${t.league}|${t.pastedAt}`, league: t.league, pastedAt: t.pastedAt, rows: t.rows }))
 export const TEAM_ALIASES: TeamAlias[] = []
 
 /**
@@ -390,6 +395,7 @@ export const memberInput = (overrides: Partial<MemberPayloadInput> = {}): Member
   marketConflictLimit: MARKET_LIMIT,
   days: [DAY, PREVIOUS_DAY].map((date) => ({ date, matches: dayMatches(date), results: RESULTS.filter((r) => dayMatches(date).some((m) => m.id === r.matchId)), highlights: dayHighlights(date).map(highlightInputOf), ai: aiInputsOf(dayMatches(date), dayVerdicts(date)).inputs })),
   leagueTables: LEAGUE_TABLES,
+  leagueTableSnapshots: LEAGUE_SNAPSHOTS,
   teamAliases: TEAM_ALIASES,
   picks: PICKS,
   shared: SHARED,
