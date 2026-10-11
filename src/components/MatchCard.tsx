@@ -1,7 +1,7 @@
 import { getCategory, supportsCautious } from '../config/categories'
 import { marketNotes } from '../services/analysis/market'
 import { statSummary } from '../services/analysis/summary'
-import { matchStandings, playedHint } from '../services/league/standing'
+import { DETAIL_HINT, matchStandings, playedHint } from '../services/league/standing'
 import type { Prediction, SortMode } from '../services/analysis/types'
 import { useApp } from '../state/AppContext'
 import type { SharedPick } from '../types'
@@ -111,13 +111,13 @@ export default function MatchCard({ prediction, rank, sortMode, storySelection, 
               ),
           )}
           {(standings.home?.detail?.text || standings.away?.detail?.text) && (
-            // Yalnızca gösterim: Last 5 (ham), attığı–yediği gol ve gol yememe yüzdesi. Kapalı gelir.
+            // Yalnızca gösterim: form (eski → yeni), attığı–yediği gol ve gol yememe yüzdesi. Kapalı gelir.
             <details className="mt-1" data-testid="league-detail">
               <summary className="cursor-pointer font-semibold">Tablo ayrıntısı</summary>
               {([['Ev', standings.home], ['Dep', standings.away]] as const).map(
                 ([side, info]) =>
                   info?.detail?.text && (
-                    <p key={side} className="break-words">
+                    <p key={side} className="break-words" title={DETAIL_HINT}>
                       <span className="font-semibold text-white">{side}:</span> {info.detail.text}
                     </p>
                   ),

@@ -295,7 +295,7 @@ export interface LeagueTableRow {
   goalsFor?: number
   goalsAgainst?: number
   goalDiff?: number
-  /** "Last 5" sütunu, yapıştırıldığı gibi ("WWDDL"); yönü belirtilmez */
+  /** "Last 5" sütunu, yapıştırıldığı gibi ("WWDDL"): soldan sağa eskiden yeniye, en sağdaki en son maç */
   last5?: string
   /** Gol yememe yüzdesi (0-100) */
   cs?: number

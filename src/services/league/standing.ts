@@ -25,7 +25,7 @@ export interface StandingInfo {
 export const PPG_TOLERANCE = 0.01
 
 export interface StandingDetail {
-  /** "WWDDL · 6–4 · CS %60"; tabloda bu sütunlar yoksa null */
+  /** "Form (eski → yeni): WWDDL · 6–4 · CS %60"; tabloda bu sütunlar yoksa null */
   text: string | null
   /** Tablodaki PPG, CSV'deki maç öncesi genel PPG'den farklı (yalnızca başlamamış maçlarda) */
   maybeOld: boolean
@@ -33,10 +33,13 @@ export interface StandingDetail {
   gameWeek: number | null
 }
 
-/** Açılır satırın metni: Last 5 (ham, yön belirtilmez), attığı–yediği gol, gol yememe yüzdesi */
+/** Açılır satırın ipucu (title) */
+export const DETAIL_HINT = 'Form: son maçlar, soldan sağa eskiden yeniye (en sağdaki en son oynanan maç). Ardından attığı–yediği gol ve gol yememe yüzdesi (CS).'
+
+/** Açılır satırın metni: Last 5 (soldan sağa eskiden yeniye), attığı–yediği gol, gol yememe yüzdesi */
 export function detailText(row: LeagueTableRow): string | null {
   const parts = [
-    row.last5,
+    row.last5 !== undefined ? `Form (eski → yeni): ${row.last5}` : undefined,
     row.goalsFor !== undefined && row.goalsAgainst !== undefined ? `${row.goalsFor}–${row.goalsAgainst}` : undefined,
     row.cs !== undefined ? `CS %${row.cs}` : undefined,
   ].filter((p) => p !== undefined)

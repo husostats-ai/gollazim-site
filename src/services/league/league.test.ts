@@ -8,7 +8,7 @@ import { makeMatch } from '../analysis/testUtils'
 import { assembleBackup, isBackupFile } from '../data/backupFormat'
 import { ageGroup, aliasId, findStanding, matchTeams, normalizeAliases, normalizeLeagueTables, normalizeTeam, NOT_IN_TABLE } from './matching'
 import { fitsAverage, checkRow, parseLeagueTable } from './parser'
-import { detailText, matchStandings, playedHint, ppgDiffers, standingInfo, tableAgeText } from './standing'
+import { DETAIL_HINT, detailText, matchStandings, playedHint, ppgDiffers, standingInfo, tableAgeText } from './standing'
 import { nextSnapshot, normalizeSnapshots, sameRows, seedSnapshots, snapshotAt, snapshotId } from './history'
 import { buildMemberPayload } from '../member/payload'
 import { memberInput } from '../member/__fixtures__/rawData'
@@ -420,12 +420,15 @@ describe('admin kartı: açılır satır ve "tablo eski olabilir"', () => {
     return [s.home?.detail?.maybeOld, s.away?.detail?.maybeOld]
   }
 
-  it('açılır satır: Last 5 (ham), attığı–yediği gol, CS; sütunlar yoksa satır yok', () => {
-    expect(detailText(FULL_ROWS[0])).toBe('WWWWW · 13–5 · CS %40')
-    expect(detailText({ ...rows[0], last5: 'WD' })).toBe('WD')
+  it('açılır satır: form (eski → yeni), attığı–yediği gol, CS; sütunlar yoksa satır yok', () => {
+    expect(detailText(FULL_ROWS[0])).toBe('Form (eski → yeni): WWWWW · 13–5 · CS %40')
+    // Form yoksa etiket de yazılmaz.
+    expect(detailText({ ...FULL_ROWS[0], last5: undefined })).toBe('13–5 · CS %40')
+    expect(DETAIL_HINT).toContain('soldan sağa eskiden yeniye')
+    expect(detailText({ ...rows[0], last5: 'WD' })).toBe('Form (eski → yeni): WD')
     expect(detailText(rows[0])).toBeNull()
     const match = game({})
-    expect(matchStandings(match, [match], [fullTable], [], before).away?.detail).toEqual({ text: 'WLDWW · 9–9 · CS %60', maybeOld: false, gameWeek: null })
+    expect(matchStandings(match, [match], [fullTable], [], before).away?.detail).toEqual({ text: 'Form (eski → yeni): WLDWW · 9–9 · CS %60', maybeOld: false, gameWeek: null })
     expect(matchStandings(match, [match], [table()], [], before).home?.detail?.text).toBeNull()
   })
 
