@@ -74,6 +74,11 @@ export default function StatsPage() {
   const [verdicts, setVerdicts] = useState<AiVerdict[]>([])
   /** Önerilerin maç kayıtları: geriye dönük piyasa yüzdesi ve özet / CSV için */
   const [legacyMatches, setLegacyMatches] = useState<Match[]>([])
+  /**
+   * Önerisi olan günlerin tüm maç kayıtları: özetteki "sıraya göre başarı" tablosu sırayı bunlardan
+   * yeniden hesaplar. Sayfa bunu beklemeden açılır; okunana dek null.
+   */
+  const [dayMatches, setDayMatches] = useState<Match[] | null>(null)
   const [results, setResults] = useState<MatchResult[]>([])
   const [period, setPeriod] = useState<Period>('daily')
   const [shared, setShared] = useState<SharedPick[]>([])
@@ -81,14 +86,23 @@ export default function StatsPage() {
   const [scope, setScope] = useState<StatsScope>('all')
 
   useEffect(() => {
+    let stale = false
     void Promise.all([picksRepo.listAll(), resultsRepo.listAll(), aiRepo.listVerdicts()]).then(async ([all, allResults, allVerdicts]) => {
       // Önerisi, girilmiş skoru ya da yapay zekâ kararı olan maçların kayıtları
       setLegacyMatches(await matchesRepo.getMany(statsMatchIds(all, allResults, allVerdicts)))
       setResults(allResults)
       setVerdicts(allVerdicts)
       setPicks(all)
+      // Sayfa çizildikten sonra okunur; eski veriyle hesap yapılmasın diye önce boşaltılır.
+      setDayMatches(null)
+      const days = (await Promise.all([...new Set(all.map((p) => p.date))].map((date) => matchesRepo.listByDate(date)))).flat()
+      // Veri bu arada yeniden değiştiyse eski okuma yenisinin üstüne yazılmaz.
+      if (!stale) setDayMatches(days)
     })
     void sharedRepo.listAll().then(setShared)
+    return () => {
+      stale = true
+    }
   }, [dataVersion])
 
   // Kalibrasyon ve model/piyasa kartları her zaman tüm dondurulmuş önerileri kullanır.
@@ -139,7 +153,7 @@ export default function StatsPage() {
           title="ANALİZ İÇİN ÖZET"
           note="İstatistiklerin düz metin özeti; bir yapay zekâ sohbetine yapıştırıp yorumlatmak için. Sayılar aşağıdaki tablolarla aynıdır ve Tümü / Paylaşılan geçişinden etkilenmez."
         >
-          <StatsSummaryPanel picks={picks} matches={legacyMatches} results={results} verdicts={verdicts} shared={shared} />
+          <StatsSummaryPanel picks={picks} matches={legacyMatches} dayMatches={dayMatches} results={results} verdicts={verdicts} shared={shared} />
         </Card>
       </div>
       {allStats.overall.total === 0 ? (

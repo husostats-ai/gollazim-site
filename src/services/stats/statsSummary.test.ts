@@ -543,3 +543,114 @@ describe('yıldız istatistiği: kayıtlı değer ve eski kayıt', () => {
     expect(buildStarStats(old.picks as Pick[])).toMatchObject({ recomputed: 1, missing: 1 })
   })
 })
+
+describe('özet: sıraya ve eşik üstü puana göre başarı', () => {
+  const RANK = 'Sıraya göre başarı (yeniden hesaplanmış ve doğrulanmış sıra)'
+  const MARGIN = 'Eşik üstü puana göre başarı'
+  // Bir günde 12 maç: İY 0.5 Üst yüzdeleri 99…88, eşik 80. İlk 11'i dondurulmuş; 12.'nin skoru girilmemiş.
+  const dayMatches = Array.from({ length: 12 }, (_, i) => makeMatch({ ht05Pct: 99 - i }, { id: `sira${i}`, date: '2026-10-09', time: `1${i % 10}:0${i % 6}` }))
+  const frozen: Pick[] = dayMatches.slice(0, 11).map((m, i) => ({
+    id: `${m.id}|ht05`,
+    matchId: m.id,
+    categoryId: 'ht05',
+    date: m.date,
+    percent: 99 - i,
+    threshold: 80,
+    outcome: i === 3 ? 'void' : i % 4 === 0 ? 'lost' : 'won',
+    frozenAt: '',
+    reliability: 'low',
+  }))
+  const text = (extra: Partial<SummaryInput> = {}, scope: SummaryScope = { kind: 'all' }) => buildStatsSummary(input(scope, { picks: frozen, matches: dayMatches.slice(0, 11), dayMatches, verdicts: [], shared: [], ...extra }))
+
+  it('iki bölüm "Yıldız sayısına göre başarı"dan sonra, "Günlük sonuçlar"dan önce gelir', () => {
+    const summary = text()
+    const at = (title: string) => summary.indexOf(`## ${title}`)
+    expect(at('Yıldız sayısına göre başarı')).toBeGreaterThan(0)
+    expect(at(RANK)).toBeGreaterThan(at('Yıldız sayısına göre başarı'))
+    expect(at(MARGIN)).toBeGreaterThan(at(RANK))
+    expect(at('Günlük sonuçlar')).toBeGreaterThan(at(MARGIN))
+  })
+
+  it('sıra tablosu: bant sütunları, "başarı · n" hücreleri, az veride *', () => {
+    const part = section(text(), RANK)
+    expect(part).toContain('| Kategori | 1–5 | 6–10 | 11–15 |')
+    // 1–5: sıra 1 ve 5 tutmadı, 4 değerlendirilemedi → 2/4. 6–10: sıra 9 tutmadı → 4/5. 11–15: sıra 11 tuttu.
+    expect(row(part, 'İLK YARI 0.5 ÜST')).toEqual(['İLK YARI 0.5 ÜST', '%50 · n=4*', '%80 · n=5*', '%100 · n=1*'])
+    expect(row(part, 'Tüm kategoriler')).toEqual(['Tüm kategoriler', '%50 · n=4*', '%80 · n=5*', '%100 · n=1*'])
+    expect(part).toContain('* az veri: n < 20.')
+    expect(part).toContain('doğrulandı (11 / 11 öneri)')
+    expect(part).toContain('Sırası doğrulanamayan: 0')
+    expect(part).toContain('"Tüm kategoriler" satırı: 10 sonuçlanmış öneri, 10 benzersiz maç; aynı maçın önerileri bağımsız değildir ve kategoriler farklı taban başarıya sahiptir.')
+    expect(part).toContain('sıra birkaç basamak kaymış olabilir')
+    expect(part).toContain('16 ve sonrası ölçülemez')
+    expect(part).not.toContain('16+')
+  })
+
+  it('sırası doğrulanamayan öneriler banda girmez, tablo altında sayılır', () => {
+    // Günün maç kayıtlarından ilk ikisi silinmiş: o iki önerinin sırası yok, kalanlar bir üst sıraya kaymış.
+    const part = section(text({ dayMatches: dayMatches.slice(2) }), RANK)
+    expect(part).toContain('doğrulandı (9 / 11 öneri)')
+    expect(part).toContain('Sırası doğrulanamayan: 2 (')
+    expect(row(part, 'Tüm kategoriler')).toEqual(['Tüm kategoriler', '%75 · n=4*', '%75 · n=4*', '—'])
+  })
+
+  it('günün maç kayıtları verilmezse önerilerin maç kayıtları kullanılır; hiçbiri doğrulanmazsa tablo yerine sayı yazılır', () => {
+    // Skoru girilmemiş 12. maç yokken de ilk 11'in sırası aynıdır.
+    expect(row(section(text({ dayMatches: undefined }), RANK), 'Tüm kategoriler')).toEqual(['Tüm kategoriler', '%50 · n=4*', '%80 · n=5*', '%100 · n=1*'])
+    const none = section(text({ dayMatches: [], matches: [] }), RANK)
+    expect(none).toContain('Sırası doğrulanabilen öneri yok (sırası doğrulanamayan: 11).')
+    expect(none).not.toContain('| Kategori |')
+  })
+
+  it('eşik üstü tablo: kayıtlı eşik sütunu, beş bant, "eşik +5 / +10 olsaydı" satırı ve notu', () => {
+    const part = section(text(), MARGIN)
+    expect(part).toContain('| Kategori | Eşik | +0–5 | +5–10 | +10–15 | +15–25 | +25 ve üstü |')
+    // Yüzde 99…89, eşik 80: fark 19…9. +5–10: 89 (tuttu). +10–15: 94…90 (91 tutmadı). +15–25: 99…95 (99 ve 95 tutmadı, 96 değerlendirilemedi).
+    expect(row(part, 'İLK YARI 0.5 ÜST')).toEqual(['İLK YARI 0.5 ÜST', '%80', '—', '%100 · n=1*', '%80 · n=5*', '%50 · n=4*', '—'])
+    expect(row(part, 'Tüm kategoriler')).toEqual(['Tüm kategoriler', '—', '—', '%100 · n=1*', '%80 · n=5*', '%50 · n=4*', '—'])
+    expect(part).toContain('Eşik +5 / +10 olsaydı (tüm kategoriler): +5: %70 · n=10*; +10: %66,7 · n=9*')
+    expect(part).toContain('"Eşik +N olsaydı" satırı eşik değişikliği önerisi değildir, yalnızca kalan önerilerin başarısıdır; eşiği düşürmek simüle edilemez çünkü eşik altı maçlar dondurulmuyor.')
+    expect(part).toContain('* az veri: n < 20.')
+    expect(part).toContain('"Tüm kategoriler" satırı: 10 sonuçlanmış öneri, 10 benzersiz maç; aynı maçın önerileri bağımsız değildir')
+    expect(part).toContain('Eşik üstü puan = dondurma anındaki hazır yüzde − dondurma anındaki eşik')
+  })
+
+  it('güncel eşik değişse de bantlar değişmez: öneri kendi kayıtlı eşiğiyle ölçülür', () => {
+    const raised = text({ thresholds: { ...defaultThresholds(), ht05: 95 } })
+    expect(section(raised, MARGIN)).toBe(section(text(), MARGIN))
+    expect(section(raised, RANK)).toBe(section(text(), RANK))
+    expect(row(section(raised, 'Güncel eşikler'), 'İLK YARI 0.5 ÜST')).toEqual(['İLK YARI 0.5 ÜST', '%95'])
+  })
+
+  it('bir kategoride iki kayıtlı eşik varsa ikisi de yazılır', () => {
+    const mixed = frozen.map((p, i) => (i < 2 ? { ...p, threshold: 90 } : p))
+    expect(row(section(text({ picks: mixed }), MARGIN), 'İLK YARI 0.5 ÜST')[1]).toBe('%80, %90')
+  })
+
+  it('20 sonuçlanmış öneride * yoktur', () => {
+    const big = many(20, 'won', 'over25', '2026-10-09', { percent: 77 })
+    const part = section(buildStatsSummary(input({ kind: 'all' }, { picks: big, matches: [], verdicts: [], shared: [] })), MARGIN)
+    expect(row(part, '2.5 ÜST')).toEqual(['2.5 ÜST', '%75', '%100 · n=20', '—', '—', '—', '—'])
+    expect(part).toContain('+5: —; +10: —')
+  })
+
+  it('kapsam yeni tablolara da uygulanır', () => {
+    const old = frozen.map((p) => ({ ...p, id: `eski-${p.id}`, date: '2026-09-01' }))
+    const both = text({ picks: [...frozen, ...old] }, { kind: 'last7' })
+    expect(section(both, MARGIN)).toBe(section(text(), MARGIN))
+    expect(section(both, RANK)).toBe(section(text(), RANK))
+    expect(row(section(text({ picks: [...frozen, ...old] }), MARGIN), 'Tüm kategoriler')[4]).toBe('%80 · n=10*')
+  })
+
+  it('sonuçlanmış öneri yokken özet eskisi gibi kısa kalır; yeni bölümler yazılmaz', () => {
+    const empty = text({ picks: frozen.map((p) => ({ ...p, outcome: 'pending' as const })) })
+    expect(empty).toContain(NO_DATA_TEXT)
+    expect(empty).not.toContain(RANK)
+    expect(empty).not.toContain(MARGIN)
+  })
+
+  it('yeni bölümler üye paketine ya da ayara ait alan içermez: yalnızca kategori adı, yüzde ve sayı', () => {
+    const parts = section(text(), RANK) + section(text(), MARGIN)
+    expect(parts).not.toMatch(/sira\d|Ev \d|Dep \d|kek|idKey/)
+  })
+})

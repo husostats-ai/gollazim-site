@@ -9,7 +9,9 @@ import { MODEL_CONFLICT_LIMIT } from '../analysis/goalModel'
 import { RELIABILITY_LABELS, SAMPLE_HINT } from '../analysis/reliability'
 import { stat } from '../analysis/stat'
 import { findActiveShared, sharedPicksOnly } from '../story/shared'
+import { buildMarginStats, MARGIN_BANDS } from './marginStats'
 import { backfillMarket, buildMarketStats } from './marketStats'
+import { pickRanks, RANK_BANDS, rankStatsOf } from './rankStats'
 import { actualScore, buildScoreStats } from './scoreStats'
 import { buildStarStats, frozenStars, recomputedNote, STAR_LEVELS } from './starStats'
 import { buildStats, LOW_SAMPLE_LIMIT, tally, type Tally } from './statsEngine'
@@ -34,6 +36,8 @@ export const AI_GUIDE =
   'Aşağıda futbol istatistik tarama sitemin ölçülmüş sonuçları var. Görevin: sayıları yorumla; (1) hangi kategoriler yeterli örnekle güvenilir sonuç veriyor, (2) hangi farklar gerçek, hangileri küçük örneklem gürültüsü olabilir, (3) hazır yüzde, model ve piyasa karşılaştırmalarından ne çıkıyor, (4) hangi eşik/ayar değişikliklerini denemeye değer buluyorsun ve bunun için kaç sonuç daha gerekir. Kurallar: sayı uydurma, n<20 olan satırlardan kesin sonuç çıkarma, bahis tavsiyesi verme, belirsizliği açıkça söyle, kısa ve maddeli yaz.'
 
 export const NO_DATA_TEXT = 'Henüz sonuçlanmış öneri yok'
+/** Sıra tablosu hazır olana dek bölümünde yazan metin */
+export const RANK_PENDING_TEXT = 'Sıra tablosu hesaplanıyor…'
 
 /** Kapsamın tarih sınırları (dahil); "Tümü"nde sınır yoktur */
 export function scopeBounds(scope: SummaryScope, today: string): { from: string | null; to: string | null } {
@@ -57,6 +61,16 @@ export interface SummaryInput {
   picks: Pick[]
   /** Önerilerin maç kayıtları (silinmiş olanlar eksik olabilir) */
   matches: Match[]
+  /**
+   * Önerisi olan günlerin TÜM maç kayıtları (önerisi olmayanlar dahil): kategori içi sıra
+   * bunlardan yeniden hesaplanır. Verilmezse matches kullanılır (sıra çoğunlukla doğrulanamaz).
+   */
+  dayMatches?: Match[]
+  /**
+   * Önceden hesaplanmış sıralar (rankJob çıktısı, öneri kimliği → sıra). 'pending': hesap sürüyor,
+   * bölümde tablo yerine RANK_PENDING_TEXT yazılır. Verilmezse sıra burada, eşzamanlı hesaplanır.
+   */
+  ranks?: ReadonlyMap<string, number | null> | 'pending'
   /** Girilmiş skorlar (skor tahminleri bölümü ve CSV için); verilmezse o bölüm boş çıkar */
   results?: MatchResult[]
   verdicts: AiVerdict[]
@@ -73,6 +87,10 @@ const table = (header: string[], rows: (string | number)[][]): string =>
 /** Sayfadaki "%77,2 · 31 öneri" biçimi; n sonuçlanmış (tuttu + tutmadı) öneridir */
 export const rateCell = (t: Tally): string => `${formatRate(t.rate)} · n=${t.decided}`
 const lowMark = (t: Tally): string => (t.decided > 0 && t.lowSample ? 'az veri' : '')
+/** Kompakt hücre: "%66,7 · n=6*" (* az veri); sonuçlanmış öneri yoksa "—" */
+export const bandCell = (t: Tally): string => (t.decided === 0 ? '—' : `${rateCell(t)}${t.lowSample ? '*' : ''}`)
+const LOW_SAMPLE_LEGEND = `* az veri: n < ${LOW_SAMPLE_LIMIT}.`
+const ALL_CATEGORIES = 'Tüm kategoriler'
 const signed = (value: number | null): string => (value === null ? '—' : `${value > 0 ? '+' : ''}${formatNumber(value)} puan`)
 
 const unique = <T,>(values: T[]): T[] => [...new Set(values)]
@@ -89,6 +107,33 @@ export function scopeData(input: Pick_<SummaryInput, 'picks' | 'verdicts' | 'sha
 }
 
 type Pick_<T, K extends keyof T> = { [P in K]: T[P] }
+
+const RANK_SECTION_TITLE = 'Sıraya göre başarı (yeniden hesaplanmış ve doğrulanmış sıra)'
+
+/** "Sıraya göre başarı" bölümünün gövdesi (başlıksız satırlar); hesap sürüyorsa yer tutucu */
+function rankSectionBody(picks: Pick[], ranks: ReadonlyMap<string, number | null> | 'pending'): string[] {
+  if (ranks === 'pending') return [RANK_PENDING_TEXT]
+  const stats = rankStatsOf(picks, ranks)
+  const all = stats.rows.find((r) => r.key === 'all')
+  if (!all) return [`Sırası doğrulanabilen öneri yok (sırası doğrulanamayan: ${stats.unverified}).`]
+  return [
+    'Kategori içi sıra bandına göre (her hücre: başarı · n):',
+    '',
+    table(['Kategori', ...RANK_BANDS.map((b) => b.label)], stats.rows.map((r) => [r.key === 'all' ? ALL_CATEGORIES : getCategory(r.key).label, ...r.bands.map(bandCell)])),
+    '',
+    `${LOW_SAMPLE_LEGEND} Sıra öneri kaydında saklanmaz; o günün maç kayıtlarından, önerinin kayıtlı eşiğiyle yeniden hesaplandı ve kayıtlı yüzdeyle doğrulandı (${stats.verified} / ${picks.length} öneri). Sırası doğrulanamayan: ${stats.unverified} (maç kaydı silinmiş, yüzdesi değişmiş ya da yeniden hesapta listede çıkmayan); bunlar hiçbir banda girmez. O günün başka bir maçı dondurmadan sonra eklendiyse, silindiyse ya da düzenlendiyse sıra birkaç basamak kaymış olabilir. Yalnızca eşiği geçen ilk 15 dondurulduğu için 16 ve sonrası ölçülemez. "${ALL_CATEGORIES}" satırı: ${all.bands.reduce((sum, t) => sum + t.decided, 0)} sonuçlanmış öneri, ${stats.decidedMatches} benzersiz maç; aynı maçın önerileri bağımsız değildir ve kategoriler farklı taban başarıya sahiptir.`,
+  ]
+}
+
+/**
+ * Yer tutuculu özete (ranks: 'pending') hazır sıra tablosunu yerleştirir; sonuç, özetin sıralarla
+ * baştan üretilmiş hâliyle aynıdır. Özetin geri kalanı yeniden hesaplanmaz. picks: tüm öneriler
+ * (kapsam burada uygulanır, özetteki gibi).
+ */
+export function fillRankSection(pendingText: string, input: Pick_<SummaryInput, 'picks' | 'scope' | 'today'>, ranks: ReadonlyMap<string, number | null>): string {
+  const scoped = scopeData({ ...input, verdicts: [], shared: [] }).picks
+  return pendingText.replace(`## ${RANK_SECTION_TITLE}\n\n${RANK_PENDING_TEXT}\n`, () => `## ${RANK_SECTION_TITLE}\n\n${rankSectionBody(scoped, ranks).join('\n')}\n`)
+}
 
 /** Analiz için düz metin (markdown) özet. */
 export function buildStatsSummary(input: SummaryInput): string {
@@ -173,6 +218,28 @@ export function buildStatsSummary(input: SummaryInput): string {
       .join(' '),
     '',
   )
+
+  out.push(`## ${RANK_SECTION_TITLE}`, '', ...rankSectionBody(picks, input.ranks ?? pickRanks(picks, input.dayMatches ?? input.matches)), '')
+
+  const margins = buildMarginStats(picks)
+  const allMarginRow = margins.rows.find((r) => r.key === 'all')
+  out.push('## Eşik üstü puana göre başarı', '')
+  if (!allMarginRow) out.push('Eşiğiyle karşılaştırılabilen öneri yok.', '')
+  else {
+    out.push(
+      'Eşik üstü puan = dondurma anındaki hazır yüzde − dondurma anındaki eşik; bantlar alt sınırı içerir, üst sınırı içermez (her hücre: başarı · n):',
+      '',
+      table(
+        ['Kategori', 'Eşik', ...MARGIN_BANDS.map((b) => b.label)],
+        margins.rows.map((r) => [r.key === 'all' ? ALL_CATEGORIES : getCategory(r.key).label, r.key === 'all' ? '—' : r.thresholds.map((t) => `%${t}`).join(', '), ...r.bands.map(bandCell)]),
+      ),
+      '',
+      `Eşik ${margins.raised.map((r) => `+${r.step}`).join(' / ')} olsaydı (${ALL_CATEGORIES.toLocaleLowerCase('tr')}): ${margins.raised.map((r) => `+${r.step}: ${bandCell(r.tally)}`).join('; ')}`,
+      '',
+      `${LOW_SAMPLE_LEGEND} "Eşik" sütunu önerilerin dondurulduğu andaki eşiğidir.${margins.below > 0 ? ` ${margins.below} önerinin yüzdesi kayıtlı eşiğinin altında; tabloya girmez.` : ''} "${ALL_CATEGORIES}" satırı: ${allMarginRow.bands.reduce((sum, t) => sum + t.decided, 0)} sonuçlanmış öneri, ${margins.decidedMatches} benzersiz maç; aynı maçın önerileri bağımsız değildir ve kategoriler farklı taban başarıya sahiptir. "Eşik +N olsaydı" satırı eşik değişikliği önerisi değildir, yalnızca kalan önerilerin başarısıdır; eşiği düşürmek simüle edilemez çünkü eşik altı maçlar dondurulmuyor.`,
+      '',
+    )
+  }
 
   const daily = stats.daily.slice(-14)
   out.push(`## Günlük sonuçlar${stats.daily.length > daily.length ? ' (son 14 gün)' : ''}`, '')

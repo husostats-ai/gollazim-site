@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
-import { buildDetailCsv, buildStatsSummary, detailFileName, SCOPE_OPTIONS, summaryFileName, type SummaryScope } from '../../services/stats/statsSummary'
+import { useEffect, useMemo, useState } from 'react'
+import { startRankJob, type Ranks } from '../../services/stats/rankJob'
+import { buildDetailCsv, buildStatsSummary, detailFileName, fillRankSection, RANK_PENDING_TEXT, scopeData, SCOPE_OPTIONS, summaryFileName, type SummaryScope } from '../../services/stats/statsSummary'
 import { useApp } from '../../state/AppContext'
 import type { AiVerdict, Match, MatchResult, Pick, SharedPick } from '../../types'
 import { copyText } from '../../utils/clipboard'
@@ -8,6 +9,8 @@ import { shiftDate } from '../../utils/format'
 interface Props {
   picks: Pick[]
   matches: Match[]
+  /** Önerisi olan günlerin tüm maç kayıtları (özetteki sıra tablosu için); okunana dek null */
+  dayMatches: Match[] | null
   results: MatchResult[]
   verdicts: AiVerdict[]
   shared: SharedPick[]
@@ -25,8 +28,14 @@ function saveFile(name: string, text: string, type: string) {
   URL.revokeObjectURL(url)
 }
 
+/** Sıra hesabının isteği: kapsamdaki öneriler ve günlerin maç kayıtları. Sonuç yalnızca kendi isteğiyle gösterilir. */
+interface RankRequest {
+  picks: Pick[]
+  dayMatches: Match[] | null
+}
+
 /** İstatistiklerin analiz için düz metin özeti ve ayrıntılı CSV. Hiçbir kaydı değiştirmez. */
-export default function StatsSummaryPanel({ picks, matches, results, verdicts, shared }: Props) {
+export default function StatsSummaryPanel({ picks, matches, dayMatches, results, verdicts, shared }: Props) {
   const { today, thresholds, marketConflictLimit } = useApp()
   const [kind, setKind] = useState<SummaryScope['kind']>('all')
   const [from, setFrom] = useState(() => shiftDate(today, -6))
@@ -39,8 +48,26 @@ export default function StatsSummaryPanel({ picks, matches, results, verdicts, s
     () => ({ today, scope, picks, matches, results, verdicts, shared, marketConflictLimit }),
     [today, scope, picks, matches, results, verdicts, shared, marketConflictLimit],
   )
+
+  // Sıra tablosu sayfa çizildikten sonra, arka planda ve yalnızca kapsamdaki günler için hesaplanır.
+  // Kapsam ya da veri değişince süren hesap iptal edilir; iptal edilen hesabın sonucu hiç gelmez,
+  // gelen sonuç da yalnızca kendi isteği hâlâ geçerliyse gösterilir (eski sonuç yenisinin üstüne yazılmaz).
+  const request = useMemo<RankRequest>(() => ({ picks: scopeData({ picks, verdicts: [], shared: [], scope, today }).picks, dayMatches }), [picks, scope, today, dayMatches])
+  const [computed, setComputed] = useState<{ request: RankRequest; ranks: Ranks } | null>(null)
+  useEffect(() => {
+    if (!request.dayMatches) return
+    const job = startRankJob(request.picks, request.dayMatches)
+    void job.done.then((ranks) => ranks && setComputed({ request, ranks }))
+    return () => job.cancel()
+  }, [request])
+  const ranks = computed?.request === request ? computed.ranks : 'pending'
+  const ready = ranks !== 'pending'
+
   // Oluşturulma saati önizlemede sabit kalsın diye özet, girdiler değişince yeniden üretilir.
-  const text = useMemo(() => buildStatsSummary({ ...base, now: new Date(), includeGuide, thresholds }), [base, includeGuide, thresholds])
+  // Özet sıra tablosu olmadan (yer tutucuyla) üretilir; tablo hazır olunca yalnızca o bölüm
+  // yerine konur, özetin geri kalanı yeniden hesaplanmaz.
+  const pendingText = useMemo(() => buildStatsSummary({ ...base, now: new Date(), includeGuide, thresholds, ranks: 'pending' }), [base, includeGuide, thresholds])
+  const text = useMemo(() => (ranks === 'pending' ? pendingText : fillRankSection(pendingText, base, ranks)), [pendingText, base, ranks])
 
   return (
     <div className="min-w-0" data-testid="stats-summary">
@@ -88,12 +115,14 @@ export default function StatsSummaryPanel({ picks, matches, results, verdicts, s
       </label>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button type="button" onClick={async () => setCopied(await copyText(text))} data-testid="summary-copy" className={`${BUTTON} bg-brand text-navy-950 hover:bg-brand-dark`}>
+        {/* Sıra tablosu hazır olmadan özet eksiktir: kopyalama ve indirme o ana dek kapalıdır. */}
+        <button type="button" onClick={async () => setCopied(await copyText(text))} disabled={!ready} data-testid="summary-copy" className={`${BUTTON} bg-brand text-navy-950 hover:bg-brand-dark`}>
           Özeti kopyala
         </button>
         <button
           type="button"
           onClick={() => saveFile(summaryFileName(today), text, 'text/plain;charset=utf-8')}
+          disabled={!ready}
           data-testid="summary-download"
           className={`${BUTTON} border border-brand text-brand hover:bg-navy-600`}
         >
@@ -109,6 +138,11 @@ export default function StatsSummaryPanel({ picks, matches, results, verdicts, s
         >
           Ayrıntılı maç tablosu (CSV) indir
         </button>
+        {!ready && (
+          <span role="status" data-testid="summary-pending" className="text-sm font-semibold text-muted">
+            {RANK_PENDING_TEXT}
+          </span>
+        )}
         {copied !== null && (
           <span role="status" data-testid="summary-copied" className={`text-sm font-semibold ${copied ? 'text-win' : 'text-loss-text'}`}>
             {copied ? 'Kopyalandı' : 'Kopyalanamadı; metni önizlemeden seçip kopyalayın'}
@@ -122,6 +156,7 @@ export default function StatsSummaryPanel({ picks, matches, results, verdicts, s
         rows={12}
         aria-label="Özet önizlemesi"
         data-testid="summary-preview"
+        data-ready={ready}
         className="mt-3 block w-full rounded-lg border border-navy-500 bg-navy-800 px-2.5 py-2 font-mono text-xs leading-snug whitespace-pre outline-none"
       />
     </div>
