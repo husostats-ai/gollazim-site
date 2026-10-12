@@ -129,7 +129,8 @@ try {
 
   // 1) ESKİ sürüm: yedekten dolu veritabanı
   const before = await withBrowser(async (page, errors) => {
-    await go(page, '/admin')
+    // VERİ-YEDEK sekmesi: sekmeli sürümde "Yedek yüklendi" yalnızca bu sekmede görünür (sekmesiz eski sürüm parametreyi yok sayar).
+    await go(page, '/admin?sekme=veri')
     await (await page.$('input[type=file][accept="application/json,.json"]')).uploadFile(backupFile)
     await page.waitForFunction(() => document.body.innerText.includes('Yedek yüklendi'), { timeout: 20000 })
     await sleep(500)

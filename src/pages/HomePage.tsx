@@ -39,7 +39,7 @@ export default function HomePage() {
         <>
           <DailyChecklist status={daily} />
           <BackupReminder status={daily} />
-          <MemberKeyReminder linkToAdmin />
+          <MemberKeyReminder />
         </>
       )}
       {loading ? null : dates.length === 0 ? (

@@ -1,13 +1,15 @@
 import { Link } from 'react-router-dom'
+import { adminTabPath } from '../../config/adminTabs'
 import { KEY_BACKUP_LOSS_TEXT, keyBackupStatus } from '../../services/memberAdmin/reminder'
 import { useMemberAdminData } from './useMemberAdmin'
 
 /**
  * "Üye anahtar yedeği" hatırlatıcısı: üye eklenince, çıkarılınca ya da şifre yenilenince
  * yedeğin eskidiğini söyler. Normal yedek hatırlatıcısından bağımsızdır; üye yoksa ya da
- * yedek güncelse görünmez.
+ * yedek güncelse görünmez. Admin sayfasında her sekmede görünür; onOpen, ÜYELER sekmesindeki
+ * yedek bölümünü açar. Başka sayfalarda (onOpen yok) aynı sekmeye bağlantı verir.
  */
-export default function MemberKeyReminder({ linkToAdmin = false }: { linkToAdmin?: boolean }) {
+export default function MemberKeyReminder({ onOpen }: { onOpen?: () => void }) {
   const data = useMemberAdminData()
   if (!data) return null
   const status = keyBackupStatus(data.members, data.meta)
@@ -20,12 +22,14 @@ export default function MemberKeyReminder({ linkToAdmin = false }: { linkToAdmin
       </p>
       <p className="mt-1 text-xs text-white">{KEY_BACKUP_LOSS_TEXT}</p>
       <p className="mt-1 text-xs text-muted">
-        {linkToAdmin ? (
-          <Link to="/admin" className="font-bold text-brand hover:underline">
-            Admin sayfasındaki “Üye anahtar yedeği” bölümünden yedek al
-          </Link>
+        {onOpen ? (
+          <button type="button" onClick={onOpen} className="text-left font-bold text-brand hover:underline" data-testid="member-key-reminder-open">
+            ÜYELER sekmesindeki “Üye anahtar yedeği” bölümünü aç
+          </button>
         ) : (
-          'Aşağıdaki “Üye anahtar yedeği” bölümünden yedek al.'
+          <Link to={adminTabPath('uyeler')} className="font-bold text-brand hover:underline">
+            Admin sayfasının ÜYELER sekmesindeki “Üye anahtar yedeği” bölümünden yedek al
+          </Link>
         )}
       </p>
     </div>

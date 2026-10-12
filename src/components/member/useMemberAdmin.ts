@@ -2,6 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { aiRepo, aiSharesRepo, highlightsRepo, leagueRepo, matchesRepo, memberAdminRepo, picksRepo, resultsRepo, settingsRepo, sharedRepo, streakRepo } from '../../services/data'
 import type { PublishSources } from '../../services/memberAdmin/publish'
 import { aiShareId, recordAiShares } from '../../services/ai/memberShare'
+import { MEMBER_SITE_VERSION_URL } from '../../config/member'
+import { MEMBER_PAYLOAD_VERSION } from '../../services/member/payload'
+import { fetchSiteVersion, siteVersionStatus, type SiteVersionStatus } from '../../services/memberAdmin/siteVersion'
 import type { MemberMeta, MemberRecord, PublicationRecord } from '../../services/memberAdmin/types'
 
 export interface MemberAdminData {
@@ -28,6 +31,24 @@ export function useMemberAdminData(): MemberAdminData | null {
     return () => void listeners.delete(listener)
   }, [load])
   return data
+}
+
+/**
+ * Ayrı üye sitesinin sürümü ile bu sürümün karşılaştırması; okunana dek null.
+ * Üye sitesi ayrı yayınlanır ve eski kalabilir: sürümü aynı alan adındaki adresinden okunur.
+ */
+export function useSiteVersionStatus(): SiteVersionStatus | null {
+  const [status, setStatus] = useState<SiteVersionStatus | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    void fetchSiteVersion(MEMBER_SITE_VERSION_URL, (url, init) => fetch(url, init), Date.now()).then((site) => {
+      if (!cancelled) setStatus(siteVersionStatus(site, { commit: __APP_COMMIT__, payloadVersion: MEMBER_PAYLOAD_VERSION }))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+  return status
 }
 
 /** Yayın paketinin kurulduğu veriler: uygulamanın kendi veri deposu */

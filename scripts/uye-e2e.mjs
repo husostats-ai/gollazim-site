@@ -672,7 +672,8 @@ try {
     const adminPage = await browser.newPage()
     adminPage.on('dialog', (d) => void d.accept())
     await adminPage.setViewport({ width: 1280, height: 900 })
-    await adminPage.goto(`${origin}/gollazim-site/#/admin`, { waitUntil: 'networkidle0' })
+    // Yedek VERİ-YEDEK sekmesinden yüklenir (gizli sekmenin metni ekran metnine girmez).
+    await adminPage.goto(`${origin}/gollazim-site/#/admin?sekme=veri`, { waitUntil: 'networkidle0' })
     await (await adminPage.$('input[type=file][accept="application/json,.json"]:not([data-testid])')).uploadFile(backupFile)
     await adminPage.waitForFunction(() => document.body.innerText.includes('Yedek yüklendi'), { timeout: 30000 })
     await adminPage.goto(`${origin}/gollazim-site/#/`, { waitUntil: 'networkidle0' })
@@ -693,7 +694,7 @@ try {
     await memberPage.waitForSelector(sel('member-login'))
     const after = await dump(adminPage)
     const tables = Object.keys(JSON.parse(before.json)).length - 1
-    step('admin verisi dolu profilde üye sitesi kullanıldı: veritabanı dökümü önce / sırasında / sonra bayt bayt aynı', before.json === during.json && before.json === after.json && tables === 17, `${tables} tablo · sürüm ${JSON.parse(before.json).surum} · sha256 ${sha(before.json).slice(0, 16)}`)
+    step('admin verisi dolu profilde üye sitesi kullanıldı: veritabanı dökümü önce / sırasında / sonra bayt bayt aynı', before.json === during.json && before.json === after.json && tables === 18, `${tables} tablo · sürüm ${JSON.parse(before.json).surum} · sha256 ${sha(before.json).slice(0, 16)}`)
     step('admin sitesinin localStorage kayıtları da değişmedi', before.local === during.local && before.local === after.local, before.local)
     await adminPage.reload({ waitUntil: 'networkidle0' })
     step('üye sitesinden sonra admin sitesi aynı profilde normal açılıyor', (await adminPage.evaluate(() => document.body.innerText)).includes('GÜNÜN ANALİZLERİ') && (await adminPage.evaluate(() => location.hash)) === '#/')

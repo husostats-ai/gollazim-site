@@ -117,7 +117,14 @@ const setValue = async (page, id, value) => {
   })
   if (value) await page.type(sel(id), value)
 }
+/** Admin sayfasında sekme açar. Gizli sekmenin içeriği ekran metnine girmez, yazılamaz ve görüntülenemez. */
+const openTab = async (page, id) => {
+  await tap(page, `admin-tab-${id}`)
+  await page.waitForSelector(`${sel(`admin-panel-${id}`)}:not([hidden])`)
+}
+/** Normal yedeği VERİ-YEDEK sekmesinden geri yükler */
 async function restoreMainBackup(page) {
+  await openTab(page, 'veri')
   const input = await page.$('input[type=file][accept="application/json,.json"]:not([data-testid])')
   await input.uploadFile(backupFile)
   await page.waitForFunction(() => document.body.innerText.includes('Yedek yüklendi'), { timeout: 20000 })
@@ -229,7 +236,8 @@ try {
   await page.click(sel('score-odds-toggle')).catch(() => undefined)
   await go(page, '/skor-girisi')
   step('skor girişinde maç formları var', (await page.$$eval(sel('score-form'), (els) => els.length)) > 0)
-  await go(page, '/admin')
+  await go(page, '/admin?sekme=veri')
+  step('admin: adresteki ?sekme=veri VERİ-YEDEK sekmesini açıyor', (await page.$eval(sel('admin-tab-veri'), (el) => el.getAttribute('aria-selected'))) === 'true' && (await page.$eval(sel('admin-panel-gunluk'), (el) => el.hidden)))
   const exportButton = (await page.$x("//button[contains(., 'Veriyi dışa aktar')]"))[0]
   await exportButton.click()
   const exported = join(outDir, 'duman-yedek.json')
@@ -261,7 +269,9 @@ try {
   await smoke(page, 'yedek yüklü')
 
   // B) ÜYE YÖNETİMİ
+  // Duman testi /admin'de bitti: aynı adrese gitmek sayfayı yeniden yükler (seçili gün varsayılana döner).
   await go(page, '/admin')
+  await openTab(page, 'uyeler')
   await page.waitForSelector(sel('member-admin-members'))
   step('boşken: üye yok, yayın uyarısı var, hatırlatıcı yok', (await page.$(sel('member-list-empty'))) !== null && (await page.$(sel('publish-no-members'))) !== null && (await page.$(sel('member-key-reminder'))) === null)
   await shot(page, 'member-admin-publish', 'admin-yayinla-uye-yok')
@@ -359,6 +369,7 @@ try {
     publishDay,
   )
   await page.reload({ waitUntil: 'networkidle0' })
+  step('admin: yenilemede ÜYELER sekmesi açık kaldı', (await page.$eval(sel('admin-tab-uyeler'), (el) => el.getAttribute('aria-selected'))) === 'true')
   await page.waitForFunction((s) => document.querySelector(s)?.textContent.includes('1 öne çıkan'), { timeout: 20000 }, sel('publish-summary'))
   step('yayın özeti: gün başına öne çıkan sayısı', (await text(page, 'publish-summary')).includes('1 öne çıkan'), `${publishDay}: ${seeded.home} – ${seeded.away}`)
   const streakSummary = await text(page, 'publish-summary-streak')
@@ -457,6 +468,10 @@ try {
   await sleep(200)
   const size = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, inner: window.innerWidth }))
   step('Admin sayfası 390 px taşma yok', size.scroll <= size.inner, `${size.scroll} / ${size.inner}`)
+  await openTab(page, 'uyeler')
+  await sleep(200)
+  const memberSize = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, inner: window.innerWidth }))
+  step('Admin sayfası ÜYELER sekmesi 390 px taşma yok', memberSize.scroll <= memberSize.inner, `${memberSize.scroll} / ${memberSize.inner}`)
   await first.close()
   first = null
 
@@ -465,6 +480,7 @@ try {
   const fresh = second.page
   await go(fresh, '/admin')
   await restoreMainBackup(fresh)
+  await openTab(fresh, 'uyeler')
   await fresh.waitForSelector(sel('member-admin-members'))
   step('yeni profilde üye yok', (await fresh.$(sel('member-list-empty'))) !== null)
 

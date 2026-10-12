@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
-import { MEMBER_SITE_URL, MEMBER_SITE_VERSION_URL } from '../../config/member'
+import { MEMBER_SITE_URL } from '../../config/member'
 import { memberAdminRepo } from '../../services/data'
 import { addMembers, backupMemberKeys, previewPublication, publish, removeMemberByName, renewMemberPassword, restoreMemberKeys } from '../../services/memberAdmin/actions'
 import { checkPassphrase, PASSPHRASE_MIN_LENGTH } from '../../services/memberAdmin/keyBackup'
 import { PUBLICATION_FILE_NAME, summarizePayload, type Publication, type PublishSummary } from '../../services/memberAdmin/publish'
 import { accountMessage, activeMembers, checkNewUsername, distributionCsv, distributionFileName, parseBulkUsernames, USERNAME_PROBLEM_TEXTS, type IssuedLogin } from '../../services/memberAdmin/registry'
-import { MEMBER_PAYLOAD_VERSION } from '../../services/member/payload'
 import { KEY_BACKUP_LOSS_TEXT, keyBackupStatus } from '../../services/memberAdmin/reminder'
-import { fetchSiteVersion, MEMBER_SITE_UPDATE_HINT, siteVersionStatus, type SiteVersionStatus } from '../../services/memberAdmin/siteVersion'
+import { MEMBER_SITE_UPDATE_HINT, type SiteVersionStatus } from '../../services/memberAdmin/siteVersion'
 import { useApp } from '../../state/AppContext'
 import { copyText } from '../../utils/clipboard'
 import { toAppDateTime } from '../../utils/date'
@@ -107,7 +106,11 @@ export function IssuedBox({ issued, data, onClose, onDownloaded, onRepublish, bu
   )
 }
 
-export default function MemberAdminSection() {
+/**
+ * siteStatus: ayrı üye sitesinin sürüm durumu (sayfa okur; üstteki uyarı ve sekme rozetiyle ortak).
+ * onAttention: şifre kutusu açıkken ya da yayın hatası varken true bildirir (sekme rozeti için).
+ */
+export default function MemberAdminSection({ siteStatus, onAttention }: { siteStatus: SiteVersionStatus | null; onAttention?: (on: boolean) => void }) {
   const data = useMemberAdminData()
   const { dates, today, selectedDate, dataVersion, highlights, aiVerdicts, streak, refresh } = useApp()
   const [busy, setBusy] = useState(false)
@@ -129,19 +132,10 @@ export default function MemberAdminSection() {
   const [restoreFile, setRestoreFile] = useState<File | null>(null)
   const [keyStatus, setKeyStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
-  /** Ayrı üye sitesinin sürümü ile bu sürümün karşılaştırması; okunana dek null */
-  const [siteStatus, setSiteStatus] = useState<SiteVersionStatus | null>(null)
-
-  // Üye sitesi ayrı yayınlanır ve eski kalabilir: sürümü aynı alan adındaki adresinden okunur.
+  const attention = issued !== null || publishError !== null
   useEffect(() => {
-    let cancelled = false
-    void fetchSiteVersion(MEMBER_SITE_VERSION_URL, (url, init) => fetch(url, init), Date.now()).then((site) => {
-      if (!cancelled) setSiteStatus(siteVersionStatus(site, { commit: __APP_COMMIT__, payloadVersion: MEMBER_PAYLOAD_VERSION }))
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [])
+    onAttention?.(attention)
+  }, [attention, onAttention])
 
   // Varsayılan gün: bugün (verisi varsa), yoksa seçili gün, o da yoksa en yeni gün.
   const publishDay = day && dates.includes(day) ? day : dates.includes(today) ? today : (selectedDate ?? dates[0] ?? null)
@@ -279,129 +273,6 @@ export default function MemberAdminSection() {
 
   return (
     <>
-      <Card title="ÜYE SAYFASI: ÜYELER" testId="member-admin-members">
-        <p className="mt-1 text-sm text-muted">
-          Üyeler <span className="font-semibold text-white">{MEMBER_SITE_URL}</span> adresinde, verdiğiniz kullanıcı adı ve şifreyle yalnızca yayınladığınız analizleri görür. Şifreyi uygulama üretir ve bir kez gösterir; şifre hiçbir yere kaydedilmez. Üye listesi normal veri yedeğine girmez.
-        </p>
-
-        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <div className="min-w-0">
-            <h3 className="text-sm font-extrabold">Üye ekle</h3>
-            <div className="mt-2 flex gap-2">
-              <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="kullanici.adi" autoCapitalize="none" autoCorrect="off" spellCheck={false} disabled={busy} data-testid="member-add-username" className={INPUT} />
-              <button type="button" className={`${PRIMARY} shrink-0`} disabled={busy || !single?.ok} onClick={() => void onAdd()} data-testid="member-add">
-                Ekle
-              </button>
-            </div>
-            {single && !single.ok && (
-              <p className="mt-1.5 text-xs text-loss-text" data-testid="member-add-problem">
-                {USERNAME_PROBLEM_TEXTS[single.problem]}
-              </p>
-            )}
-          </div>
-
-          <div className="min-w-0">
-            <h3 className="text-sm font-extrabold">Toplu ekle</h3>
-            <textarea value={bulk} onChange={(e) => setBulk(e.target.value)} rows={4} placeholder={'her satırda bir kullanıcı adı\nali\nveli'} autoCapitalize="none" autoCorrect="off" spellCheck={false} disabled={busy} data-testid="member-bulk-input" className={`${INPUT} mt-2 font-mono`} />
-            {bulk.trim() !== '' && (
-              <p className="mt-1.5 text-xs text-muted" data-testid="member-bulk-preview">
-                {parsed.usernames.length} geçerli ad
-                {parsed.rejected.length > 0 && (
-                  <span className="text-loss-text">
-                    {' '}
-                    · {parsed.rejected.length} satır alınmayacak: {parsed.rejected.map((r) => `${r.line}. satır “${r.text}” (${r.problem === 'taken' ? 'dolu' : 'geçersiz'})`).join(', ')}
-                  </span>
-                )}
-              </p>
-            )}
-            <div className="mt-2 flex flex-wrap items-center gap-3">
-              <button type="button" className={PRIMARY} disabled={busy || parsed.usernames.length === 0} onClick={() => void onBulk()} data-testid="member-bulk-add">
-                {parsed.usernames.length > 0 ? `${parsed.usernames.length} üye ekle` : 'Toplu ekle'}
-              </button>
-              <span className="text-xs text-muted">Her üye için yaklaşık 0,7 sn sürer (50 üye ≈ yarım dakika).</span>
-            </div>
-            {progress && (
-              <div className="mt-2" role="status" data-testid="member-bulk-progress">
-                <div className="h-2 w-full overflow-hidden rounded-full bg-navy-800">
-                  <div className="h-full rounded-full bg-brand transition-[width]" style={{ width: `${(progress.done / progress.total) * 100}%` }} />
-                </div>
-                <p className="mt-1 text-xs text-muted">
-                  {progress.done} / {progress.total} üye hazırlandı
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {error && (
-          <p className="mt-3 text-sm text-loss-text" data-testid="member-admin-error">
-            {error}
-          </p>
-        )}
-        {issued && (
-          <IssuedBox
-            issued={issued}
-            data={data}
-            busy={busy}
-            onClose={() => setIssued(null)}
-            onDownloaded={() => setIssued({ ...issued, downloaded: true })}
-            onRepublish={() => void run(doPublish)}
-          />
-        )}
-
-        <h3 className="mt-5 text-sm font-extrabold">
-          Üye listesi <span className="font-normal text-muted">· {activeCount} aktif, {data.members.length - activeCount} çıkarılmış</span>
-        </h3>
-        {data.members.length === 0 ? (
-          <p className="mt-2 text-sm text-muted" data-testid="member-list-empty">
-            Henüz üye yok.
-          </p>
-        ) : (
-          <div className="mt-2 overflow-x-auto">
-            <table className="w-full min-w-[560px] text-left text-sm" data-testid="member-list">
-              <thead className="text-xs text-muted">
-                <tr className="border-b border-line">
-                  <th className="py-2 pr-3 font-semibold">Kullanıcı adı</th>
-                  <th className="py-2 pr-3 font-semibold">Durum</th>
-                  <th className="py-2 pr-3 font-semibold">Oluşturma</th>
-                  <th className="py-2 font-semibold">İşlem</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.members.map((m) => (
-                  <tr key={m.username} className="border-b border-line last:border-0" data-testid={`member-row-${m.username}`} data-active={m.active}>
-                    <th scope="row" className="py-2 pr-3 font-semibold">
-                      {m.username}
-                    </th>
-                    <td className="py-2 pr-3">
-                      {m.active ? <span className="text-win">Aktif</span> : <span className="text-muted">Çıkarıldı{m.removedAt && ` · ${stamp(m.removedAt)}`}</span>}
-                      {m.active && m.renewedAt && <span className="block text-[11px] text-muted">şifre yenilendi · {stamp(m.renewedAt)}</span>}
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap text-muted">{stamp(m.createdAt)}</td>
-                    <td className="py-2">
-                      {m.active && (
-                        <span className="flex flex-wrap gap-1.5">
-                          <button type="button" className={`${SMALL} border-brand text-brand`} disabled={busy} onClick={() => onRemove(m.username, true)} data-testid={`member-remove-republish-${m.username}`}>
-                            Çıkar ve hemen yeniden yayınla
-                          </button>
-                          <button type="button" className={SMALL} disabled={busy} onClick={() => onRemove(m.username, false)} data-testid={`member-remove-${m.username}`}>
-                            Yalnızca çıkar
-                          </button>
-                          <button type="button" className={SMALL} disabled={busy} onClick={() => onRenew(m.username)} data-testid={`member-renew-${m.username}`}>
-                            Şifreyi yenile
-                          </button>
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <p className="mt-2 text-xs text-muted">Çıkarılan üye yeniden etkinleştirilmez; gerekirse başka bir kullanıcı adıyla yeni hesap açılır. Çıkarılan üye, çıkarılmadan önce gördüğü içeriği saklamış olabilir.</p>
-      </Card>
-
       <Card title="ÜYE SAYFASI: YAYINLA" testId="member-admin-publish">
         <p className="mt-1 text-sm text-muted">Seçilen gün ile önceki 6 günün (son 7 gün; önerisi olmayan günler atlanır) listeleri ve istatistikler, izinli alanlardan sıfırdan kurulup aktif üyeler için şifrelenir ve {PUBLICATION_FILE_NAME} olarak indirilir. Günlerin “öne çıkan” seçimleri de pakete girer (yüzde ve güvenilirlik olmadan). Ham veri, oranlar ve yapay zekâ kararları pakete girmez.</p>
         <p className="mt-1 text-xs text-muted" data-testid="publish-order">
@@ -547,6 +418,130 @@ export default function MemberAdminSection() {
           </div>
         )}
         <p className="mt-2 text-xs text-muted">Geçmişte yalnızca özet tutulur; yayınlanan içerik saklanmaz.</p>
+      </Card>
+
+
+      <Card title="ÜYE SAYFASI: ÜYELER" testId="member-admin-members">
+        <p className="mt-1 text-sm text-muted">
+          Üyeler <span className="font-semibold text-white">{MEMBER_SITE_URL}</span> adresinde, verdiğiniz kullanıcı adı ve şifreyle yalnızca yayınladığınız analizleri görür. Şifreyi uygulama üretir ve bir kez gösterir; şifre hiçbir yere kaydedilmez. Üye listesi normal veri yedeğine girmez.
+        </p>
+
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="min-w-0">
+            <h3 className="text-sm font-extrabold">Üye ekle</h3>
+            <div className="mt-2 flex gap-2">
+              <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="kullanici.adi" autoCapitalize="none" autoCorrect="off" spellCheck={false} disabled={busy} data-testid="member-add-username" className={INPUT} />
+              <button type="button" className={`${PRIMARY} shrink-0`} disabled={busy || !single?.ok} onClick={() => void onAdd()} data-testid="member-add">
+                Ekle
+              </button>
+            </div>
+            {single && !single.ok && (
+              <p className="mt-1.5 text-xs text-loss-text" data-testid="member-add-problem">
+                {USERNAME_PROBLEM_TEXTS[single.problem]}
+              </p>
+            )}
+          </div>
+
+          <div className="min-w-0">
+            <h3 className="text-sm font-extrabold">Toplu ekle</h3>
+            <textarea value={bulk} onChange={(e) => setBulk(e.target.value)} rows={4} placeholder={'her satırda bir kullanıcı adı\nali\nveli'} autoCapitalize="none" autoCorrect="off" spellCheck={false} disabled={busy} data-testid="member-bulk-input" className={`${INPUT} mt-2 font-mono`} />
+            {bulk.trim() !== '' && (
+              <p className="mt-1.5 text-xs text-muted" data-testid="member-bulk-preview">
+                {parsed.usernames.length} geçerli ad
+                {parsed.rejected.length > 0 && (
+                  <span className="text-loss-text">
+                    {' '}
+                    · {parsed.rejected.length} satır alınmayacak: {parsed.rejected.map((r) => `${r.line}. satır “${r.text}” (${r.problem === 'taken' ? 'dolu' : 'geçersiz'})`).join(', ')}
+                  </span>
+                )}
+              </p>
+            )}
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <button type="button" className={PRIMARY} disabled={busy || parsed.usernames.length === 0} onClick={() => void onBulk()} data-testid="member-bulk-add">
+                {parsed.usernames.length > 0 ? `${parsed.usernames.length} üye ekle` : 'Toplu ekle'}
+              </button>
+              <span className="text-xs text-muted">Her üye için yaklaşık 0,7 sn sürer (50 üye ≈ yarım dakika).</span>
+            </div>
+            {progress && (
+              <div className="mt-2" role="status" data-testid="member-bulk-progress">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-navy-800">
+                  <div className="h-full rounded-full bg-brand transition-[width]" style={{ width: `${(progress.done / progress.total) * 100}%` }} />
+                </div>
+                <p className="mt-1 text-xs text-muted">
+                  {progress.done} / {progress.total} üye hazırlandı
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {error && (
+          <p className="mt-3 text-sm text-loss-text" data-testid="member-admin-error">
+            {error}
+          </p>
+        )}
+        {issued && (
+          <IssuedBox
+            issued={issued}
+            data={data}
+            busy={busy}
+            onClose={() => setIssued(null)}
+            onDownloaded={() => setIssued({ ...issued, downloaded: true })}
+            onRepublish={() => void run(doPublish)}
+          />
+        )}
+
+        <h3 className="mt-5 text-sm font-extrabold">
+          Üye listesi <span className="font-normal text-muted">· {activeCount} aktif, {data.members.length - activeCount} çıkarılmış</span>
+        </h3>
+        {data.members.length === 0 ? (
+          <p className="mt-2 text-sm text-muted" data-testid="member-list-empty">
+            Henüz üye yok.
+          </p>
+        ) : (
+          <div className="mt-2 overflow-x-auto">
+            <table className="w-full min-w-[560px] text-left text-sm" data-testid="member-list">
+              <thead className="text-xs text-muted">
+                <tr className="border-b border-line">
+                  <th className="py-2 pr-3 font-semibold">Kullanıcı adı</th>
+                  <th className="py-2 pr-3 font-semibold">Durum</th>
+                  <th className="py-2 pr-3 font-semibold">Oluşturma</th>
+                  <th className="py-2 font-semibold">İşlem</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.members.map((m) => (
+                  <tr key={m.username} className="border-b border-line last:border-0" data-testid={`member-row-${m.username}`} data-active={m.active}>
+                    <th scope="row" className="py-2 pr-3 font-semibold">
+                      {m.username}
+                    </th>
+                    <td className="py-2 pr-3">
+                      {m.active ? <span className="text-win">Aktif</span> : <span className="text-muted">Çıkarıldı{m.removedAt && ` · ${stamp(m.removedAt)}`}</span>}
+                      {m.active && m.renewedAt && <span className="block text-[11px] text-muted">şifre yenilendi · {stamp(m.renewedAt)}</span>}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap text-muted">{stamp(m.createdAt)}</td>
+                    <td className="py-2">
+                      {m.active && (
+                        <span className="flex flex-wrap gap-1.5">
+                          <button type="button" className={`${SMALL} border-brand text-brand`} disabled={busy} onClick={() => onRemove(m.username, true)} data-testid={`member-remove-republish-${m.username}`}>
+                            Çıkar ve hemen yeniden yayınla
+                          </button>
+                          <button type="button" className={SMALL} disabled={busy} onClick={() => onRemove(m.username, false)} data-testid={`member-remove-${m.username}`}>
+                            Yalnızca çıkar
+                          </button>
+                          <button type="button" className={SMALL} disabled={busy} onClick={() => onRenew(m.username)} data-testid={`member-renew-${m.username}`}>
+                            Şifreyi yenile
+                          </button>
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="mt-2 text-xs text-muted">Çıkarılan üye yeniden etkinleştirilmez; gerekirse başka bir kullanıcı adıyla yeni hesap açılır. Çıkarılan üye, çıkarılmadan önce gördüğü içeriği saklamış olabilir.</p>
       </Card>
 
       <Card title="ÜYE SAYFASI: ÜYE ANAHTAR YEDEĞİ" testId="member-admin-keybackup">
