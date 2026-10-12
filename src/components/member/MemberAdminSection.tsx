@@ -11,6 +11,7 @@ import { useApp } from '../../state/AppContext'
 import { copyText } from '../../utils/clipboard'
 import { toAppDateTime } from '../../utils/date'
 import { formatDay, formatPlainDate } from '../../utils/format'
+import { visibleRows } from '../../utils/visibleRows'
 import { downloadText, notifyMemberAdminChanged, publishSources, useMemberAdminData, type MemberAdminData } from './useMemberAdmin'
 
 // Admin sayfasının "ÜYE SAYFASI" bölümü: üye yönetimi, yayın ve üye anahtar yedeği.
@@ -26,6 +27,9 @@ const stamp = (iso: string): string => {
   const at = toAppDateTime(new Date(iso))
   return `${formatDay(at.date)} ${at.time}`
 }
+/** Yayın geçmişinde kapalıyken ve "Daha fazla göster" ile açıkken gösterilen satır sayısı */
+export const HISTORY_ROWS = 5
+export const HISTORY_ROWS_EXPANDED = 20
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : 'Beklenmeyen bir hata oluştu.')
 
 function Card({ title, children, testId }: { title: string; children: ReactNode; testId: string }) {
@@ -132,6 +136,8 @@ export default function MemberAdminSection({ siteStatus, onAttention }: { siteSt
   const [restoreFile, setRestoreFile] = useState<File | null>(null)
   const [keyStatus, setKeyStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
+
   const attention = issued !== null || publishError !== null
   useEffect(() => {
     onAttention?.(attention)
@@ -402,7 +408,7 @@ export default function MemberAdminSection({ siteStatus, onAttention }: { siteSt
                 </tr>
               </thead>
               <tbody>
-                {data.publications.slice(0, 20).map((p) => (
+                {visibleRows(data.publications, HISTORY_ROWS, historyOpen, HISTORY_ROWS_EXPANDED).map((p) => (
                   <tr key={p.n} className="border-b border-line last:border-0">
                     <th scope="row" className="py-2 pr-3 font-semibold">
                       {p.n}
@@ -416,6 +422,16 @@ export default function MemberAdminSection({ siteStatus, onAttention }: { siteSt
               </tbody>
             </table>
           </div>
+        )}
+        {data.publications.length > HISTORY_ROWS && (
+          <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted">
+            <button type="button" className={SMALL} aria-expanded={historyOpen} onClick={() => setHistoryOpen(!historyOpen)} data-testid="publish-history-toggle">
+              {historyOpen ? 'Daha az göster' : 'Daha fazla göster'}
+            </button>
+            <span data-testid="publish-history-count">
+              {historyOpen ? `Son ${Math.min(HISTORY_ROWS_EXPANDED, data.publications.length)}` : `Son ${HISTORY_ROWS}`} yayın gösteriliyor · toplam {data.publications.length} kayıt
+            </span>
+          </p>
         )}
         <p className="mt-2 text-xs text-muted">Geçmişte yalnızca özet tutulur; yayınlanan içerik saklanmaz.</p>
       </Card>

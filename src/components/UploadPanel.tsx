@@ -6,6 +6,10 @@ import { uploadsRepo } from '../services/data'
 import { useApp } from '../state/AppContext'
 import type { Upload } from '../types'
 import { formatLongDate } from '../utils/format'
+import { visibleRows } from '../utils/visibleRows'
+
+/** "Yüklenen dosyalar" listesinde kapalıyken gösterilen kayıt sayısı */
+export const UPLOAD_ROWS = 3
 
 const uploadedAtFmt = new Intl.DateTimeFormat('tr-TR', { dateStyle: 'medium', timeStyle: 'short' })
 
@@ -23,6 +27,7 @@ export default function UploadPanel() {
   const [error, setError] = useState<string | null>(null)
   const [summary, setSummary] = useState<UploadSummary | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [showAll, setShowAll] = useState(false)
 
   const loadUploads = async () => setUploads(await uploadsRepo.list())
   // Maç silme gibi başka panellerden gelen değişikliklerde de liste yenilenir.
@@ -122,9 +127,9 @@ export default function UploadPanel() {
       {uploads.length === 0 ? (
         <p className="mt-2 text-sm text-muted">Henüz dosya yüklenmedi.</p>
       ) : (
-        <ul className="mt-2 divide-y divide-line">
-          {uploads.map((u) => (
-            <li key={u.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+        <ul className="mt-2 divide-y divide-line" data-testid="upload-list">
+          {visibleRows(uploads, UPLOAD_ROWS, showAll).map((u) => (
+            <li key={u.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5" data-testid="upload-row">
               <div className="min-w-0">
                 <p className="text-sm font-semibold break-all">{u.fileName}</p>
                 <p className="text-xs text-muted">
@@ -163,6 +168,17 @@ export default function UploadPanel() {
             </li>
           ))}
         </ul>
+      )}
+      {uploads.length > UPLOAD_ROWS && (
+        <button
+          type="button"
+          aria-expanded={showAll}
+          onClick={() => setShowAll(!showAll)}
+          data-testid="upload-list-toggle"
+          className="mt-2 rounded-lg border border-navy-500 px-3 py-1.5 text-xs font-bold hover:bg-navy-600"
+        >
+          {showAll ? `Yalnızca son ${UPLOAD_ROWS} kaydı göster` : `Tümünü göster (${uploads.length})`}
+        </button>
       )}
     </section>
   )
