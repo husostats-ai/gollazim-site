@@ -72,8 +72,14 @@ export function percentKind(categoryId: CategoryId): PercentKind {
 /** Büyük yüzdenin altındaki sabit etiket (paketten gelmez) */
 export const PERCENT_LABELS: Record<PercentKind, string> = {
   history: 'Geçmiş maçlarda görülme sıklığı',
-  model: 'Model tahmini',
+  model: 'Hesaplanan tahmin',
 }
+
+/**
+ * "Aynı maçın diğer önerileri" satırında, yüzdesi geçmiş sıklık değil hesap olan önerinin yanındaki
+ * işaret. Kartın sağ üstündeki "Model %…" (ikinci hesap) ile karışmasın diye "model" denmez.
+ */
+export const OTHER_COMPUTED_TAG = '(hesaplanan)'
 
 /** Kartların üstündeki sabit açıklama */
 export const PERCENT_NOTE = "Yüzdeler geçmiş verilere ve model hesaplarına dayanan özetlerdir; sonucun kesin olduğu anlamına gelmez. Geçmiş veri 'Az' ise yüzde küçük bir örneğe dayanır."

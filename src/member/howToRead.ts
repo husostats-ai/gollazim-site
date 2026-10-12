@@ -14,7 +14,7 @@ export const HOW_TO_READ: HowToReadItem[] = [
     paragraphs: [
       'İki türlü olabilir; yüzdenin hemen altındaki etiket hangisi olduğunu söyler.',
       '“Geçmiş maçlarda görülme sıklığı”: iki takımın önceki maçlarının yüzde kaçında bu sonucun görüldüğüdür (ev sahibinin iç saha, deplasman takımının dış saha maçları). %100, sayılan maçların hepsinde görüldü demektir; bu maçta da olacağı anlamına gelmez.',
-      '“Model tahmini”: geçmişteki sıklık değil, bir hesap modelinin verdiği olasılıktır. 2.5 Üst & KG Var, Kart ve Taraf & Gol listelerindeki yüzdeler böyledir.',
+      '“Hesaplanan tahmin”: geçmişte kaç kez görüldüğü değil, bir hesabın verdiği olasılıktır. 2.5 Üst & KG Var, Kart ve Taraf & Gol listelerindeki yüzdeler böyledir.',
       'Bazı kartlarda büyük yüzdenin altında “Model” ya da “İkinci hesap” adıyla ikinci bir yüzde görünür: aynı sonucun başka bir yöntemle yapılmış hesabıdır.',
     ],
   },
@@ -63,7 +63,7 @@ export const HOW_TO_READ: HowToReadItem[] = [
   {
     title: 'Aynı maçın diğer önerileri',
     paragraphs: [
-      'Aynı maç başka listelerde de yer alıyorsa kartın altında küçük harflerle gösterilir. Yanında “(model)” yazanlar model tahminidir; diğerleri geçmiş maçlardaki görülme sıklığıdır.',
+      'Aynı maç başka listelerde de yer alıyorsa kartın altında küçük harflerle gösterilir. Yanında “(hesaplanan)” yazanlar geçmişte kaç kez görüldüğüne değil, bir hesaba dayanır (büyük yüzdedeki “Hesaplanan tahmin” ile aynı anlamda); diğerleri geçmiş maçlardaki görülme sıklığıdır.',
     ],
   },
   {

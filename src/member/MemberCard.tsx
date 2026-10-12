@@ -4,7 +4,7 @@ import type { ReliabilityLevel } from '../services/analysis/types'
 import { MEMBER_AI_LEVEL_LABELS, MEMBER_AI_PROVIDER_LABELS, memberAiSummary, memberAiTitle, MEMBER_CONFLICT_LABELS, MEMBER_DATA_TERM, MEMBER_OUTCOMES, MEMBER_RELIABILITY_LABELS, memberSampleText, MEMBER_STATUS_LABELS, STALE_TABLE_LABEL, standingText } from '../services/member/labels'
 import type { MemberItem, MemberMatch, MemberStanding } from '../services/member/payload'
 import type { PickOutcome } from '../types'
-import { categoryLabel as labelOf, isOverstated, percentKind } from './view'
+import { categoryLabel as labelOf, isOverstated, OTHER_COMPUTED_TAG, percentKind } from './view'
 
 // Renkler düz onaltılık değerlerdir (Chrome < 111 oklch paletini çizemez) ve yalnızca bu kartta
 // kullanılır; admin kartının rozetleri ayrıdır.
@@ -156,7 +156,7 @@ export default function MemberCard({ rank, match, item, categoryLabel, percentLa
               <span key={other.categoryId} className="inline-block max-w-full break-words" data-testid="member-other" data-category={other.categoryId} data-overstated={dim}>
                 {index > 0 && <span aria-hidden="true">&nbsp;·&nbsp;</span>}
                 {labelOf(other.categoryId)} <span className={dim ? '' : 'font-semibold text-white'}>%{other.percent}</span>
-                {percentKind(other.categoryId) === 'model' && <span> (model)</span>}
+                {percentKind(other.categoryId) === 'model' && <span> {OTHER_COMPUTED_TAG}</span>}
               </span>
             )
           })}

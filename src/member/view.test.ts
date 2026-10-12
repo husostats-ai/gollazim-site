@@ -21,7 +21,7 @@ import MemberStreak from './MemberStreak'
 import { CALCULATORS } from '../services/analysis/calculators'
 import { makeMatch } from '../services/analysis/testUtils'
 import type { MemberPayload } from '../services/member/payload'
-import { streakMeanText, categoryChoices, dayChip, dayTitle, isOverstated, isStale, listFor, PERCENT_LABELS, PERCENT_NOTE, percentKind, secondPercentLabel, updatedText } from './view'
+import { streakMeanText, categoryChoices, dayChip, dayTitle, isOverstated, isStale, listFor, OTHER_COMPUTED_TAG, PERCENT_LABELS, PERCENT_NOTE, percentKind, secondPercentLabel, updatedText } from './view'
 
 // Üye sayfasının görünümü: bileşenler sunucu tarafı çizimle (tarayıcısız) HTML'e çevrilir.
 // Tıklama gerektiren akışlar (gün ve kategori seçimi) açılış seçimi verilerek çizilir;
@@ -338,12 +338,12 @@ describe('kategori listeleri ve üye kartı', () => {
 
   it('büyük yüzdenin altındaki etiket yüzdenin gerçekten ne olduğunu söyler', () => {
     // Etiket, yüzdenin hesaplandığı yöntemle birebir örtüşür: CSV'deki hazır yüzdeyi
-    // doğrudan kullanan kategoriler "geçmiş sıklık", gerisi "model tahmini"dir.
+    // doğrudan kullanan kategoriler "geçmiş sıklık", gerisi "hesaplanan tahmin"dir.
     for (const category of CATEGORIES) expect(percentKind(category.id), category.id).toBe(CALCULATORS[category.id].basis.startsWith('CSV:') ? 'history' : 'model')
-    expect(PERCENT_LABELS).toEqual({ history: 'Geçmiş maçlarda görülme sıklığı', model: 'Model tahmini' })
+    expect(PERCENT_LABELS).toEqual({ history: 'Geçmiş maçlarda görülme sıklığı', model: 'Hesaplanan tahmin' })
     const label = (categoryId: (typeof CATEGORIES)[number]['id']) => /data-testid="member-percent-label">([^<]*)/.exec(html(analysis(0, categoryId)))![1]
     for (const id of ['over25', 'ht05', 'btts', 'sh05', 'over35', 'ht15', 'corners85'] as const) expect(label(id), id).toBe('Geçmiş maçlarda görülme sıklığı')
-    for (const id of ['over25btts', 'cards35', 'homeWin15', 'awayWin15'] as const) expect(label(id), id).toBe('Model tahmini')
+    for (const id of ['over25btts', 'cards35', 'homeWin15', 'awayWin15'] as const) expect(label(id), id).toBe('Hesaplanan tahmin')
     // Etiket her kartta vardır ve paketten gelmez (pakette böyle bir alan yoktur).
     const markup = html(analysis(0, 'over25'))
     expect(markup.split('data-testid="member-percent-label"').length - 1).toBe(markup.split('data-testid="member-card"').length - 1)
@@ -440,17 +440,54 @@ describe('kategori listeleri ve üye kartı', () => {
         const row = /data-testid="member-others">([\s\S]*?)<\/p>/.exec(drawn[i])
         if (item.others!.length === 0) return expect(row, `${list.categoryId} #${i + 1}`).toBeNull()
         const text = textOf(row![1]).replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ')
-        const expected = item.others!.map((o) => `${CATEGORIES.find((c) => c.id === o.categoryId)!.label} %${o.percent}${percentKind(o.categoryId) === 'model' ? ' (model)' : ''}`).join(' · ')
+        const expected = item.others!.map((o) => `${CATEGORIES.find((c) => c.id === o.categoryId)!.label} %${o.percent}${percentKind(o.categoryId) === 'model' ? ' (hesaplanan)' : ''}`).join(' · ')
         expect(text).toBe(`Aynı maçın diğer önerileri: ${expected}`)
         // Kendi kategorisi satırda yer almaz.
         expect(item.others!.map((o) => o.categoryId)).not.toContain(list.categoryId)
       })
     }
-    // Örnek: 2.5 ÜST kartında KG VAR ve İLK YARI 0.5 ÜST görünür; model tahminleri işaretlidir.
+    // Örnek: 2.5 ÜST kartında KG VAR ve İLK YARI 0.5 ÜST görünür; hesaplanan tahminler işaretlidir.
     const first = textOf(/data-testid="member-others">([\s\S]*?)<\/p>/.exec(html(analysis(0, 'over25')).split(/data-testid="member-card"[^>]*>/)[2])![1]).replace(/&nbsp;/g, ' ')
     expect(first).toMatch(/İLK YARI 0\.5 ÜST %91/)
     expect(first).toMatch(/KG VAR %89/)
-    expect(first).toMatch(/KART 3\.5 ÜST %\d+ \(model\)/)
+    expect(first).toMatch(/KART 3\.5 ÜST %\d+ \(hesaplanan\)/)
+  })
+
+  it('"(hesaplanan)" işareti kategoriye göre çıkar: yüzdesi hesap olanlarda var, geçmiş sıklık olanlarda yok; "model" sözcüğü kullanılmaz', () => {
+    expect(OTHER_COMPUTED_TAG).toBe('(hesaplanan)')
+    const computed = ['over25btts', 'cards35', 'cards45', 'homeWin15', 'homeWin25', 'awayWin15', 'awayWin25']
+    // İşaret alan kategoriler tam olarak bunlardır; gol, yarı ve korner listeleri almaz.
+    expect(CATEGORIES.filter((c) => percentKind(c.id) === 'model').map((c) => c.id).sort()).toEqual([...computed].sort())
+    const seen = new Map<string, boolean>()
+    const day = payload.days[0]
+    for (const list of day.lists.filter((l) => l.items.length > 0)) {
+      const markup = html(analysis(0, list.categoryId))
+      for (const [, categoryId, inner] of markup.matchAll(/data-testid="member-other" data-category="([^"]+)"[^>]*>([\s\S]*?)<\/span>(?=<span key|<span class="inline-block|<\/p>)/g)) {
+        const tagged = textOf(inner).includes('(hesaplanan)')
+        expect(tagged, categoryId).toBe(computed.includes(categoryId))
+        seen.set(categoryId, tagged)
+      }
+      // Satırda eski "(model)" işareti kalmadı.
+      for (const [, row] of markup.matchAll(/data-testid="member-others">([\s\S]*?)<\/p>/g)) expect(textOf(row)).not.toContain('(model)')
+      expect(markup).not.toContain('Model tahmini')
+    }
+    // Deney iki türü de kapsıyor: hesaplanan (kart, 2.5 Üst & KG Var, Taraf & Gol) ve geçmiş sıklık (gol, yarı, korner).
+    for (const id of ['cards35', 'over25btts', 'homeWin15']) expect(seen.get(id), id).toBe(true)
+    for (const id of ['over25', 'btts', 'ht05', 'corners85']) expect(seen.get(id), id).toBe(false)
+  })
+
+  it('kartın sağ üstündeki ikinci yüzdenin etiketi aynen "Model" kalır; büyük yüzdenin etiketi "Hesaplanan tahmin" olur', () => {
+    expect(secondPercentLabel('over25')).toBe('Model')
+    expect(secondPercentLabel('homeWin15')).toBe('İkinci hesap')
+    expect(html(analysis(0, 'over25'))).toMatch(/Model <span[^>]*>%\d+/)
+    expect(textOf(html(analysis(0, 'cards35')))).toContain('Hesaplanan tahmin')
+    const help = HOW_TO_READ.flatMap((i) => i.paragraphs).join(' ')
+    expect(help).toContain('“Hesaplanan tahmin”')
+    expect(help).toContain('Yanında “(hesaplanan)” yazanlar geçmişte kaç kez görüldüğüne değil, bir hesaba dayanır')
+    expect(help).not.toContain('(model)')
+    expect(help).not.toContain('Model tahmini')
+    // İkinci yüzdenin açıklaması duruyor.
+    expect(help).toContain('“Model” ya da “İkinci hesap” adıyla ikinci bir yüzde')
   })
 
   it('diğer önerisi olmayan maçta satır hiç çizilmez; sürüm 1 pakette de çizilmez', () => {
