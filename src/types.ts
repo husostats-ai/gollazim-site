@@ -100,6 +100,12 @@ export interface Pick {
   /** Dondurma anındaki ikinci hesap (xG / gol modeli) yüzdesi; hesaplanamadıysa null */
   secondPercent?: number | null
   /**
+   * Dondurma anında ikinci hesabın (Model % / xG modeli) dayandığı veri: 'xg', 'avgGoals' (xG yok,
+   * gol ortalamasına düşüldü) ya da 'none' (hesaplanamadı). Alan yoksa öneri bu özellikten önce
+   * dondurulmuştur (kaynak bilinmiyor; sonradan doldurulmaz) ya da kategorinin ikinci hesabı yoktur.
+   */
+  modelSource?: 'xg' | 'avgGoals' | 'none'
+  /**
    * Dondurma anındaki piyasa yüzdesi (marjsız oran olasılığı); iki yönlü oran yoksa 'none'.
    * Alan hiç yoksa öneri bu özellikten önce dondurulmuştur ya da kategori kapsam dışıdır.
    */

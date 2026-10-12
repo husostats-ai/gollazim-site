@@ -35,7 +35,7 @@ describe('pickRecord (dondurulmuş öneri dökümü)', () => {
   })
 
   it('kayıtlı değerler değiştirilmeden yazılır: sayı, false ve 0 korunur', () => {
-    const record = pickRecord({ ...base, reliability: 'medium', secondPercent: 0, conflict: false, marketPercent: 64, marketConflict: false, stars: 3, modelDrift: false })
+    const record = pickRecord({ ...base, reliability: 'medium', secondPercent: 0, modelSource: 'xg', conflict: false, marketPercent: 64, marketConflict: false, stars: 3, modelDrift: false })
     expect(record).toMatchObject({ secondPercent: 0, conflict: false, marketPercent: 64, marketConflict: false, stars: 3, modelDrift: false })
     expect(Object.values(record)).not.toContain(ABSENT)
   })

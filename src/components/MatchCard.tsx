@@ -9,6 +9,7 @@ import { formatScore } from '../utils/score'
 import AiVerdictBadges from './ai/AiVerdictBadges'
 import CautiousBadge from './CautiousBadge'
 import HighlightButton from './HighlightButton'
+import ModelSourceLine from './ModelSourceLine'
 import NoteBadges from './NoteBadges'
 import OutcomeBadge from './OutcomeBadge'
 import ReliabilityBadge from './ReliabilityBadge'
@@ -31,7 +32,7 @@ interface Props {
 }
 
 export default function MatchCard({ prediction, rank, sortMode, storySelection, shared }: Props) {
-  const { match, percent, stars, reliability, cautiousPercent, basis, categoryId, secondPercent, secondLabel, notes, market } =
+  const { match, percent, stars, reliability, cautiousPercent, basis, categoryId, secondPercent, secondLabel, secondSource, notes, market } =
     prediction
   const category = getCategory(categoryId)
   const summary = statSummary(match, categoryId)
@@ -75,11 +76,7 @@ export default function MatchCard({ prediction, rank, sortMode, storySelection, 
         </div>
         <div className="shrink-0 text-right">
           <p className="text-3xl leading-none font-black text-brand">%{percent}</p>
-          {secondPercent != null && (
-            <p className="mt-1 text-xs text-muted" data-testid="second-percent">
-              {secondLabel} <span className="font-bold text-white">%{secondPercent}</span>
-            </p>
-          )}
+          <ModelSourceLine categoryId={categoryId} secondPercent={secondPercent} secondLabel={secondLabel} secondSource={secondSource} />
           {market && market.percent !== null && (
             <p className="mt-1 text-xs text-muted" data-testid="market-percent">
               Piyasa <span className="font-bold text-white">%{market.percent}</span>

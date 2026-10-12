@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { startRankJob, type Ranks } from '../../services/stats/rankJob'
 import { buildDetailCsv, buildStatsSummary, detailFileName, fillRankSection, RANK_PENDING_TEXT, scopeData, SCOPE_OPTIONS, summaryFileName, type SummaryScope } from '../../services/stats/statsSummary'
 import { useApp } from '../../state/AppContext'
-import type { AiVerdict, Match, MatchResult, Pick, SharedPick } from '../../types'
+import type { AiVerdict, Match, MatchResult, Pick, SharedPick, Upload } from '../../types'
 import { copyText } from '../../utils/clipboard'
 import { shiftDate } from '../../utils/format'
 
@@ -14,6 +14,8 @@ interface Props {
   results: MatchResult[]
   verdicts: AiVerdict[]
   shared: SharedPick[]
+  /** CSV yüklemeleri (özetteki "türetme" bilgi satırı için yükleme zamanı); verilmezse o satır yazılmaz */
+  uploads?: Upload[]
 }
 
 const BUTTON = 'rounded-xl px-4 py-2.5 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-60'
@@ -35,7 +37,7 @@ interface RankRequest {
 }
 
 /** İstatistiklerin analiz için düz metin özeti ve ayrıntılı CSV. Hiçbir kaydı değiştirmez. */
-export default function StatsSummaryPanel({ picks, matches, dayMatches, results, verdicts, shared }: Props) {
+export default function StatsSummaryPanel({ picks, matches, dayMatches, results, verdicts, shared, uploads }: Props) {
   const { today, thresholds, marketConflictLimit } = useApp()
   const [kind, setKind] = useState<SummaryScope['kind']>('all')
   const [from, setFrom] = useState(() => shiftDate(today, -6))
@@ -45,8 +47,8 @@ export default function StatsSummaryPanel({ picks, matches, dayMatches, results,
 
   const scope: SummaryScope = useMemo(() => (kind === 'range' ? { kind, from, to } : { kind }), [kind, from, to])
   const base = useMemo(
-    () => ({ today, scope, picks, matches, results, verdicts, shared, marketConflictLimit }),
-    [today, scope, picks, matches, results, verdicts, shared, marketConflictLimit],
+    () => ({ today, scope, picks, matches, results, verdicts, shared, uploads, marketConflictLimit }),
+    [today, scope, picks, matches, results, verdicts, shared, uploads, marketConflictLimit],
   )
 
   // Sıra tablosu sayfa çizildikten sonra, arka planda ve yalnızca kapsamdaki günler için hesaplanır.

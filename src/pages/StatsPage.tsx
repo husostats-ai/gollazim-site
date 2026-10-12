@@ -17,7 +17,7 @@ import { getCategory, GROUPS } from '../config/categories'
 import { DATA_LABELS } from '../services/analysis/reliability'
 import { AI_CATEGORY_IDS } from '../config/ai'
 import { buildLegacyAiStats, buildPreMatchAiStats, statsMatchIds } from '../services/ai/aiStats'
-import { aiRepo, matchesRepo, picksRepo, resultsRepo, sharedRepo } from '../services/data'
+import { aiRepo, matchesRepo, picksRepo, resultsRepo, sharedRepo, uploadsRepo } from '../services/data'
 import { buildStarStats, recomputedNote } from '../services/stats/starStats'
 import { SCOPE_LABELS, sharedPicksOnly, type StatsScope } from '../services/story/shared'
 import { buildHtScorelessStats } from '../services/stats/htScoreless'
@@ -25,7 +25,7 @@ import { buildMainStats } from '../services/stats/mainStats'
 import { backfillMarket, buildMarketStats } from '../services/stats/marketStats'
 import { buildStats, LOW_SAMPLE_LIMIT, type Bucket } from '../services/stats/statsEngine'
 import { useApp } from '../state/AppContext'
-import type { AiVerdict, Match, MatchResult, Pick, SharedPick } from '../types'
+import type { AiVerdict, Match, MatchResult, Pick, SharedPick, Upload } from '../types'
 import { formatDateChip, formatDay, formatMonth, formatRate, formatWeek } from '../utils/format'
 
 type Period = 'daily' | 'weekly' | 'monthly'
@@ -82,6 +82,8 @@ export default function StatsPage() {
   const [results, setResults] = useState<MatchResult[]>([])
   const [period, setPeriod] = useState<Period>('daily')
   const [shared, setShared] = useState<SharedPick[]>([])
+  /** CSV yüklemeleri: özetteki "türetme" bilgi satırı yükleme zamanını buradan okur */
+  const [uploads, setUploads] = useState<Upload[]>([])
   /** Başarı tablolarının hangi öneriler üzerinden hesaplandığı; kalibrasyon kartlarını etkilemez */
   const [scope, setScope] = useState<StatsScope>('all')
 
@@ -100,6 +102,7 @@ export default function StatsPage() {
       if (!stale) setDayMatches(days)
     })
     void sharedRepo.listAll().then(setShared)
+    void uploadsRepo.list().then(setUploads)
     return () => {
       stale = true
     }
@@ -153,7 +156,7 @@ export default function StatsPage() {
           title="ANALİZ İÇİN ÖZET"
           note="İstatistiklerin düz metin özeti; bir yapay zekâ sohbetine yapıştırıp yorumlatmak için. Sayılar aşağıdaki tablolarla aynıdır ve Tümü / Paylaşılan geçişinden etkilenmez."
         >
-          <StatsSummaryPanel picks={picks} matches={legacyMatches} dayMatches={dayMatches} results={results} verdicts={verdicts} shared={shared} />
+          <StatsSummaryPanel picks={picks} matches={legacyMatches} dayMatches={dayMatches} results={results} verdicts={verdicts} shared={shared} uploads={uploads} />
         </Card>
       </div>
       {allStats.overall.total === 0 ? (

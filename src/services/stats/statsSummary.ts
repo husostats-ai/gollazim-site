@@ -1,7 +1,7 @@
 import Papa from 'papaparse'
 import { AI_CATEGORY_IDS, AI_DECISIONS, AI_PROVIDERS, decisionLabel } from '../../config/ai'
 import { CATEGORIES, categoriesInGroup, getCategory, type CategoryId } from '../../config/categories'
-import type { AiVerdict, Match, MatchResult, Pick, ScoreLine, SharedPick, Thresholds } from '../../types'
+import type { AiVerdict, Match, MatchResult, Pick, ScoreLine, SharedPick, Thresholds, Upload } from '../../types'
 import { toAppDateTime } from '../../utils/date'
 import { formatDay, formatNumber, formatRate, shiftDate } from '../../utils/format'
 import { AI_SOURCES, buildLegacyAiStats, buildPreMatchAiStats, type AiSource, type AiStats } from '../ai/aiStats'
@@ -11,6 +11,7 @@ import { stat } from '../analysis/stat'
 import { findActiveShared, sharedPicksOnly } from '../story/shared'
 import { buildMarginStats, MARGIN_BANDS } from './marginStats'
 import { backfillMarket, buildMarketStats } from './marketStats'
+import { buildGoalModelSourceStats, buildScoreSourceStats, buildSideGoalsSourceStats, deriveUnknownSources, MODEL_SOURCE_LABELS, SIDE_GOALS_SOURCE_LABELS } from './modelSourceStats'
 import { pickRanks, RANK_BANDS, rankStatsOf } from './rankStats'
 import { actualScore, buildScoreStats } from './scoreStats'
 import { buildStarStats, frozenStars, recomputedNote, STAR_LEVELS } from './starStats'
@@ -75,6 +76,11 @@ export interface SummaryInput {
   results?: MatchResult[]
   verdicts: AiVerdict[]
   shared: SharedPick[]
+  /**
+   * CSV yüklemeleri (yükleme zamanı için). Yalnızca "kaynağı bilinmeyen önerilerin maç kaydına göre
+   * dökümü" bilgi satırında kullanılır; verilmezse o satır yazılmaz.
+   */
+  uploads?: Upload[]
   thresholds: Thresholds
   marketConflictLimit: number
 }
@@ -263,6 +269,30 @@ export function buildStatsSummary(input: SummaryInput): string {
     )
   }
 
+  const modelSources = buildGoalModelSourceStats(picks)
+  if (modelSources) {
+    const derived = deriveUnknownSources(picks, input.matches, input.uploads)
+    out.push(
+      'Model kaynağına göre (dört kategori birlikte; son üç sütun: başarı · n):',
+      '',
+      table(
+        ['Model kaynağı', 'Hazır ort.', 'Model ort.', 'Gerçekleşen', 'Çelişkisiz', 'Çelişkili'],
+        modelSources.rows.map((r) => [MODEL_SOURCE_LABELS[r.key], formatRate(r.ready), formatRate(r.model), bandCell(r.tally), r.clear ? bandCell(r.clear) : '—', r.conflict ? bandCell(r.conflict) : '—']),
+      ),
+      '',
+      ...(derived && derived.total > 0
+        ? [
+            `Kaynağı bilinmeyen ${derived.total} önerinin maç kaydına göre dökümü (türetme, kayıt değil): xG ${derived.xg}, ort. gol ${derived.avgGoals}, doğrulanamayan ${derived.unverified}. Türetme yalnızca maç kaydı duruyorsa, düzenlenmemişse, CSV'si dondurmadan sonra yenilenmemişse ve yeniden hesaplanan Model % kayıtlıyla aynıysa yapılır; kayda yazılmaz ve tabloyu değiştirmez.`,
+            '',
+          ]
+        : []),
+      `${LOW_SAMPLE_LEGEND} Model kaynağı, öneri dondurulurken kayda yazılır: xG = iki takımın maç öncesi xG'si; ort. gol = xG olmadığı için maç başı gol ortalaması (daha zayıf yöntem; KG Var'da kullanılmaz); model yok = ikisi de yok, model hesaplanamadı (çelişki ölçülemez). "Bilinmiyor": kaynak kaydı eklenmeden önce dondurulmuş, model yüzdesi kayıtlı öneriler; hiçbir kaynağa karıştırılmaz.${
+        modelSources.unknownWithoutModel > 0 ? ` Ne kaynağı ne model yüzdesi kayıtlı olan ${modelSources.unknownWithoutModel} eski öneri bu tabloya girmez.` : ''
+      }`,
+      '',
+    )
+  }
+
   const market = buildMarketStats(backfillMarket(picks, input.matches, input.marketConflictLimit))
   out.push('## Kalibrasyon: hazır yüzde ve piyasa', '')
   if (!market) out.push('Piyasa yüzdesi olan öneri yok.', '')
@@ -295,6 +325,15 @@ export function buildStatsSummary(input: SummaryInput): string {
       ),
       '',
       table(['xG çelişkisi', 'Başarı'], stats.sideGoals.byConflict.map((b) => [b.key === 'conflict' ? 'Çelişkili' : 'Çelişkisiz', rateCell(b.tally)])),
+      '',
+      'Ana hesabın kaynağına göre (Gerçekleşen: başarı · n):',
+      '',
+      table(
+        ['Ana hesap', 'Ort. tahmin', 'xG modeli ort.', 'Gerçekleşen'],
+        buildSideGoalsSourceStats(picks).map((r) => [SIDE_GOALS_SOURCE_LABELS[r.key], formatRate(r.predicted), formatRate(r.second), bandCell(r.tally)]),
+      ),
+      '',
+      `${LOW_SAMPLE_LEGEND} Ana hesabın kaynağı, önerinin dondurulduğu andaki kayıtlı güvenilirliğinden okunur. Kısmi piyasada toplam gol xG ve gol ortalamasından tahmin edilir; hangisinin kullanıldığı kayıtlı değildir. xG modeli (ikinci hesap) yalnızca xG'dendir; ortalaması, kayıtlı olduğu öneriler üzerindendir.`,
       '',
     )
   }
@@ -357,6 +396,20 @@ export function buildStatsSummary(input: SummaryInput): string {
     }`,
     '',
   )
+  const scoreSources = buildScoreSourceStats(input.matches.filter((m) => inScope(m.date, bounds)), input.results ?? [])
+  if (scoreSources.length > 0) {
+    out.push(
+      'Modelin kaynağına göre:',
+      '',
+      table(
+        ['Kaynak', 'Tam skor', 'Sonuç (1/X/2)', 'Toplam gol ort. hata', 'n'],
+        scoreSources.map((r) => [r.label, formatRate(r.exact), formatRate(r.outcome), r.totalGoalsError === null ? '—' : formatNumber(r.totalGoalsError), `${r.n}${r.lowSample ? '*' : ''}`]),
+      ),
+      '',
+      `${LOW_SAMPLE_LEGEND} Kaynak, maç ilk "tamamlandı" kaydedilirken alınan anlık görüntüde kayıtlıdır; satırların toplamı yukarıdaki "Model" satırıdır.`,
+      '',
+    )
+  }
 
   const cornerIds = categoriesInGroup('corners').map((c) => c.id)
   const cardIds = categoriesInGroup('cards').map((c) => c.id)

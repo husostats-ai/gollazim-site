@@ -77,6 +77,8 @@ export const sideGoals = (line: SideGoalsLine): Calculator => ({
       percent: result.percent,
       extras: {
         secondPercent: result.secondPercent,
+        // İkinci hesap yalnızca xG'dendir; xG yoksa (ya da ana hesap zaten xG ise) yapılmaz.
+        secondSource: result.secondPercent !== null ? 'xg' : 'none',
         conflict: result.conflict,
         basis: SOURCE_LABELS[result.source],
         // Yalnızca xG'ye düşen maçta mevcut örneklem rozeti kullanılır.

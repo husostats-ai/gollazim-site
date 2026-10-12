@@ -17,6 +17,7 @@ export const PICK_FIELDS: (keyof Pick)[] = [
   'reliability',
   'conflict',
   'secondPercent',
+  'modelSource',
   'marketPercent',
   'marketConflict',
   'stars',

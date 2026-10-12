@@ -65,6 +65,7 @@ export function buildPicksForResult({
       reliability: prediction.reliability.level,
       ...(prediction.conflict !== undefined && { conflict: prediction.conflict }),
       ...(prediction.secondPercent !== undefined && { secondPercent: prediction.secondPercent }),
+      ...(prediction.secondSource !== undefined && { modelSource: prediction.secondSource }),
       ...(prediction.market && frozenMarket(prediction.market)),
       stars: prediction.stars,
       ...(prediction.modelDrift !== undefined && { modelDrift: prediction.modelDrift }),

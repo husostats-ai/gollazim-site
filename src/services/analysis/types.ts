@@ -11,10 +11,20 @@ export interface PredictionNote {
   title: string
 }
 
+/**
+ * İkinci hesabın (Model % / xG modeli) dayandığı veri. Yalnızca bilgidir: hesabı, yüzdeyi,
+ * yıldızı ve sırayı etkilemez.
+ * xg: iki takımın maç öncesi xG'si. avgGoals: xG yok, maç başı gol ortalamasına düşüldü
+ * (daha zayıf yöntem). none: ikisi de yok, ikinci hesap yapılamadı.
+ */
+export type ModelSource = 'xg' | 'avgGoals' | 'none'
+
 /** Hesaplayıcının yüzde dışında verebildiği ek bilgiler */
 export interface CalcExtras {
   /** Farklı bir yöntemle (xG) hesaplanan ikinci yüzde */
   secondPercent?: number | null
+  /** İkinci yüzdenin dayandığı veri; ikinci hesabı olan kategorilerde verilir */
+  secondSource?: ModelSource
   /** İkinci yüzdenin kartta görünen adı; verilmezse "xG modeli" */
   secondLabel?: string
   /** İki yüzde arasındaki fark çelişki sınırını aşıyor */
@@ -74,6 +84,8 @@ export interface Prediction {
   basis: string
   /** Yalnızca ikinci hesabı olan kategorilerde (Taraf & Gol, ana gol kategorileri) */
   secondPercent?: number | null
+  /** İkinci hesabın dayandığı veri (yalnızca bilgi; kartta ve dondurulan kayıtta görünür) */
+  secondSource?: ModelSource
   secondLabel: string
   conflict?: boolean
   notes: PredictionNote[]

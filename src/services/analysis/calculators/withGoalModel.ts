@@ -16,7 +16,7 @@ export const withGoalModel = (base: Calculator, categoryId: CategoryId): Calcula
     const result = base.calculate(match)
     if (!result.ok) return result
     const model = goalModelPercent(match, categoryId)
-    if (!model) return { ...result, extras: { ...result.extras, secondPercent: null, secondLabel: MODEL_LABEL } }
+    if (!model) return { ...result, extras: { ...result.extras, secondPercent: null, secondSource: 'none', secondLabel: MODEL_LABEL } }
 
     const conflict = Math.abs(result.percent - model.percent) > MODEL_CONFLICT_LIMIT
     const notes: PredictionNote[] = []
@@ -40,7 +40,7 @@ export const withGoalModel = (base: Calculator, categoryId: CategoryId): Calcula
     }
     return {
       ...result,
-      extras: { ...result.extras, secondPercent: model.percent, secondLabel: MODEL_LABEL, conflict, maxStars, notes },
+      extras: { ...result.extras, secondPercent: model.percent, secondSource: model.source, secondLabel: MODEL_LABEL, conflict, maxStars, notes },
     }
   },
 })
