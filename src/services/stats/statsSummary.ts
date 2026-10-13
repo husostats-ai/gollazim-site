@@ -1,6 +1,7 @@
 import Papa from 'papaparse'
 import { AI_CATEGORY_IDS, AI_DECISIONS, AI_PROVIDERS, decisionLabel } from '../../config/ai'
 import { CATEGORIES, categoriesInGroup, getCategory, type CategoryId } from '../../config/categories'
+import { MAIN_CATEGORY_IDS } from '../../config/mainCategories'
 import type { AiVerdict, Match, MatchResult, Pick, ScoreLine, SharedPick, Thresholds, Upload } from '../../types'
 import { toAppDateTime } from '../../utils/date'
 import { formatDay, formatNumber, formatRate, shiftDate } from '../../utils/format'
@@ -9,6 +10,7 @@ import { MODEL_CONFLICT_LIMIT } from '../analysis/goalModel'
 import { RELIABILITY_LABELS, SAMPLE_HINT } from '../analysis/reliability'
 import { stat } from '../analysis/stat'
 import { findActiveShared, sharedPicksOnly } from '../story/shared'
+import { buildCompetitionStats, COMPETITION_LABELS } from './competitionStats'
 import { buildMarginStats, MARGIN_BANDS } from './marginStats'
 import { backfillMarket, buildMarketStats } from './marketStats'
 import { buildGoalModelSourceStats, buildScoreSourceStats, buildSideGoalsSourceStats, deriveUnknownSources, MODEL_SOURCE_LABELS, SIDE_GOALS_SOURCE_LABELS } from './modelSourceStats'
@@ -184,6 +186,31 @@ export function buildStatsSummary(input: SummaryInput): string {
       ['Kategori', 'Sonuçlanan', 'Tutan', 'Başarı', 'Az veri', 'Değerlendirilemedi', 'Bekliyor'],
       stats.byCategory.map((b) => [getCategory(b.key).label, b.tally.decided, b.tally.won, formatRate(b.tally.rate), lowMark(b.tally), b.tally.void, b.tally.pending]),
     ),
+    '',
+  )
+
+  const competitions = buildCompetitionStats(picks, input.matches)
+  out.push('## Lig türüne göre başarı', '')
+  out.push(
+    table(
+      ['Tür', 'Sonuçlanan', 'Tutan', 'Başarı', 'Az veri', ...MAIN_CATEGORY_IDS.map((id) => getCategory(id).label), 'Hazır ort.', 'Fark (gerçekleşen − hazır)', 'Beklenen (yaklaşık)', 'Düzeltilmiş fark (yaklaşık)'],
+      competitions.map((r) => [
+        r.key === 'all' ? 'Tüm türler' : COMPETITION_LABELS[r.key],
+        r.tally.decided,
+        r.tally.won,
+        formatRate(r.tally.rate),
+        lowMark(r.tally),
+        ...r.main.map(bandCell),
+        formatRate(r.ready),
+        signed(r.gap),
+        formatRate(r.expected),
+        signed(r.adjustedGap),
+      ]),
+    ),
+    '',
+    `${LOW_SAMPLE_LEGEND} Ana kategori hücreleri: başarı · n. Tür öneride saklanmaz; maçın ülke / lig adından ve takım adlarından türetilir (öncelik: gençlik > rezerv > milli takım > kupa > lig) ve yanlış sınıflanmış lig olabilir. Türe düşen benzersiz lig ve önerili maç: ${competitions
+      .flatMap((r) => (r.key === 'all' ? [] : [`${COMPETITION_LABELS[r.key]} ${r.leagues} lig, ${r.matches} maç`]))
+      .join('; ')}. Hazır ort.: sonuçlanmış önerilerin dondurma anındaki yüzdesinin ortalaması (Taraf & Gol'de model tahmini). Beklenen: türün her sonuçlanmış önerisine kendi kategorisinin bu kapsamdaki genel başarısı verilerek bulunan ortalama; düzeltilmiş fark = gerçekleşen − beklenen, türün kategori karışımından arındırılmış farkıdır. Yaklaşıktır: kategori başarısı türün kendi önerilerini de içerir; büyük tür sıfıra yaklaşır. Aynı maçın önerileri bağımsız değildir.`,
     '',
   )
 

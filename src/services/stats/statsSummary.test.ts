@@ -654,3 +654,56 @@ describe('özet: sıraya ve eşik üstü puana göre başarı', () => {
     expect(parts).not.toMatch(/sira\d|Ev \d|Dep \d|kek|idKey/)
   })
 })
+
+describe('özet: lig türüne göre başarı', () => {
+  const NAME = 'Lig türüne göre başarı'
+  // İlk 12 öneri (2.5 Üst, tuttu) milli takım maçı, sonraki 9'u (2.5 Üst, tutmadı) gençlik; kalanı EFL Trophy (kupa)
+  const typedMatches = matches.map((m, i) => (i < 12 ? { ...m, league: 'International · UEFA Nations League' } : i < 21 ? { ...m, away: `${m.away} U21` } : m))
+  const text = buildStatsSummary(input({ kind: 'all' }, { matches: typedMatches }))
+  const body = section(text, NAME)
+
+  it('"Kategori başarısı"ndan sonra, "Veri güvenilirliğine göre başarı"dan önce gelir', () => {
+    const at = (title: string) => text.indexOf(`## ${title}`)
+    expect(at('Kategori başarısı')).toBeLessThan(at(NAME))
+    expect(at(NAME)).toBeLessThan(at('Veri güvenilirliğine göre başarı'))
+  })
+
+  it('tür satırları: sonuçlanan, tutan, başarı, az veri; toplam satırı genel toplamla aynı', () => {
+    expect(row(body, 'Milli takım').slice(1, 5)).toEqual(['12', '12', '%100', 'az veri'])
+    expect(row(body, 'Gençlik / U-takım').slice(1, 5)).toEqual(['9', '0', '%0', 'az veri'])
+    const { overall } = buildStats(picks)
+    expect(row(body, 'Tüm türler').slice(1, 5)).toEqual([String(overall.decided), String(overall.won), formatRate(overall.rate), ''])
+    const typed = ['Gençlik / U-takım', 'Milli takım', 'Kupa (kulüp)'].map((label) => row(body, label))
+    expect(typed.reduce((sum, r) => sum + Number(r[1]), 0)).toBe(overall.decided)
+    expect(typed.reduce((sum, r) => sum + Number(r[2]), 0)).toBe(overall.won)
+    expect(body).not.toContain('| Lig (yetişkin) |')
+  })
+
+  it('ana kategori hücreleri "başarı · n", az veride *; fark sütunları işaretli puan', () => {
+    const header = row(body, 'Tür')
+    expect(header.slice(5, 8)).toEqual(['2.5 ÜST', 'KG VAR', 'İLK YARI 0.5 ÜST'])
+    expect(header.slice(8)).toEqual(['Hazır ort.', 'Fark (gerçekleşen − hazır)', 'Beklenen (yaklaşık)', 'Düzeltilmiş fark (yaklaşık)'])
+    expect(row(body, 'Milli takım').slice(5)).toEqual(['%100 · n=12*', '—', '—', '%90', '+10 puan', '%57,1', '+42,9 puan'])
+    expect(row(body, 'Tüm türler')[5]).toBe('%57,1 · n=21')
+    expect(row(body, 'Tüm türler')[11]).toBe('0 puan')
+  })
+
+  it('not: benzersiz lig sayısı ve "yaklaşık" uyarısı; lig adı yazılmaz', () => {
+    expect(body).toContain('Milli takım 1 lig, 12 maç')
+    expect(body).toContain('kategori başarısı türün kendi önerilerini de içerir; büyük tür sıfıra yaklaşır')
+    expect(body).not.toContain('Nations League')
+    expect(body).not.toContain('EFL Trophy')
+    expect(text).not.toMatch(/Ev \d|Dep \d/)
+  })
+
+  it('kapsam uygulanır; maç kaydı olmayan öneri "bilinmiyor" satırındadır', () => {
+    const week = section(buildStatsSummary(input({ kind: 'last7' }, { matches: typedMatches })), NAME)
+    expect(row(week, 'Tüm türler')[1]).toBe(String(buildStats(picks.filter((p) => p.date >= '2026-10-04')).overall.decided))
+    const none = section(buildStatsSummary(input({ kind: 'all' }, { matches: [] })), NAME)
+    expect(row(none, 'Bilinmiyor (maç kaydı yok)')[1]).toBe(row(none, 'Tüm türler')[1])
+  })
+
+  it('sonuçlanmış öneri yokken bölüm yazılmaz', () => {
+    expect(buildStatsSummary(input({ kind: 'all' }, { picks: [pick('pending', 'over25', '2026-10-09')] }))).not.toContain(NAME)
+  })
+})
