@@ -90,6 +90,24 @@ export const MEMBER_STREAK_TEXTS = {
   note: 'İstatistik takibidir, bahis tavsiyesi değildir. 18+',
 } as const
 
+/**
+ * "İY 0.5 ÜST tutmadığında 2. yarı" kutusunun metinleri. Yalnızca geçmiş maçların sayımını anlatır;
+ * ileriye dönük bir ifade içermez.
+ */
+export const MEMBER_HT_SCORELESS_TEXT = {
+  title: 'İY 0.5 ÜST TUTMADIĞINDA 2. YARI',
+  intro: 'İLK YARI 0.5 ÜST listesinde yer alan maçlardan ilk yarısı 0-0 bitenler.',
+  trial: '⚠ Deneme aşamasında · az örnek',
+  lowSample: '⚠ az örnek',
+  empty: 'Henüz ilk yarısı 0-0 biten maç yok.',
+  matches: (n: number) => `${n} maç`,
+  ratio: (over: number, n: number) => `${over} / ${n} maç`,
+  counted: (n: number, min: number) => `İlk yarısı 0-0 biten ${n} maç ölçüldü. Yüzde, en az ${min} maç ölçülünce gösterilecek.`,
+  result: (over: number, n: number) => `İlk yarısı 0-0 biten ${n} maçın ${over} tanesinde 2. yarıda en az 2 gol oldu.`,
+  lowSampleNote: 'Maç sayısı az; bu yüzde tesadüfen yüksek ya da düşük çıkmış olabilir.',
+  note: 'Geçmiş maçların sayımıdır; ölçümdür, tavsiye değildir.',
+} as const
+
 /** Seri adımının durumu: işaretler sonuç rozetleriyle aynıdır */
 export const MEMBER_STREAK_STATES: Record<MemberStreakState, { mark: string; label: string }> = {
   won: { mark: '✓', label: 'Tuttu' },

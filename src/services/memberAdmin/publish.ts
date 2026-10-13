@@ -168,7 +168,9 @@ export async function draftPublication(sources: PublishSources, options: { day: 
   const [streakMatches, streakResults] = await Promise.all([sources.listMatchesByIds(streakMatchIds), sources.listResultsByMatchIds(streakMatchIds)])
   const streakWanted = new Set(streakSteps.map((s) => s.id))
   const streak = streakInputOf(buildStreak(streakSteps, factsFrom({ matches: streakMatches, results: streakResults, picks: picks.filter((p) => streakWanted.has(p.id)) })), streakMatches)
-  const input: MemberPayloadInput = { n: options.n, publishedAt: options.publishedAt, texts: options.texts, thresholds, marketConflictLimit, days: dayData.map((d) => ({ date: d.date, matches: d.matches, results: d.results, highlights: d.highlights, ai: d.ai.inputs })), leagueTables, leagueTableSnapshots, teamAliases, picks, shared, streak }
+  // "İY 0.5 ÜST tutmadığında 2. yarı" sayımı güne bağlı değildir: o önerilerin skorları, günü pakette olmasa da okunur.
+  const htResults = await sources.listResultsByMatchIds([...new Set(picks.filter((p) => p.categoryId === 'ht05').map((p) => p.matchId))])
+  const input: MemberPayloadInput = { n: options.n, publishedAt: options.publishedAt, texts: options.texts, thresholds, marketConflictLimit, days: dayData.map((d) => ({ date: d.date, matches: d.matches, results: d.results, highlights: d.highlights, ai: d.ai.inputs })), leagueTables, leagueTableSnapshots, teamAliases, picks, results: htResults, shared, streak }
   const full = buildMemberPublication(input)
   // Listeler paket kurulurken hesaplandığı için boş günler ancak şimdi bilinir.
   const keep = dayData.map((d, i) => i === 0 || full.payload.days[i].lists.some((list) => list.items.length > 0) || d.highlights.length > 0)

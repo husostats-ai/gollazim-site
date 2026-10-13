@@ -3,8 +3,9 @@ import EmptyState from '../components/EmptyState'
 import PageTitle from '../components/PageTitle'
 import { CHART } from '../components/stats/chartTheme'
 import type { ReliabilityLevel } from '../services/analysis/types'
-import { MEMBER_RELIABILITY_LABELS } from '../services/member/labels'
-import type { MemberBucket, MemberPayload, MemberTally } from '../services/member/payload'
+import { MEMBER_HT_SCORELESS_TEXT as HT, MEMBER_RELIABILITY_LABELS } from '../services/member/labels'
+import type { MemberBucket, MemberHtScoreless, MemberPayload, MemberTally } from '../services/member/payload'
+import { MEMBER_HT_SCORELESS } from '../services/member/schema'
 import { formatDay, formatMonth, formatRate, formatWeek } from '../utils/format'
 import { categoryLabel } from './view'
 
@@ -120,6 +121,37 @@ function Figure({ label, value }: { label: string; value: number }) {
   )
 }
 
+const BADGE = 'inline-flex items-center rounded-full border border-warn-line bg-warn-soft px-1.5 py-0.5 text-[10px] font-bold text-warn'
+
+/**
+ * "İY 0.5 ÜST tutmadığında 2. yarı": paketteki iki sayıyı gösterir. Az maçta (over null) oran
+ * yazılmaz, yalnızca ölçülen maç sayısı görünür.
+ */
+function HtScoreless({ stats }: { stats: MemberHtScoreless }) {
+  const { n, over } = stats
+  if (n === 0) return <p className="text-sm" data-testid="member-ht-text">{HT.empty}</p>
+  const shown = over !== null && n >= MEMBER_HT_SCORELESS.min
+  return (
+    <>
+      <div className="flex flex-wrap items-end gap-x-3 gap-y-1.5">
+        <p className="text-4xl leading-none font-black" data-testid="member-ht-main">
+          {shown ? formatRate(Math.round((over / n) * 1000) / 10) : HT.matches(n)}
+        </p>
+        <p className="flex min-w-0 flex-wrap items-center gap-1.5 pb-0.5 text-sm text-muted">
+          {shown && <span data-testid="member-ht-ratio">· {HT.ratio(over, n)}</span>}
+          {!shown && <span className={BADGE} data-testid="member-ht-trial">{HT.trial}</span>}
+          {shown && n < MEMBER_HT_SCORELESS.low && <span className={`${BADGE} whitespace-nowrap`} data-testid="member-ht-low">{HT.lowSample}</span>}
+        </p>
+      </div>
+      <p className="mt-2 text-sm" data-testid="member-ht-text">
+        {shown ? HT.result(over, n) : HT.counted(n, MEMBER_HT_SCORELESS.min)}
+        {shown && n < MEMBER_HT_SCORELESS.low && ` ${HT.lowSampleNote}`}
+      </p>
+      <p className="mt-2 text-xs text-muted">{HT.note}</p>
+    </>
+  )
+}
+
 const rowsOf = (buckets: MemberBucket[], label: (key: string) => string): Row[] => buckets.map((b) => ({ key: b.key, label: label(b.key), tally: b.tally }))
 
 export default function MemberStatsPage({ payload, initialScope = 'all', initialPeriod = 'daily' }: { payload: MemberPayload; initialScope?: Scope; initialPeriod?: Period }) {
@@ -190,6 +222,12 @@ export default function MemberStatsPage({ payload, initialScope = 'all', initial
           {stats.stars.byCategory.length > 0 && (
             <Card title="YILDIZ SAYISINA GÖRE BAŞARI">
               <Bars rows={rowsOf(stats.stars.byStars, (key) => `${key} yıldız`)} />
+            </Card>
+          )}
+
+          {stats.htScoreless && (
+            <Card title={HT.title} note={HT.intro} testId="member-ht-card">
+              <HtScoreless stats={stats.htScoreless} />
             </Card>
           )}
 

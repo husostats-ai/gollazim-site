@@ -7,11 +7,12 @@ import { highlightOutcome } from '../highlights/highlights'
 import type { Prediction, ReliabilityLevel } from '../analysis/types'
 import { matchForms, matchStandings, type StandingInfo, type TeamForm } from '../league/standing'
 import { resultDetail } from '../stats/categoryResult'
+import { buildHtScorelessStats } from '../stats/htScoreless'
 import { buildMainStats } from '../stats/mainStats'
 import { buildStarStats } from '../stats/starStats'
 import { buildStats, type Bucket, type Tally } from '../stats/statsEngine'
 import { sharedPicksOnly } from '../story/shared'
-import { assertMemberPayload, MEMBER_STREAK_LIMITS } from './schema'
+import { assertMemberPayload, MEMBER_HT_SCORELESS, MEMBER_STREAK_LIMITS } from './schema'
 
 // Üye sayfasına giden yayın paketi. İZİNLİ ALAN LİSTESİDİR: paket, kayıt nesnelerinden
 // (Match, Prediction, Pick…) kopyalanmaz; her alan aşağıda adıyla, tek tek yazılarak
@@ -36,12 +37,14 @@ import { assertMemberPayload, MEMBER_STREAK_LIMITS } from './schema'
  * 8: "seri takibi" (streak) var: aktif serinin adımları, geçmiş seriler ve sayılar.
  * 9: maçlarda lig tablosundan form, gol ve "gol yemediği maç" (homeForm, awayForm) bulunabilir;
  *    alanlar yalnızca doluyken yazılır.
+ * 10: istatistiklerde "İY 0.5 ÜST tutmadığında 2. yarı" sayımı (htScoreless) var: yalnızca iki sayı.
  * Sürüm 1 (others alanı olmayan), sürüm 2 (main alanı olmayan), sürüm 3 (highlights alanı olmayan),
  * sürüm 4 (sample alanı olmayan), sürüm 5 (ai alanı olmayan), sürüm 6 (ai alanı maçta olan) ve
- * sürüm 7 (streak alanı olmayan) ve sürüm 8 (form alanları olmayan) paketler üye sayfasında hâlâ açılır;
+ * sürüm 7 (streak alanı olmayan), sürüm 8 (form alanları olmayan) ve sürüm 9 (htScoreless alanı olmayan)
+ * paketler üye sayfasında hâlâ açılır;
  * sürüm 6'daki maç geneli satır gösterilmez.
  */
-export const MEMBER_PAYLOAD_VERSION = 9
+export const MEMBER_PAYLOAD_VERSION = 10
 
 /** Günlük dökümde pakete giren en fazla gün sayısı (en yeniler) */
 export const MEMBER_DAILY_LIMIT = 90
@@ -93,6 +96,17 @@ export interface MemberStats {
     recomputed: number
     missing: number
   }
+  /**
+   * "İY 0.5 ÜST tutmadığında 2. yarı": İY 0.5 ÜST listesindeki maçlardan ilk yarısı 0-0 bitenler (n) ve
+   * bunlardan 2. yarıda en az 2 gol olanlar (over). n, MEMBER_HT_SCORELESS.min'den azsa over null'dır:
+   * oran gösterilmez ve paketten de çıkarılamaz. Sürüm 1-9 paketlerde bu alan yoktur.
+   */
+  htScoreless?: MemberHtScoreless
+}
+
+export interface MemberHtScoreless {
+  n: number
+  over: number | null
 }
 
 /** Yapıştırılan lig tablosundan: "N. sıra · M maç" */
@@ -301,7 +315,7 @@ export interface MemberStreak {
 }
 
 export interface MemberPayload {
-  v: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | typeof MEMBER_PAYLOAD_VERSION
+  v: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | typeof MEMBER_PAYLOAD_VERSION
   /** Yayın numarası */
   n: number
   /** Yayın anı (ISO) */
@@ -377,6 +391,11 @@ export interface MemberPayloadInput {
   teamAliases: TeamAlias[]
   /** Tüm dondurulmuş öneriler (sonuçlar ve istatistik için) */
   picks: Pick[]
+  /**
+   * İY 0.5 ÜST önerilerinin maçlarının girilmiş skorları (günü pakette olmayanlar dahil). Yalnızca
+   * "İY 0.5 ÜST tutmadığında 2. yarı" sayımında kullanılır, pakete girmez. Verilmezse günlerin skorları kullanılır.
+   */
+  results?: MatchResult[]
   shared: SharedPick[]
   /** Seri takibi; verilmezse boş seri yazılır */
   streak?: MemberStreakInput
@@ -396,10 +415,11 @@ const tallyOf = (t: Tally): MemberTally => ({
 const bucketsOf = (buckets: Bucket[]): MemberBucket[] => buckets.map((b) => ({ key: b.key, tally: tallyOf(b.tally) }))
 
 /** Kapsamdaki önerilerden istatistik sayfasının değerleri; kalibrasyon dökümleri alınmaz. */
-function statsOf(picks: Pick[]): MemberStats {
+function statsOf(picks: Pick[], results: MatchResult[]): MemberStats {
   const stats = buildStats(picks)
   const stars = buildStarStats(picks)
   const main = buildMainStats(picks)
+  const ht = buildHtScorelessStats(picks, results)
   return {
     main: {
       categories: main.categories.map((id) => id),
@@ -419,6 +439,8 @@ function statsOf(picks: Pick[]): MemberStats {
       recomputed: stars.recomputed,
       missing: stars.missing,
     },
+    // Az maçta "over" yazılmaz: oran üye sayfasında gösterilmediği gibi paketten de hesaplanamaz.
+    htScoreless: { n: ht.scoreless, over: ht.scoreless < MEMBER_HT_SCORELESS.min ? null : ht.over },
   }
 }
 
@@ -553,6 +575,7 @@ export const buildMemberPayload = (input: MemberPayloadInput): MemberPayload => 
 export function buildMemberPublication(input: MemberPayloadInput): { payload: MemberPayload; aiSent: SentAiKey[] } {
   const now = new Date(input.publishedAt)
   const aiSent: SentAiKey[] = []
+  const results = input.results ?? input.days.flatMap((day) => day.results)
   const payload: MemberPayload = {
     v: MEMBER_PAYLOAD_VERSION,
     n: input.n,
@@ -560,8 +583,8 @@ export function buildMemberPublication(input: MemberPayloadInput): { payload: Me
     texts: { disclaimer: input.texts.disclaimer, account: input.texts.account },
     days: input.days.map((day) => dayOf(input, day, now, aiSent)),
     statistics: {
-      all: statsOf(input.picks),
-      shared: statsOf(sharedPicksOnly(input.picks, input.shared)),
+      all: statsOf(input.picks, results),
+      shared: statsOf(sharedPicksOnly(input.picks, input.shared), results),
     },
     streak: streakOf(input.streak ?? EMPTY_STREAK),
   }

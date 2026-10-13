@@ -44,7 +44,9 @@ export const MEMBER_KEYS = {
   itemV1: ['match', 'percent', 'model', 'conflict', 'stars', 'reliability', 'outcome', 'detail'],
   other: ['categoryId', 'percent', 'reliability'],
   statsRoot: ['all', 'shared'],
-  stats: ['main', 'overall', 'matches', 'byCategory', 'byReliability', 'daily', 'weekly', 'monthly', 'stars'],
+  stats: ['main', 'overall', 'matches', 'byCategory', 'byReliability', 'daily', 'weekly', 'monthly', 'stars', 'htScoreless'],
+  /** Sürüm 3-9 paketlerdeki istatistik (htScoreless alanı yok) */
+  statsV9: ['main', 'overall', 'matches', 'byCategory', 'byReliability', 'daily', 'weekly', 'monthly', 'stars'],
   /** Sürüm 1 ve 2 paketlerdeki istatistik (main alanı yok) */
   statsV2: ['overall', 'matches', 'byCategory', 'byReliability', 'daily', 'weekly', 'monthly', 'stars'],
   main: ['categories', 'overall', 'matches'],
@@ -53,6 +55,8 @@ export const MEMBER_KEYS = {
   tally: ['won', 'lost', 'void', 'pending', 'decided', 'total', 'rate', 'lowSample'],
   stars: ['byStars', 'byCategory', 'recomputed', 'missing'],
   starsCategory: ['key', 'byStars'],
+  /** İY 0.5 ÜST listesindeki maçlardan ilk yarısı 0-0 bitenler: yalnızca iki sayı */
+  htScoreless: ['n', 'over'],
 } as const
 
 export const MEMBER_RELIABILITY_LEVELS = ['low', 'medium', 'high', 'unknown', 'unmeasured', 'market', 'market-partial'] as const
@@ -66,6 +70,12 @@ const MAX_DAYS = 7
  * eşiklerle (8 ve 16) aynıdır; bu dosya üye sitesine girdiği için analiz kodu içe aktarılmaz,
  * eşitlik testle denetlenir.
  */
+/**
+ * "İY 0.5 ÜST tutmadığında 2. yarı" kutusunun eşikleri (ölçülen maç sayısı, N). min: bundan az
+ * maçta oran gösterilmez ve "over" pakete yazılmaz (null). low: bundan az maçta "az örnek" uyarısı kalır.
+ */
+export const MEMBER_HT_SCORELESS = { min: 20, low: 50 } as const
+
 export const SAMPLE_RANGE = { min: 2, max: 40 } as const
 export const SAMPLE_LEVEL_LIMITS = { medium: 8, high: 16 } as const
 const levelOfSample = (sample: number): string => (sample >= SAMPLE_LEVEL_LIMITS.high ? 'high' : sample >= SAMPLE_LEVEL_LIMITS.medium ? 'medium' : 'low')
@@ -170,7 +180,7 @@ function matchCounts(value: unknown, path: string): void {
 }
 
 function stats(value: unknown, path: string, version: number): void {
-  const s = object(value, path, version >= 3 ? MEMBER_KEYS.stats : MEMBER_KEYS.statsV2)
+  const s = object(value, path, version >= 10 ? MEMBER_KEYS.stats : version >= 3 ? MEMBER_KEYS.statsV9 : MEMBER_KEYS.statsV2)
   if (version >= 3) {
     const main = object(s.main, `${path}.main`, MEMBER_KEYS.main)
     const ids = array(main.categories, `${path}.main.categories`, CATEGORIES.length).map((id, i) => categoryKey(id, `${path}.main.categories[${i}]`))
@@ -195,6 +205,14 @@ function stats(value: unknown, path: string, version: number): void {
   })
   integer(st.recomputed, `${path}.stars.recomputed`, 0, COUNT_MAX)
   integer(st.missing, `${path}.stars.missing`, 0, COUNT_MAX)
+  if (version >= 10) {
+    const ht = object(s.htScoreless, `${path}.htScoreless`, MEMBER_KEYS.htScoreless)
+    const n = integer(ht.n, `${path}.htScoreless.n`, 0, COUNT_MAX)
+    // Az maçta oran gösterilmez; pakette de bulunmamalıdır ki sayılardan çıkarılamasın.
+    if (n < MEMBER_HT_SCORELESS.min) {
+      if (ht.over !== null) fail(`${path}.htScoreless.over`, `${MEMBER_HT_SCORELESS.min}'den az maçta null bekleniyor`)
+    } else integer(ht.over, `${path}.htScoreless.over`, 0, n)
+  }
 }
 
 function standing(value: unknown, path: string): void {
@@ -379,7 +397,7 @@ function streak(value: unknown, path: string): void {
 /** Paketi şemaya karşı denetler; uymuyorsa MemberPayloadError fırlatır. */
 export function assertMemberPayload(value: unknown): asserts value is MemberPayload {
   const version = typeof value === 'object' && value !== null ? (value as Obj).v : undefined
-  if (version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8 && version !== 9) fail('paket.v', 'desteklenmeyen paket sürümü')
+  if (version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8 && version !== 9 && version !== 10) fail('paket.v', 'desteklenmeyen paket sürümü')
   const p = object(value, 'paket', (version as number) >= 8 ? MEMBER_KEYS.payload : MEMBER_KEYS.payloadV7)
   integer(p.n, 'paket.n', 1, COUNT_MAX)
   text(p.publishedAt, 'paket.publishedAt', 24, ISO)

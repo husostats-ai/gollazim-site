@@ -7,7 +7,7 @@ import { DEFAULT_MEMBER_TEXTS } from '../config/memberTexts'
 import { MEMBER_STALE_HOURS } from '../config/member'
 import { DAY, dayHighlights, HIGHLIGHT_PERCENT, memberInput, PREVIOUS_DAY, PUBLISHED_AT } from '../services/member/__fixtures__/rawData'
 import type { MemberErrorKind } from '../services/member/controller'
-import { MEMBER_ERROR_TEXTS, MEMBER_HIGHLIGHT_TEXTS, MEMBER_NOTICE_TEXTS, MEMBER_STREAK_TEXTS, STALE_DATA_TEXT } from '../services/member/labels'
+import { MEMBER_ERROR_TEXTS, MEMBER_HIGHLIGHT_TEXTS, MEMBER_HT_SCORELESS_TEXT, MEMBER_NOTICE_TEXTS, MEMBER_STREAK_TEXTS, STALE_DATA_TEXT } from '../services/member/labels'
 import { buildMemberPayload } from '../services/member/payload'
 import { assertMemberPayload } from '../services/member/schema'
 import { formatRate } from '../utils/format'
@@ -390,6 +390,7 @@ describe('kategori listeleri ve üye kartı', () => {
     ;(v6 as { v: number }).v = 6
     delete v6.streak
     for (const d of v6.days) for (const m of d.matches) { delete m.homeForm; delete m.awayForm }
+    for (const scope of ['all', 'shared'] as const) delete v6.statistics[scope].htScoreless
     const row = v6.days[0].lists.find((l) => l.categoryId === 'over25')!.items.find((i) => i.ai)!.ai!
     for (const d of v6.days) for (const l of d.lists) for (const i of l.items) delete i.ai
     for (const m of v6.days[0].matches) m.ai = row
@@ -835,6 +836,7 @@ describe('seri takibi sayfası', () => {
     ;(v7 as { v: number }).v = 7
     delete v7.streak
     for (const d of v7.days) for (const m of d.matches) { delete m.homeForm; delete m.awayForm }
+    for (const scope of ['all', 'shared'] as const) delete v7.statistics[scope].htScoreless
     expect(() => assertMemberPayload(v7)).not.toThrow()
     const old = shell(analysis(), NOW, null, v7)
     expect(old).not.toContain('member-tab-streak')
@@ -876,6 +878,7 @@ describe('üye kartı: form, gol ve gol yemediği maç satırları (sürüm 9)',
     const v8 = JSON.parse(JSON.stringify(payload)) as MemberPayload
     ;(v8 as { v: number }).v = 8
     for (const d of v8.days) for (const m of d.matches) { delete m.homeForm; delete m.awayForm }
+    for (const scope of ['all', 'shared'] as const) delete v8.statistics[scope].htScoreless
     expect(() => assertMemberPayload(v8)).not.toThrow()
     const card = cardOf('Kuzey Yıldızı', v8)
     expect(card).not.toContain('data-testid="member-form"')
@@ -894,3 +897,86 @@ describe('üye kartı: form, gol ve gol yemediği maç satırları (sürüm 9)',
     expect(paragraphs[1].match(/[.!?](\s|$)/g)).toHaveLength(1)
   })
 })
+
+describe('istatistik sayfası: İY 0.5 ÜST tutmadığında 2. yarı kutusu', () => {
+  const page = (all: { n: number; over: number | null }, shared: { n: number; over: number | null } = { n: 0, over: null }, scope: 'all' | 'shared' = 'all') => {
+    const p = JSON.parse(JSON.stringify(payload)) as MemberPayload
+    p.statistics.all.htScoreless = all
+    p.statistics.shared.htScoreless = shared
+    assertMemberPayload(p)
+    return html(createElement(MemberStatsPage, { payload: p, initialScope: scope }))
+  }
+  const card = (markup: string): string => textOf(/<section[^>]*data-testid="member-ht-card"[\s\S]*?<\/section>/.exec(markup)![0])
+  const ADVICE = /tahmin|fırsat|öner|bekle|oyna|bahis|kupon|oran|kazan|garanti|şans|yatır/
+
+  it('N < 20: yalnızca maç sayısı ve "Deneme aşamasında · az örnek"; yüzde yok', () => {
+    const text = card(page({ n: 19, over: null }))
+    expect(text).toContain('İY 0.5 ÜST TUTMADIĞINDA 2. YARI')
+    expect(text).toContain('19 maç')
+    expect(text).toContain('⚠ Deneme aşamasında · az örnek')
+    expect(text).toContain('İlk yarısı 0-0 biten 19 maç ölçüldü. Yüzde, en az 20 maç ölçülünce gösterilecek.')
+    expect(text).toContain('Geçmiş maçların sayımıdır; ölçümdür, tavsiye değildir.')
+    expect(text).not.toContain('%')
+    expect(text).not.toContain(' / ')
+  })
+
+  it('20 ≤ N < 50: yüzde ve sayılar görünür; "az örnek" uyarısı kalır', () => {
+    const text = card(page({ n: 24, over: 14 }))
+    expect(text).toContain(`${formatRate(58.3)} · 14 / 24 maç`)
+    expect(text).toContain('⚠ az örnek')
+    expect(text).not.toContain('Deneme aşamasında')
+    expect(text).toContain('İlk yarısı 0-0 biten 24 maçın 14 tanesinde 2. yarıda en az 2 gol oldu. Maç sayısı az; bu yüzde tesadüfen yüksek ya da düşük çıkmış olabilir.')
+    expect(text).toContain('ölçümdür, tavsiye değildir')
+    // Tam eşikte de yüzde görünür
+    expect(card(page({ n: 20, over: 10 }))).toContain(`${formatRate(50)} · 10 / 20 maç`)
+  })
+
+  it('N ≥ 50: uyarı yok', () => {
+    const text = card(page({ n: 50, over: 31 }))
+    expect(text).toContain(`${formatRate(62)} · 31 / 50 maç`)
+    expect(text).not.toContain('az örnek')
+    expect(text).not.toContain('tesadüfen')
+    expect(text).toContain('ölçümdür, tavsiye değildir')
+  })
+
+  it('N = 0: boş durum metni', () => {
+    const text = card(page({ n: 0, over: null }))
+    expect(text).toContain(MEMBER_HT_SCORELESS_TEXT.empty)
+    expect(text).not.toContain('%')
+    expect(text).not.toContain('az örnek')
+  })
+
+  it('"Paylaşılan" ölçüsü kendi sayısını gösterir', () => {
+    const markup = page({ n: 24, over: 14 }, { n: 6, over: null }, 'shared')
+    expect(card(markup)).toContain('6 maç')
+    expect(card(markup)).toContain('Deneme aşamasında')
+    expect(card(markup)).not.toContain('%')
+  })
+
+  it('kutu "ZAMAN İÇİNDE BAŞARI"dan önce, kategori kartlarından sonra gelir', () => {
+    const text = textOf(page({ n: 24, over: 14 }))
+    expect(text.indexOf('KATEGORİ BAZLI BAŞARI')).toBeLessThan(text.indexOf(MEMBER_HT_SCORELESS_TEXT.title))
+    expect(text.indexOf(MEMBER_HT_SCORELESS_TEXT.title)).toBeLessThan(text.indexOf('ZAMAN İÇİNDE BAŞARI'))
+  })
+
+  it('metinlerde ileriye dönük ya da tavsiye dili yok; yalnızca geçmiş sayım', () => {
+    for (const markup of [page({ n: 19, over: null }), page({ n: 24, over: 14 }), page({ n: 50, over: 31 }), page({ n: 0, over: null })]) {
+      const text = card(markup).toLocaleLowerCase('tr').replace('ölçümdür, tavsiye değildir', '')
+      expect(ADVICE.exec(text)?.[0] ?? null).toBeNull()
+      expect(text).not.toContain('tavsiye')
+    }
+  })
+
+  it('sürüm 9 paket (alan yok) yeni sitede açılır; kutu görünmez, sayfanın kalanı çizilir', () => {
+    const v9 = JSON.parse(JSON.stringify(payload)) as MemberPayload
+    ;(v9 as { v: number }).v = 9
+    for (const scope of ['all', 'shared'] as const) delete v9.statistics[scope].htScoreless
+    expect(() => assertMemberPayload(v9)).not.toThrow()
+    const markup = html(createElement(MemberStatsPage, { payload: v9 }))
+    expect(markup).not.toContain('member-ht-card')
+    expect(textOf(markup)).not.toContain(MEMBER_HT_SCORELESS_TEXT.title)
+    expect(textOf(markup)).toContain('KATEGORİ BAZLI BAŞARI')
+    expect(textOf(markup)).toContain('ZAMAN İÇİNDE BAŞARI')
+  })
+})
+

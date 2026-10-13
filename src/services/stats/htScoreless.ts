@@ -3,7 +3,8 @@ import { LOW_SAMPLE_LIMIT } from './statsEngine'
 
 // "İY 0.5 ÜST tutmadığında 2. yarı": İY 0.5 ÜST olarak dondurulmuş önerilerden ilk yarısı
 // 0-0 biten maçlarda 2. yarıda en az 2 gol olup olmadığını sayar. Yalnızca sayımdır;
-// önerileri, dondurmayı ve diğer istatistikleri etkilemez, üye paketine girmez.
+// önerileri, dondurmayı ve diğer istatistikleri etkilemez. Üye paketine yalnızca iki sayı
+// girer (N ve, N yeterliyse, 2Y 1.5 ÜST olan maç sayısı); maç, takım ya da skor girmez.
 
 export interface HtScorelessStats {
   /** Kapsamdaki maç: İY 0.5 ÜST önerilmiş, "tamamlandı" kaydedilmiş, İY ve MS skoru girilmiş */
