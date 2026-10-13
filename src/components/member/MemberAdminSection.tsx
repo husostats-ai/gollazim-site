@@ -13,6 +13,7 @@ import { toAppDateTime } from '../../utils/date'
 import { formatDay, formatPlainDate } from '../../utils/format'
 import { visibleRows } from '../../utils/visibleRows'
 import { downloadText, notifyMemberAdminChanged, publishSources, useMemberAdminData, type MemberAdminData } from './useMemberAdmin'
+import { NO_AUTOFILL } from '../../utils/noAutofill'
 
 // Admin sayfasının "ÜYE SAYFASI" bölümü: üye yönetimi, yayın ve üye anahtar yedeği.
 // Düz şifreler yalnızca bu bileşenin belleğinde, üretildikleri ekran kapanana dek durur.
@@ -446,7 +447,7 @@ export default function MemberAdminSection({ siteStatus, onAttention }: { siteSt
           <div className="min-w-0">
             <h3 className="text-sm font-extrabold">Üye ekle</h3>
             <div className="mt-2 flex gap-2">
-              <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="kullanici.adi" autoCapitalize="none" autoCorrect="off" spellCheck={false} disabled={busy} data-testid="member-add-username" className={INPUT} />
+              <input {...NO_AUTOFILL} type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="kullanici.adi" autoCapitalize="none" autoCorrect="off" spellCheck={false} disabled={busy} data-testid="member-add-username" className={INPUT} />
               <button type="button" className={`${PRIMARY} shrink-0`} disabled={busy || !single?.ok} onClick={() => void onAdd()} data-testid="member-add">
                 Ekle
               </button>

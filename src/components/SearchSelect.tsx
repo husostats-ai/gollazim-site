@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { matchesSearch } from '../utils/searchText'
+import { NO_AUTOFILL } from '../utils/noAutofill'
 
 export interface SearchSelectOption {
   value: string
@@ -144,7 +145,7 @@ export default function SearchSelect({
           data-testid={`${testId}-popup`}
           data-direction={placement.up ? 'up' : 'down'}
         >
-          <input
+          <input {...NO_AUTOFILL}
             ref={search}
             type="text"
             value={query}
@@ -155,7 +156,6 @@ export default function SearchSelect({
             onKeyDown={onKeyDown}
             placeholder="Ara…"
             aria-label={`${ariaLabel} içinde ara`}
-            autoComplete="off"
             spellCheck={false}
             data-testid={`${testId}-search`}
             className="w-full rounded-md border border-navy-500 bg-navy-900 px-2 py-1.5 text-sm font-normal text-white outline-none focus:border-brand"

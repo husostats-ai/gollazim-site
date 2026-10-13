@@ -6,6 +6,7 @@ import { parseScores, STATUS_LABELS, type ScoreDraft, type ScoreField } from '..
 import { useApp } from '../state/AppContext'
 import type { Match, MatchResult, MatchStatus } from '../types'
 import OutcomeBadge from './OutcomeBadge'
+import { NO_AUTOFILL } from '../utils/noAutofill'
 
 const ROWS: { label: string; hint?: string; home: ScoreField; away: ScoreField }[] = [
   { label: 'İlk Yarı', home: 'htHome', away: 'htAway' },
@@ -124,7 +125,7 @@ export default function ScoreForm({ match }: { match: Match }) {
               {row.hint && <span className="block text-[11px] font-normal text-muted">{row.hint}</span>}
             </span>
             <span className="flex shrink-0 items-center gap-1.5">
-              <input
+              <input {...NO_AUTOFILL}
                 className={inputClass}
                 inputMode="numeric"
                 aria-label={`${row.label} ev sahibi`}
@@ -133,7 +134,7 @@ export default function ScoreForm({ match }: { match: Match }) {
                 onChange={(e) => edit(row.home, e.target.value)}
               />
               <span className="text-muted">-</span>
-              <input
+              <input {...NO_AUTOFILL}
                 className={inputClass}
                 inputMode="numeric"
                 aria-label={`${row.label} deplasman`}

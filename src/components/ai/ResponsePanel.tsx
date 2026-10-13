@@ -6,6 +6,7 @@ import { aiRepo } from '../../services/data'
 import { useApp } from '../../state/AppContext'
 import { isAfterKickoff } from '../../services/story/shared'
 import type { AiVerdict, Match } from '../../types'
+import { NO_AUTOFILL } from '../../utils/noAutofill'
 
 /** Maç kaydı yoksa başlama saati bilinemez; tahmin güvenli tarafta kalıp ölçüm dışı sayılır */
 const lateFor = (match: Match | undefined, savedAt: string): boolean => (match ? isAfterKickoff(match, savedAt) : true)
@@ -163,7 +164,7 @@ export default function ResponsePanel({ date, provider, providerLabel, numbers, 
                       {e.number !== undefined && ` · #${e.number}`} · {PARSE_ERROR_CAUSE_LABELS[e.cause]}: {e.message}
                     </p>
                     <div className="mt-1 flex flex-wrap gap-2">
-                      <input
+                      <input {...NO_AUTOFILL}
                         value={e.text}
                         onChange={(ev) => editError(e.key, ev.target.value)}
                         aria-label={`Satır ${e.line} düzeltme`}

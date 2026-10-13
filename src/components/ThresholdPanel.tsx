@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { CATEGORIES, defaultThresholds, type CategoryDef, type CategoryId } from '../config/categories'
 import { useApp } from '../state/AppContext'
+import { NO_AUTOFILL } from '../utils/noAutofill'
 
 const parseThreshold = (text: string): number | null => {
   if (!/^\d{1,3}$/.test(text.trim())) return null
@@ -36,7 +37,7 @@ function ThresholdRow({ category }: { category: CategoryDef }) {
         </span>
       </label>
       <div className="flex items-center gap-1.5">
-        <input
+        <input {...NO_AUTOFILL}
           id={`threshold-${category.id}`}
           type="number"
           inputMode="numeric"

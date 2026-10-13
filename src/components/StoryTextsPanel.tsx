@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { DEFAULT_STORY_TEXTS, STORY_TEXT_FIELDS, type StoryTexts } from '../config/storyTexts'
 import { settingsRepo } from '../services/data'
 import { useApp } from '../state/AppContext'
+import { NO_AUTOFILL } from '../utils/noAutofill'
 
 /** Günlük başarı görselinin altındaki metinlerin ayarı. */
 export default function StoryTextsPanel() {
@@ -59,7 +60,7 @@ export default function StoryTextsPanel() {
         {STORY_TEXT_FIELDS.map(({ key, label, maxLength }) => (
           <label key={key} className="block text-sm font-semibold">
             {label}
-            <input
+            <input {...NO_AUTOFILL}
               type="text"
               value={texts[key]}
               maxLength={maxLength}

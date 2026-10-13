@@ -3,6 +3,7 @@ import { DEFAULT_MEMBER_TEXTS, MEMBER_TEXT_FIELDS, normalizeMemberTexts, type Me
 import { memberAdminRepo } from '../../services/data'
 import { saveMemberTexts } from '../../services/memberAdmin/actions'
 import { notifyMemberAdminChanged, useMemberAdminData } from './useMemberAdmin'
+import { NO_AUTOFILL } from '../../utils/noAutofill'
 
 /** Üye sayfasının üstündeki iki uyarı metninin ayarı; kaydedilen metinler bir sonraki yayına girer. */
 export default function MemberTextsPanel() {
@@ -43,7 +44,7 @@ export default function MemberTextsPanel() {
         {MEMBER_TEXT_FIELDS.map(({ key, label, maxLength }) => (
           <label key={key} className="block text-sm font-semibold">
             {label}
-            <input
+            <input {...NO_AUTOFILL}
               type="text"
               value={draft[key]}
               maxLength={maxLength}

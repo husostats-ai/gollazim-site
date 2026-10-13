@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { DEFAULT_MARKET_CONFLICT_LIMIT, MARKET_CONFLICT_LIMIT_RANGE } from '../services/analysis/market'
 import { useApp } from '../state/AppContext'
+import { NO_AUTOFILL } from '../utils/noAutofill'
 
 const parseLimit = (text: string): number | null => {
   if (!/^\d{1,3}$/.test(text.trim())) return null
@@ -39,7 +40,7 @@ export default function MarketLimitPanel() {
           )}
         </label>
         <div className="flex items-center gap-1.5">
-          <input
+          <input {...NO_AUTOFILL}
             id="market-conflict-limit"
             type="number"
             inputMode="numeric"

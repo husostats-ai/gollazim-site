@@ -9,6 +9,7 @@ import { RATE_KEYS, RATE_LABELS, type Rate, type TeamRates, type TotalCheck } fr
 import { useApp } from '../state/AppContext'
 import { copyText } from '../utils/clipboard'
 import { formatPlainDate } from '../utils/format'
+import { NO_AUTOFILL } from '../utils/noAutofill'
 
 // Admin aracı: iki yapay zekânın ham maç verisi cevabı yapıştırılır; oranlar sayılır, cevaplar
 // birbiriyle ve günün CSV önerileriyle karşılaştırılır. HİÇBİR ŞEY KAYDEDİLMEZ: metinler yalnızca
@@ -344,7 +345,7 @@ export default function RawComparePanel() {
             <div key={ai} className="min-w-0">
               <label className="block text-xs font-semibold text-muted">
                 Etiket
-                <input type="text" value={names[ai]} onChange={(e) => setNames({ ...names, [ai]: e.target.value })} maxLength={30} data-testid={`raw-label-${ai}`} className={`${INPUT} mt-1 font-bold text-white`} />
+                <input {...NO_AUTOFILL} type="text" value={names[ai]} onChange={(e) => setNames({ ...names, [ai]: e.target.value })} maxLength={30} data-testid={`raw-label-${ai}`} className={`${INPUT} mt-1 font-bold text-white`} />
               </label>
               <label className="mt-2 block text-xs font-semibold text-muted">
                 Cevap

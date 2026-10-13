@@ -6,6 +6,7 @@ import { movePicksToDate } from '../services/results/resultService'
 import { parseNumber } from '../services/csv/values'
 import { matchesRepo, streakRepo } from '../services/data'
 import type { Match, StatValue } from '../types'
+import { NO_AUTOFILL } from '../utils/noAutofill'
 
 interface Props {
   match: Match
@@ -76,15 +77,15 @@ export default function MatchEditForm({ match, onDone, onCancel }: Props) {
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <label className="text-xs text-muted">
           Ev sahibi
-          <input className={inputClass} value={home} onChange={(e) => setHome(e.target.value)} />
+          <input {...NO_AUTOFILL} className={inputClass} value={home} onChange={(e) => setHome(e.target.value)} />
         </label>
         <label className="text-xs text-muted">
           Deplasman
-          <input className={inputClass} value={away} onChange={(e) => setAway(e.target.value)} />
+          <input {...NO_AUTOFILL} className={inputClass} value={away} onChange={(e) => setAway(e.target.value)} />
         </label>
         <label className="text-xs text-muted sm:col-span-2">
           Lig
-          <input className={inputClass} value={league} onChange={(e) => setLeague(e.target.value)} />
+          <input {...NO_AUTOFILL} className={inputClass} value={league} onChange={(e) => setLeague(e.target.value)} />
         </label>
         <label className="text-xs text-muted">
           Tarih
@@ -103,7 +104,7 @@ export default function MatchEditForm({ match, onDone, onCancel }: Props) {
           {EDITABLE_STATS.map(({ field }) => (
             <label key={field} className="text-xs text-muted">
               {FIELD_LABELS[field]}
-              <input
+              <input {...NO_AUTOFILL}
                 className={inputClass}
                 inputMode="decimal"
                 value={stats[field]}
