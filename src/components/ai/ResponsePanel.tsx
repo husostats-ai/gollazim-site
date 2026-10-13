@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { decisionLabel, type AiProvider } from '../../config/ai'
 import { getCategory, type CategoryId } from '../../config/categories'
-import { parseAiResponse, parseLine, type ParsedVerdict, type ParseError } from '../../services/ai/parser'
+import { PARSE_ERROR_CAUSE_LABELS, parseAiResponseDetailed, parseLineDetailed, type DetailedParseError, type ParsedVerdict } from '../../services/ai/parser'
 import { aiRepo } from '../../services/data'
 import { useApp } from '../../state/AppContext'
 import { isAfterKickoff } from '../../services/story/shared'
@@ -24,8 +24,10 @@ interface Props {
 
 interface Review {
   verdicts: ParsedVerdict[]
-  errors: (ParseError & { key: number })[]
+  errors: (DetailedParseError & { key: number })[]
   ignored: number
+  /** Sorulmayan kategoriye yazıldığı için yok sayılan karar sayısı */
+  skipped: number
 }
 
 export default function ResponsePanel({ date, provider, providerLabel, numbers, asked, matchesById, onSaved }: Props) {
@@ -35,7 +37,7 @@ export default function ResponsePanel({ date, provider, providerLabel, numbers, 
   const [message, setMessage] = useState<string | null>(null)
 
   const process = () => {
-    const result = parseAiResponse(text, numbers, asked)
+    const result = parseAiResponseDetailed(text, numbers, asked)
     setReview({ ...result, errors: result.errors.map((e, i) => ({ ...e, key: i })) })
     setMessage(null)
   }
@@ -50,20 +52,21 @@ export default function ResponsePanel({ date, provider, providerLabel, numbers, 
     setReview((r) => {
       if (!r) return r
       const error = r.errors.find((e) => e.key === key)!
-      const result = parseLine(error.text, numbers, asked)
-      let failure: string | null = null
-      if (result.kind === 'ignored') failure = 'Satır bir karar satırına benzemiyor.'
-      else if (result.kind === 'error') failure = result.message
+      const result = parseLineDetailed(error.text, numbers, asked)
+      let failure: Pick<DetailedParseError, 'message' | 'cause' | 'number'> | null = null
+      if (result.kind === 'ignored') failure = { message: 'Satır bir karar satırına benzemiyor.', cause: 'noNumber' }
+      else if (result.kind === 'error') failure = { message: result.message, cause: result.cause, number: result.number }
       else if (r.verdicts.some((v) => v.number === result.verdict.number)) {
-        failure = `#${result.verdict.number} için zaten bir karar var.`
+        failure = { message: `#${result.verdict.number} için zaten bir karar var.`, cause: 'duplicate', number: result.verdict.number }
       }
       if (failure !== null || result.kind !== 'verdict') {
-        return { ...r, errors: r.errors.map((e) => (e.key === key ? { ...e, message: failure ?? e.message } : e)) }
+        return { ...r, errors: r.errors.map((e) => (e.key === key ? { ...e, ...failure } : e)) }
       }
       return {
         ...r,
         verdicts: [...r.verdicts, result.verdict].sort((a, b) => a.number - b.number),
         errors: r.errors.filter((e) => e.key !== key),
+        skipped: r.skipped + result.skipped,
       }
     })
 
@@ -137,17 +140,18 @@ export default function ResponsePanel({ date, provider, providerLabel, numbers, 
       {review && (
         <div className="mt-4 space-y-4" data-testid="ai-review">
           <p className="text-sm">
-            <span className="font-bold">{review.verdicts.length} satır okundu</span>
+            <span className="font-bold">{review.verdicts.length} maç okundu</span>
             <span className="text-muted">
               {' '}
-              · {review.errors.length} hatalı satır · {review.ignored} açıklama satırı yok sayıldı
+              · {review.errors.length} hatalı · {review.ignored} açıklama satırı yok sayıldı
+              {review.skipped > 0 && ` · ${review.skipped} sorulmayan kategori kararı yok sayıldı`}
               {missing.length > 0 && ` · cevabı olmayan maçlar: ${missing.map((n) => `#${n}`).join(', ')}`}
             </span>
           </p>
 
           {review.errors.length > 0 && (
             <div className="rounded-xl border border-loss-line bg-loss-soft p-3" data-testid="ai-errors">
-              <p className="text-sm font-bold text-loss-text">Okunamayan satırlar</p>
+              <p className="text-sm font-bold text-loss-text">Okunamayan maçlar</p>
               <p className="mt-0.5 text-xs text-muted">
                 Satırı düzeltip “Yeniden dene”ye basın ya da satırı atın. Maçlar yalnızca numarayla eşleştirilir.
               </p>
@@ -155,7 +159,8 @@ export default function ResponsePanel({ date, provider, providerLabel, numbers, 
                 {review.errors.map((e) => (
                   <li key={e.key} data-testid="ai-error-row">
                     <p className="text-xs text-loss-text">
-                      Satır {e.line}: {e.message}
+                      Satır {e.line}
+                      {e.number !== undefined && ` · #${e.number}`} · {PARSE_ERROR_CAUSE_LABELS[e.cause]}: {e.message}
                     </p>
                     <div className="mt-1 flex flex-wrap gap-2">
                       <input

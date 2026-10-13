@@ -35,6 +35,33 @@ export interface ParseResult {
   missing: number[]
 }
 
+/** Okunamayan bir maçın kısa nedeni */
+export type ParseErrorCause = 'noNumber' | 'fields' | 'unknownNumber' | 'oldFormat' | 'category' | 'decision' | 'notAsked' | 'emptyReason' | 'duplicate'
+
+export const PARSE_ERROR_CAUSE_LABELS: Record<ParseErrorCause, string> = {
+  noNumber: 'maç numarasıyla başlamıyor',
+  fields: 'alan sayısı yanlış',
+  unknownNumber: 'numara listede yok',
+  oldFormat: 'eski biçim',
+  category: 'kategori tanınmadı',
+  decision: 'karar kelimesi geçersiz',
+  notAsked: 'kategori bu maç için sorulmadı',
+  emptyReason: 'gerekçe boş',
+  duplicate: 'aynı numara iki kez',
+}
+
+export interface DetailedParseError extends ParseError {
+  cause: ParseErrorCause
+  /** Okunabildiyse maç numarası */
+  number?: number
+}
+
+export interface DetailedParseResult extends ParseResult {
+  errors: DetailedParseError[]
+  /** Sorulmayan kategoriye yazıldığı için yok sayılan karar sayısı (okunan maçlarda) */
+  skipped: number
+}
+
 const normalize = (text: string): string =>
   text
     .replace(/[İIı]/g, 'i')
@@ -45,9 +72,30 @@ const normalize = (text: string): string =>
 
 const DECISION_BY_LABEL = new Map<string, AiDecision>(AI_DECISIONS.map((d) => [normalize(d.label), d.id]))
 
-/** Kalın yazı, kod işareti, madde imi ve tablo kenar çizgilerini temizler */
+/**
+ * Atıf ve kaynak işaretlerini siler: ChatGPT'nin 【…】 ve görünmez atıf belirteçleri, "[1]" / "[1, 2]" / "[^1]",
+ * üst simge rakamlar, çıplak adresler; "[metin](adres)" yalnızca "metin" olarak kalır. "(QSL)" gibi düz
+ * parantezli kaynak adına dokunmaz. Atıf içermeyen metin olduğu gibi döner.
+ */
+function stripCitations(text: string): string {
+  const stripped = text
+    .replace(/\uE200[^\uE201]*\uE201/g, '')
+    .replace(/[\uE000-\uF8FF]/g, '')
+    .replace(/【[^】]*】/g, '')
+    .replace(/\[([^\]]*)\]\(\s*https?:\/\/[^)\s]*\s*\)/g, '$1')
+    .replace(/\[\^?\d+(?:\s*[,;–-]\s*\d+)*\]/g, '')
+    .replace(/[\u2070\u00B9\u00B2\u00B3\u2074-\u2079]/g, '')
+    .replace(/\(\s*https?:\/\/[^\s|)]*\s*\)|https?:\/\/[^\s|)]+/g, '')
+  if (stripped === text) return text
+  return stripped
+    .replace(/\(\s*\)/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/ +([.,;])/g, '$1')
+}
+
+/** Atıf işaretlerini, kalın yazı, kod işareti, madde imi ve tablo kenar çizgilerini temizler */
 const clean = (line: string): string =>
-  line
+  stripCitations(line)
     .replace(/\*\*|__|`/g, '')
     .trim()
     .replace(/^[-*•]\s+/, '')
@@ -71,6 +119,11 @@ type LineResult =
   | { kind: 'error'; message: string }
   | { kind: 'ignored' }
 
+type DetailedLineResult =
+  | { kind: 'verdict'; verdict: ParsedVerdict; skipped: number }
+  | { kind: 'error'; message: string; cause: ParseErrorCause; number?: number }
+  | { kind: 'ignored' }
+
 /** Kategori adını karşılaştırmak için: küçük harf, aksansız, yalnızca harf ve rakam ("2,5 Üst & KG Var" -> "25ustkgvar") */
 const categoryKey = (text: string): string => normalize(text).replace(/[^a-z0-9]/g, '')
 
@@ -89,9 +142,15 @@ const CATEGORY_BY_NAME = new Map<string, CategoryId>(
 export const OLD_FORMAT_MESSAGE = 'Eski biçim; promptu yeniden kopyalayın. (Karar artık kategori bazında yazılır: “2.5 ÜST: Orta ; KG VAR: Zayıf”.)'
 
 /** Kararlar alanını ("2.5 ÜST: Orta ; KG VAR: Zayıf") sorulan kategorilere göre çözer */
-function parseDecisions(field: string, asked: readonly CategoryId[], number: number): Pick<ParsedVerdict, 'decisions' | 'unanswered' | 'warnings'> {
+function parseDecisions(
+  field: string,
+  asked: readonly CategoryId[],
+  number: number,
+): { parsed: Pick<ParsedVerdict, 'decisions' | 'unanswered' | 'warnings'>; skipped: number; badDecision: boolean } {
   const decisions: Partial<Record<CategoryId, AiDecision>> = {}
   const warnings: string[] = []
+  let skipped = 0
+  let badDecision = false
   for (const raw of field.split(';')) {
     const part = raw.trim()
     if (part === '') continue
@@ -106,10 +165,12 @@ function parseDecisions(field: string, asked: readonly CategoryId[], number: num
     const decision = DECISION_BY_LABEL.get(normalize(part.slice(colon + 1)))
     if (!asked.includes(categoryId)) {
       warnings.push(`#${number}: ${label} bu maç için sorulmadı; karar yok sayıldı.`)
+      skipped++
       continue
     }
     if (!decision) {
       warnings.push(`#${number} ${label}: KARAR tanınmadı (“${part.slice(colon + 1).trim()}”); bu kategori cevapsız sayıldı. Beklenen: ${AI_DECISIONS.map((d) => d.label).join(', ')}.`)
+      badDecision = true
       continue
     }
     if (decisions[categoryId] !== undefined) {
@@ -118,15 +179,16 @@ function parseDecisions(field: string, asked: readonly CategoryId[], number: num
     }
     decisions[categoryId] = decision
   }
-  return { decisions, unanswered: asked.filter((id) => decisions[id] === undefined), warnings }
+  return { parsed: { decisions, unanswered: asked.filter((id) => decisions[id] === undefined), warnings }, skipped, badDecision }
 }
 
 /**
- * Tek bir satırı çözer. Maç yalnızca numarayla bulunur; takım adına bakılmaz.
+ * Tek bir satırı (tek maçı) çözer. Maç yalnızca numarayla bulunur; takım adına bakılmaz.
  * numbers: numara -> maç kimliği (kopyalanan prompt'taki numaralandırma).
  * asked: numara -> o maç için sorulan kategoriler (prompttaki "Değerlendir" satırı).
+ * Hata, kısa nedeni ve (okunabildiyse) maç numarasıyla döner.
  */
-export function parseLine(raw: string, numbers: ReadonlyMap<number, string>, asked: ReadonlyMap<number, readonly CategoryId[]>): LineResult {
+export function parseLineDetailed(raw: string, numbers: ReadonlyMap<number, string>, asked: ReadonlyMap<number, readonly CategoryId[]>): DetailedLineResult {
   const line = clean(raw)
   if (line === '') return { kind: 'ignored' }
   // Tablo ayırıcı satırı: |---|---|
@@ -140,23 +202,25 @@ export function parseLine(raw: string, numbers: ReadonlyMap<number, string>, ask
   if (!startsWithNumber && fields.length > 1 && /^(karar|kategori)/.test(normalize(fields[1]))) return { kind: 'ignored' }
 
   const numberMatch = /^#?\s*(\d+)\s*[.)]?$/.exec(fields[0])
-  if (!numberMatch) return { kind: 'error', message: 'Satır maç numarasıyla (#1 gibi) başlamıyor.' }
+  if (!numberMatch) return { kind: 'error', cause: 'noNumber', message: 'Satır maç numarasıyla (#1 gibi) başlamıyor.' }
+  const number = Number(numberMatch[1])
   if (fields.length < 4) {
-    return { kind: 'error', message: `4 alan bekleniyor (#numara | KATEGORİ: KARAR ; … | gerekçe | risk), ${fields.length} alan var.` }
+    return { kind: 'error', cause: 'fields', number, message: `4 alan bekleniyor (#numara | KATEGORİ: KARAR ; … | gerekçe | risk), ${fields.length} alan var.` }
   }
 
-  const number = Number(numberMatch[1])
   const matchId = numbers.get(number)
-  if (!matchId) return { kind: 'error', message: `#${number} numaralı bir maç listede yok.` }
+  if (!matchId) return { kind: 'error', cause: 'unknownNumber', number, message: `#${number} numaralı bir maç listede yok.` }
 
   // Kategori bazlı karardan önceki biçim: ikinci alan tek bir karar ("Orta").
-  if (DECISION_BY_LABEL.has(normalize(fields[1]))) return { kind: 'error', message: OLD_FORMAT_MESSAGE }
+  if (DECISION_BY_LABEL.has(normalize(fields[1]))) return { kind: 'error', cause: 'oldFormat', number, message: OLD_FORMAT_MESSAGE }
 
   const askedHere = [...(asked.get(number) ?? [])]
-  const parsed = parseDecisions(fields[1], askedHere, number)
+  const { parsed, skipped, badDecision } = parseDecisions(fields[1], askedHere, number)
   if (Object.keys(parsed.decisions).length === 0) {
     return {
       kind: 'error',
+      cause: badDecision ? 'decision' : skipped > 0 ? 'notAsked' : 'category',
+      number,
       message: `#${number}: hiçbir kategori kararı okunamadı. Beklenen: ${askedHere.map((id) => `${getCategory(id).label}: KARAR`).join(' ; ')}.${parsed.warnings.length > 0 ? ` ${parsed.warnings.join(' ')}` : ''}`,
     }
   }
@@ -167,41 +231,97 @@ export function parseLine(raw: string, numbers: ReadonlyMap<number, string>, ask
   let score: ScoreLine | null = null
   if (fields.length >= 5) {
     const last = fields[fields.length - 1]
-    score = parseScore(last)
+    // Skorun ardında kalan parantezli kaynak adı ("SKOR: 2-1 (ESPN)") skoru bozmaz.
+    score = parseScore(last.replace(/(?:\s*\([^()]*\))+$/, ''))
     if (score || NO_SCORE_PATTERN.test(normalize(last))) body = fields.slice(0, -1)
   }
 
   // İlk alan numara, ikinci kararlar, sonuncu risktir; aradaki her şey gerekçedir.
   // Böylece gerekçenin içinde geçen fazladan "|" karakteri satırı bozmaz.
   const reason = body.slice(2, -1).join(' | ').trim()
-  if (body.slice(2, -1).every((f) => f === '')) return { kind: 'error', message: 'Gerekçe boş.' }
+  if (body.slice(2, -1).every((f) => f === '')) return { kind: 'error', cause: 'emptyReason', number, message: 'Gerekçe boş.' }
   const risk = body[body.length - 1]
 
-  return { kind: 'verdict', verdict: { number, matchId, ...parsed, asked: askedHere, reason, risk, ...(score && { score }) } }
+  return { kind: 'verdict', verdict: { number, matchId, ...parsed, asked: askedHere, reason, risk, ...(score && { score }) }, skipped }
 }
 
-/** Yapıştırılan cevabın tamamını çözer. Aynı numara iki kez gelirse ikincisi hata sayılır. */
-export function parseAiResponse(text: string, numbers: ReadonlyMap<number, string>, asked: ReadonlyMap<number, readonly CategoryId[]>): ParseResult {
+/** parseLineDetailed ile aynı çözüm; hata yalnızca mesajıyla döner. */
+export function parseLine(raw: string, numbers: ReadonlyMap<number, string>, asked: ReadonlyMap<number, readonly CategoryId[]>): LineResult {
+  const result = parseLineDetailed(raw, numbers, asked)
+  if (result.kind === 'verdict') return { kind: 'verdict', verdict: result.verdict }
+  if (result.kind === 'error') return { kind: 'error', message: result.message }
+  return result
+}
+
+/** Tek başına "\r" ve Unicode satır ayırıcıları da satır sonudur */
+const LINE_BREAK = /\r\n|\r|\n|\u2028|\u2029/
+/** Maç başlangıcı adayı: "#N |" */
+const MATCH_MARK = /#\s*(\d+)\s*(?:\*\*|__|`)?\s*\|/g
+
+/** Alan bir kararlar alanına benziyor mu: "KATEGORİ: …", "…: KARAR" ya da tek başına karar kelimesi (eski biçim) */
+function looksLikeDecisions(field: string): boolean {
+  const text = clean(field)
+  if (DECISION_BY_LABEL.has(normalize(text))) return true
+  return text.split(';').some((part) => {
+    const colon = part.lastIndexOf(':')
+    return colon > 0 && (CATEGORY_BY_NAME.has(categoryKey(part.slice(0, colon))) || DECISION_BY_LABEL.has(normalize(part.slice(colon + 1))))
+  })
+}
+
+/**
+ * Satır sonu olmadan art arda yazılmış maçları ayırır. "#N |" ancak N listedeki bir numaraysa ve ardından
+ * kararlar alanı geliyorsa (ya da satır orada bitiyorsa) maç başlangıcıdır; gerekçede geçen "#3" bölmez.
+ * Satır başındaki işaret sınır değildir: içinde ikinci bir maç bulunmayan satır olduğu gibi döner.
+ */
+function splitMatches(raw: string, numbers: ReadonlyMap<number, string>): string[] {
+  const cuts: number[] = []
+  for (const mark of raw.matchAll(MATCH_MARK)) {
+    if (!numbers.has(Number(mark[1]))) continue
+    if (clean(`${raw.slice(0, mark.index)}x`) === 'x') continue
+    const rest = raw.slice(mark.index + mark[0].length)
+    if (clean(rest) === '' || looksLikeDecisions(rest.split('|', 1)[0])) cuts.push(mark.index)
+  }
+  if (cuts.length === 0) return [raw]
+  return [0, ...cuts].map((from, i, all) => raw.slice(from, all[i + 1]))
+}
+
+/**
+ * Yapıştırılan cevabın tamamını çözer; maçlar aynı satıra yazılmış olsa da ayrılır. Aynı numara iki kez
+ * gelirse ikincisi hata sayılır. Her hata kısa nedeni ve maç numarasıyla döner.
+ */
+export function parseAiResponseDetailed(text: string, numbers: ReadonlyMap<number, string>, asked: ReadonlyMap<number, readonly CategoryId[]>): DetailedParseResult {
   const verdicts: ParsedVerdict[] = []
-  const errors: ParseError[] = []
+  const errors: DetailedParseError[] = []
   const seen = new Set<number>()
   let ignored = 0
+  let skipped = 0
 
-  text.split(/\r?\n/).forEach((raw, i) => {
+  text.split(LINE_BREAK).forEach((raw, i) => {
     if (raw.trim() === '') return
-    const result = parseLine(raw, numbers, asked)
-    if (result.kind === 'ignored') ignored++
-    else if (result.kind === 'error') errors.push({ line: i + 1, text: raw.trim(), message: result.message })
-    else if (seen.has(result.verdict.number)) {
-      errors.push({ line: i + 1, text: raw.trim(), message: `#${result.verdict.number} cevapta birden fazla kez geçiyor.` })
-    } else {
-      seen.add(result.verdict.number)
-      verdicts.push(result.verdict)
+    for (const part of splitMatches(raw, numbers)) {
+      const result = parseLineDetailed(part, numbers, asked)
+      if (result.kind === 'ignored') ignored++
+      else if (result.kind === 'error') {
+        errors.push({ line: i + 1, text: part.trim(), message: result.message, cause: result.cause, ...(result.number !== undefined && { number: result.number }) })
+      } else if (seen.has(result.verdict.number)) {
+        const { number } = result.verdict
+        errors.push({ line: i + 1, text: part.trim(), message: `#${number} cevapta birden fazla kez geçiyor.`, cause: 'duplicate', number })
+      } else {
+        seen.add(result.verdict.number)
+        verdicts.push(result.verdict)
+        skipped += result.skipped
+      }
     }
   })
 
   const missing = [...numbers.keys()].filter((n) => !seen.has(n)).sort((a, b) => a - b)
-  return { verdicts, errors, ignored, missing }
+  return { verdicts, errors, ignored, missing, skipped }
+}
+
+/** parseAiResponseDetailed ile aynı çözüm; hatalar yalnızca satır, metin ve mesajla döner. */
+export function parseAiResponse(text: string, numbers: ReadonlyMap<number, string>, asked: ReadonlyMap<number, readonly CategoryId[]>): ParseResult {
+  const { verdicts, errors, ignored, missing } = parseAiResponseDetailed(text, numbers, asked)
+  return { verdicts, errors: errors.map(({ line, text: errorText, message }) => ({ line, text: errorText, message })), ignored, missing }
 }
 
 /** matchIds[0] = #1 olacak şekilde numara -> maç eşlemesi */
