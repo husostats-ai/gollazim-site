@@ -364,7 +364,7 @@ describe('özet metni', () => {
   })
 
   it('kişisel veri, karar gerekçesi, maç kimliği ya da takım adı içermez', () => {
-    expect(text).not.toMatch(/@|gizli|https?:|\bm\d+\b|Ev \d|EFL/)
+    expect(text).not.toMatch(/@|gizli|https?:|\bm\d+\b|Ev \d|Dep \d/)
   })
 
   it('veri yoksa kısa özet', () => {
@@ -704,6 +704,71 @@ describe('özet: lig türüne göre başarı', () => {
   })
 
   it('sonuçlanmış öneri yokken bölüm yazılmaz', () => {
+    expect(buildStatsSummary(input({ kind: 'all' }, { picks: [pick('pending', 'over25', '2026-10-09')] }))).not.toContain(NAME)
+  })
+})
+
+describe('özet: lig bazlı başarı', () => {
+  const NAME = 'Lig bazlı başarı'
+  // 21 sonuçlanmış 2.5 Üst önerisi Premier League'de (12 tuttu), 3 KG Var önerisi başka ülkenin aynı adlı liginde;
+  // kalanı EFL Trophy (4 sonuçlanmış Taraf & Gol + 3 İY 0.5 Üst + değerlendirilemeyen ve bekleyenler)
+  const leagueMatches = matches.map((m, i) => (i < 21 ? { ...m, league: 'England · Premier League' } : i < 24 ? { ...m, league: 'Wales · Premier League' } : m))
+  const text = buildStatsSummary(input({ kind: 'all' }, { matches: leagueMatches }))
+  const body = section(text, NAME)
+  const { overall } = buildStats(picks)
+
+  it('"Lig türüne göre başarı"dan sonra, "Veri güvenilirliğine göre başarı"dan önce gelir', () => {
+    const at = (title: string) => text.indexOf(`## ${title}`)
+    expect(at('Lig türüne göre başarı')).toBeLessThan(at(NAME))
+    expect(at(NAME)).toBeLessThan(at('Veri güvenilirliğine göre başarı'))
+  })
+
+  it('sütunlar lig türü tablosuyla aynı düzende; lig satırı: sayılar, Wilson aralığı, farklar, maç sayısı', () => {
+    expect(row(body, 'Lig')).toEqual(['Lig', 'Sonuçlanan', 'Tutan', 'Başarı', '%95 aralık', 'Az veri', 'Hazır ort.', 'Fark (gerçekleşen − hazır)', 'Beklenen (yaklaşık)', 'Düzeltilmiş fark (yaklaşık)', 'Maç'])
+    // 12 / 21: Wilson %95 = %36,5 – %75,5; tek kategori olduğu için beklenen = gerçekleşen
+    expect(row(body, 'England · Premier League')).toEqual(['England · Premier League', '21', '12', '%57,1', '%36,5 – %75,5', '', '%90', '-32,9 puan', '%57,1', '0 puan', '21'])
+  })
+
+  it('az önerili ligler "Diğer ligler" satırında; n < 20 satırda "az veri" ve düzeltilmiş fark yerine —', () => {
+    expect(body).not.toContain('| Wales · Premier League |')
+    expect(body).not.toContain('| England · EFL Trophy |')
+    const other = row(body, 'Diğer ligler (2 lig, 10 öneri)')
+    expect(other.slice(1, 4)).toEqual(['10', '7', '%70'])
+    expect(other[5]).toBe('az veri')
+    expect(other[9]).toBe('—')
+    expect(other[7]).not.toBe('—')
+  })
+
+  it('satırların toplamı genel toplamla aynıdır', () => {
+    const rows = [row(body, 'England · Premier League'), row(body, 'Diğer ligler (2 lig, 10 öneri)')]
+    expect(rows.reduce((sum, r) => sum + Number(r[1]), 0)).toBe(overall.decided)
+    expect(rows.reduce((sum, r) => sum + Number(r[2]), 0)).toBe(overall.won)
+    expect(row(body, 'Tüm ligler').slice(1, 4)).toEqual([String(overall.decided), String(overall.won), formatRate(overall.rate)])
+  })
+
+  it('not: çoklu karşılaştırma uyarısı, Wilson, yaklaşık ve az veri açıklaması', () => {
+    expect(body).toContain('Çok sayıda lig karşılaştırıldığı için en iyi/en kötü görünen ligler şansa bağlı olabilir; n<50 satırlardan sonuç çıkarılmamalı.')
+    expect(body).toContain('Aralık Wilson %95; aynı maçın önerileri bağımsız değildir.')
+    expect(body).toContain('büyük lig sıfıra yaklaşır')
+    expect(body).toContain('satırlarında düzeltilmiş fark yazılmaz')
+  })
+
+  it('lig adı yalnızca bu bölümde geçer; takım adı (ev ve deplasman) hiçbir yerde geçmez', () => {
+    const everyLeague = buildStatsSummary(input({ kind: 'all' }, { matches: matches.map((m, i) => (i < 21 ? { ...m, league: 'England · Premier League' } : m)) }))
+    const own = section(everyLeague, NAME)
+    expect(own).toContain('England · Premier League')
+    expect(own).toContain('England · EFL Trophy')
+    const rest = everyLeague.replace(own, '')
+    expect(rest.length).toBe(everyLeague.length - own.length)
+    expect(rest).not.toMatch(/England|Premier League|EFL/)
+    expect(everyLeague).not.toMatch(/Ev \d|Dep \d/)
+  })
+
+  it('kapsam uygulanır; maç kaydı olmayan öneri "bilinmiyor" satırındadır; sonuçlanmış öneri yokken bölüm yazılmaz', () => {
+    const week = section(buildStatsSummary(input({ kind: 'last7' }, { matches: leagueMatches })), NAME)
+    expect(row(week, 'Tüm ligler')[1]).toBe(String(buildStats(picks.filter((p) => p.date >= '2026-10-04')).overall.decided))
+    const none = section(buildStatsSummary(input({ kind: 'all' }, { matches: [] })), NAME)
+    expect(row(none, 'Bilinmiyor (maç kaydı yok)')[1]).toBe(row(none, 'Tüm ligler')[1])
     expect(buildStatsSummary(input({ kind: 'all' }, { picks: [pick('pending', 'over25', '2026-10-09')] }))).not.toContain(NAME)
   })
 })

@@ -11,6 +11,7 @@ import { RELIABILITY_LABELS, SAMPLE_HINT } from '../analysis/reliability'
 import { stat } from '../analysis/stat'
 import { findActiveShared, sharedPicksOnly } from '../story/shared'
 import { buildCompetitionStats, COMPETITION_LABELS } from './competitionStats'
+import { buildLeagueStats, LEAGUE_MAX_ROWS, LEAGUE_MIN_DECIDED, type LeagueRow } from './leagueStats'
 import { buildMarginStats, MARGIN_BANDS } from './marginStats'
 import { backfillMarket, buildMarketStats } from './marketStats'
 import { buildGoalModelSourceStats, buildScoreSourceStats, buildSideGoalsSourceStats, deriveUnknownSources, MODEL_SOURCE_LABELS, SIDE_GOALS_SOURCE_LABELS } from './modelSourceStats'
@@ -21,8 +22,9 @@ import { buildStats, LOW_SAMPLE_LIMIT, tally, type Tally } from './statsEngine'
 
 // İstatistik sayfasındaki tabloların düz metin (markdown) özeti ve ayrıntılı CSV.
 // Yeni bir hesap içermez: sayılar statsEngine, marketStats ve aiStats çıktılarıdır ve
-// sayfadaki biçimle (formatRate) yazılır. Metne kişisel veri, ham CSV içeriği ya da
-// ayar anahtarı girmez.
+// sayfadaki biçimle (formatRate) yazılır. Metne kişisel veri, takım adı, maç kimliği, ham CSV
+// içeriği ya da ayar anahtarı girmez. Tek istisna lig adıdır (ülke · lig): yalnızca
+// "Lig bazlı başarı" bölümünde yazılır, başka hiçbir bölümde geçmez.
 
 export type SummaryScope = { kind: 'all' } | { kind: 'last7' } | { kind: 'last30' } | { kind: 'range'; from: string; to: string }
 
@@ -115,6 +117,17 @@ export function scopeData(input: Pick_<SummaryInput, 'picks' | 'verdicts' | 'sha
 }
 
 type Pick_<T, K extends keyof T> = { [P in K]: T[P] }
+
+/** "Lig bazlı başarı" bölümünün başlığı; lig adı yalnızca bu bölümde yazılır */
+export const LEAGUE_SECTION_TITLE = 'Lig bazlı başarı'
+const leagueLabel = (r: LeagueRow): string =>
+  r.kind === 'league'
+    ? r.name.replaceAll('|', '/')
+    : r.kind === 'other'
+      ? `Diğer ligler (${r.leagues} lig, ${r.tally.decided} öneri)`
+      : r.kind === 'unknown'
+        ? 'Bilinmiyor (maç kaydı yok)'
+        : 'Tüm ligler'
 
 const RANK_SECTION_TITLE = 'Sıraya göre başarı (yeniden hesaplanmış ve doğrulanmış sıra)'
 
@@ -211,6 +224,29 @@ export function buildStatsSummary(input: SummaryInput): string {
     `${LOW_SAMPLE_LEGEND} Ana kategori hücreleri: başarı · n. Tür öneride saklanmaz; maçın ülke / lig adından ve takım adlarından türetilir (öncelik: gençlik > rezerv > milli takım > kupa > lig) ve yanlış sınıflanmış lig olabilir. Türe düşen benzersiz lig ve önerili maç: ${competitions
       .flatMap((r) => (r.key === 'all' ? [] : [`${COMPETITION_LABELS[r.key]} ${r.leagues} lig, ${r.matches} maç`]))
       .join('; ')}. Hazır ort.: sonuçlanmış önerilerin dondurma anındaki yüzdesinin ortalaması (Taraf & Gol'de model tahmini). Beklenen: türün her sonuçlanmış önerisine kendi kategorisinin bu kapsamdaki genel başarısı verilerek bulunan ortalama; düzeltilmiş fark = gerçekleşen − beklenen, türün kategori karışımından arındırılmış farkıdır. Yaklaşıktır: kategori başarısı türün kendi önerilerini de içerir; büyük tür sıfıra yaklaşır. Aynı maçın önerileri bağımsız değildir.`,
+    '',
+  )
+
+  out.push(`## ${LEAGUE_SECTION_TITLE}`, '')
+  out.push(
+    table(
+      ['Lig', 'Sonuçlanan', 'Tutan', 'Başarı', '%95 aralık', 'Az veri', 'Hazır ort.', 'Fark (gerçekleşen − hazır)', 'Beklenen (yaklaşık)', 'Düzeltilmiş fark (yaklaşık)', 'Maç'],
+      buildLeagueStats(picks, input.matches).map((r) => [
+        leagueLabel(r),
+        r.tally.decided,
+        r.tally.won,
+        formatRate(r.tally.rate),
+        r.interval ? `${formatRate(r.interval.low)} – ${formatRate(r.interval.high)}` : '—',
+        lowMark(r.tally),
+        formatRate(r.ready),
+        signed(r.gap),
+        formatRate(r.expected),
+        r.tally.lowSample ? '—' : signed(r.adjustedGap),
+        r.matches,
+      ]),
+    ),
+    '',
+    `Lig = ülke · lig adı (önerinin maç kaydından); sonuçlanmış öneri sayısına göre azalan sırada. Kendi satırını alan ligler: en az ${LEAGUE_MIN_DECIDED} sonuçlanmış önerisi olan en çok ${LEAGUE_MAX_ROWS} lig; kalanı "Diğer ligler" satırındadır. Maç: önerisi olan benzersiz maç. Çok sayıda lig karşılaştırıldığı için en iyi/en kötü görünen ligler şansa bağlı olabilir; n<50 satırlardan sonuç çıkarılmamalı. Aralık Wilson %95; aynı maçın önerileri bağımsız değildir. Hazır ort., beklenen ve düzeltilmiş fark "Lig türüne göre başarı" tablosundaki yöntemle hesaplanır. Düzeltilmiş fark yaklaşıktır: kategori başarısı ligin kendi önerilerini de içerir; büyük lig sıfıra yaklaşır. "az veri" (n < ${LOW_SAMPLE_LIMIT}) satırlarında düzeltilmiş fark yazılmaz (—).`,
     '',
   )
 
