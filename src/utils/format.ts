@@ -10,7 +10,7 @@ const longDate = new Intl.DateTimeFormat('tr-TR', {
 
 export const formatNumber = (value: number): string => decimal.format(value)
 
-const asUtc = (date: string) => new Date(`${date}T00:00:00Z`)
+export const asUtc = (date: string) => new Date(`${date}T00:00:00Z`)
 
 export const shiftDate = (date: string, days: number): string => {
   const d = asUtc(date)

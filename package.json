@@ -16,6 +16,7 @@
     "uye:e2e": "node scripts/uye-e2e.mjs",
     "uye:admin-e2e": "node scripts/uye-admin-e2e.mjs",
     "admin:sekme-e2e": "node scripts/admin-sekme-e2e.mjs",
+    "gun-secici:e2e": "node scripts/gun-secici-e2e.mjs",
     "yayinla": "node scripts/yayinla.mjs",
     "uye-yayinla": "node scripts/uye-yayinla.mjs"
   },
