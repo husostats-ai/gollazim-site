@@ -40,6 +40,8 @@ export const MEMBER_KEYS = {
   itemOptional: ['sample'],
   /** Sürüm 7: önerinin isteğe bağlı alanları; "AI öneri güveni" satırı (ai) yalnızca karar istenen dört listede bulunabilir */
   itemOptionalV7: ['sample', 'ai'],
+  /** Sürüm 11: ayrıca marjı çıkarılmış piyasa yüzdesi (mkt); yalnızca MEMBER_MARKET_CATEGORIES listelerinde ve değer varken */
+  itemOptionalV11: ['sample', 'ai', 'mkt'],
   /** Sürüm 1 paketlerdeki öneri (others alanı yok) */
   itemV1: ['match', 'percent', 'model', 'conflict', 'stars', 'reliability', 'outcome', 'detail'],
   other: ['categoryId', 'percent', 'reliability'],
@@ -87,6 +89,11 @@ const levelOfSample = (sample: number): string => (sample >= SAMPLE_LEVEL_LIMITS
  */
 /** Satırın bulunabileceği listeler (karar istenen kategoriler) */
 export const MEMBER_AI_CATEGORIES: readonly string[] = ['over25', 'ht05', 'btts', 'over25btts']
+/**
+ * Piyasa yüzdesi (mkt) bulunabilen listeler. analysis/market.ts'teki MARKET_ODDS ile aynı olmalı (testle
+ * denetlenir); üye modülü o dosyayı içe aktarmadığı için burada ayrıca yazılır.
+ */
+export const MEMBER_MARKET_CATEGORIES: readonly string[] = ['over25', 'over35', 'over45', 'btts', 'ht05', 'ht15', 'sh05', 'corners85', 'corners95', 'corners105']
 export const MEMBER_AI_PROVIDERS = ['chatgpt', 'gemini', 'claude'] as const
 export const MEMBER_AI_VOTE_LEVELS = ['strong', 'medium', 'weak'] as const
 export const MEMBER_AI_MAJORITY_LEVELS = ['strong', 'medium'] as const
@@ -295,7 +302,7 @@ function day(value: unknown, path: string, version: number): void {
     if (l.categoryId !== CATEGORIES[i].id) fail(`${p}.categoryId`, 'kategoriler kayıt defterindeki sırada olmalı')
     array(l.items, `${p}.items`, MAX_MATCHES_PER_CATEGORY).forEach((raw, j) => {
       const q = `${p}.items[${j}]`
-      const item = object(raw, q, version === 1 ? MEMBER_KEYS.itemV1 : MEMBER_KEYS.item, version >= 7 ? MEMBER_KEYS.itemOptionalV7 : version >= 5 ? MEMBER_KEYS.itemOptional : [])
+      const item = object(raw, q, version === 1 ? MEMBER_KEYS.itemV1 : MEMBER_KEYS.item, version >= 11 ? MEMBER_KEYS.itemOptionalV11 : version >= 7 ? MEMBER_KEYS.itemOptionalV7 : version >= 5 ? MEMBER_KEYS.itemOptional : [])
       integer(item.match, `${q}.match`, 0, matches.length - 1)
       integer(item.percent, `${q}.percent`, 0, 100)
       nullable(item.model, (v) => integer(v, `${q}.model`, 0, 100))
@@ -308,6 +315,11 @@ function day(value: unknown, path: string, version: number): void {
       if (item.ai !== undefined) {
         if (!MEMBER_AI_CATEGORIES.includes(CATEGORIES[i].id)) fail(`${q}.ai`, 'bu listede bulunamaz')
         aiRow(item.ai, `${q}.ai`, (matches[item.match as number] as Obj).time)
+      }
+      // Piyasa yüzdesi yalnızca değer varken yazılır: null olamaz, yalnızca oranı olan listelerde bulunur.
+      if (item.mkt !== undefined) {
+        if (!MEMBER_MARKET_CATEGORIES.includes(CATEGORIES[i].id)) fail(`${q}.mkt`, 'bu listede bulunamaz')
+        integer(item.mkt, `${q}.mkt`, 0, 100)
       }
       nullable(item.outcome, (v) => oneOf(v, `${q}.outcome`, OUTCOMES))
       nullable(item.detail, (v) => text(v, `${q}.detail`, 20, DETAIL))
@@ -397,7 +409,7 @@ function streak(value: unknown, path: string): void {
 /** Paketi şemaya karşı denetler; uymuyorsa MemberPayloadError fırlatır. */
 export function assertMemberPayload(value: unknown): asserts value is MemberPayload {
   const version = typeof value === 'object' && value !== null ? (value as Obj).v : undefined
-  if (version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8 && version !== 9 && version !== 10) fail('paket.v', 'desteklenmeyen paket sürümü')
+  if (version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8 && version !== 9 && version !== 10 && version !== 11) fail('paket.v', 'desteklenmeyen paket sürümü')
   const p = object(value, 'paket', (version as number) >= 8 ? MEMBER_KEYS.payload : MEMBER_KEYS.payloadV7)
   integer(p.n, 'paket.n', 1, COUNT_MAX)
   text(p.publishedAt, 'paket.publishedAt', 24, ISO)

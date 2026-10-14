@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { MEMBER_MARKET_LABEL, MEMBER_MARKET_NOTE } from '../services/member/labels'
 
 // AYRI ÜYE SİTESİNİN derleme çıktısı denetimi (scripts/lib/uye-cikti-denetim.mjs).
 // Yayın komutu çıktıyı göndermeden önce bu denetimden geçirir. Burada denetimin kendisi
@@ -16,6 +17,7 @@ interface Check {
   payloadVersion: number | null
 }
 let checkMemberBuild: (dir: string) => Check
+let allowedPhrases: string[]
 const work = mkdtempSync(join(tmpdir(), 'gollazim-uye-cikti-'))
 const PAGE = `<!doctype html><html lang="tr"><head><meta name="robots" content="noindex, nofollow, noarchive" /><link rel="icon" type="image/png" href="./favicon.png" /><title>GOLLAZIM</title><script type="module" crossorigin src="/gollazim-uye/assets/uye-AbCd1234.js"></script><link rel="stylesheet" crossorigin href="/gollazim-uye/assets/uye-AbCd1234.css"></head><body><div id="root"></div></body></html>`
 
@@ -50,7 +52,9 @@ const problems = (changes: Record<string, string | null>): string => {
 const inScript = (code: string) => ({ 'assets/uye-AbCd1234.js': `console.log("üye");${code}` })
 
 beforeAll(async () => {
-  checkMemberBuild = ((await import(/* @vite-ignore */ resolve('scripts/lib/uye-cikti-denetim.mjs'))) as { checkMemberBuild: typeof checkMemberBuild }).checkMemberBuild
+  const module = (await import(/* @vite-ignore */ resolve('scripts/lib/uye-cikti-denetim.mjs'))) as { checkMemberBuild: typeof checkMemberBuild; ALLOWED_PHRASES: string[] }
+  checkMemberBuild = module.checkMemberBuild
+  allowedPhrases = module.ALLOWED_PHRASES
 })
 afterAll(() => rmSync(work, { recursive: true, force: true }))
 
@@ -117,6 +121,27 @@ describe('üye sitesi çıktı denetimi', () => {
     expect(problems(inScript('"x' + 'G 1,9"'))).toContain('yasak terim "xg"')
     // Küçültülmüş kodda rastgele harf dizisi olarak geçen "xg" sözcük sayılmaz.
     expect(checkMemberBuild(site(inScript('var axgb=1'))).ok).toBe(true)
+  })
+
+  it('piyasa yüzdesi: yalnızca onaylı etiket ve not, tırnak içinde birebir aynı hâlleriyle geçebilir', () => {
+    // İzinli metinler üye kartındaki sabitlerle birebir aynı (biri değişirse bu test kırılır).
+    expect(allowedPhrases).toEqual([MEMBER_MARKET_LABEL, MEMBER_MARKET_NOTE])
+    const note = MEMBER_MARKET_NOTE
+    for (const q of ['"', "'", '`']) expect(checkMemberBuild(site(inScript(`var a=${q}Pi${''}yasa${q},b=${q}${note}${q};f(a,b)`))).ok, q).toBe(true)
+    // İstisna dışındaki her "piyasa" yakalanır: başka metin, değiştirilmiş not, daha uzun dizge, tırnaksız geçiş.
+    for (const code of [
+      '"Pi' + 'yasa çelişkisi"',
+      '"pi' + 'yasa"',
+      '"Pi' + 'yasa "',
+      `"${note.replace('bilgi amaçlıdır', 'fırsat')}"`,
+      `"${note} Ek cümle."`,
+      `"Not: ${note}"`,
+      '// Pi' + 'yasa',
+      '`Pi' + 'yasa %${n}`',
+    ])
+      expect(problems(inScript(code)), code).toContain('yasak terim "piyasa"')
+    // "oran" ve diğer terimler hiç gevşemez: izinli metnin yanında da yakalanır.
+    expect(problems(inScript(`"${note}";"Başarı or` + `anı"`))).toContain('yasak terim "oran"')
   })
 
   it('sayfa: noindex, başlık, simge ve taban yol zorunlu; dış adres yasak', () => {

@@ -7,7 +7,7 @@ import { DEFAULT_MEMBER_TEXTS } from '../config/memberTexts'
 import { MEMBER_STALE_HOURS } from '../config/member'
 import { DAY, dayHighlights, HIGHLIGHT_PERCENT, memberInput, PREVIOUS_DAY, PUBLISHED_AT } from '../services/member/__fixtures__/rawData'
 import type { MemberErrorKind } from '../services/member/controller'
-import { MEMBER_ERROR_TEXTS, MEMBER_HIGHLIGHT_TEXTS, MEMBER_HT_SCORELESS_TEXT, MEMBER_NOTICE_TEXTS, MEMBER_STREAK_TEXTS, STALE_DATA_TEXT } from '../services/member/labels'
+import { MEMBER_ERROR_TEXTS, MEMBER_HIGHLIGHT_TEXTS, MEMBER_MARKET_LABEL, MEMBER_MARKET_NOTE, MEMBER_MARKET_NOTE_BUTTON, MEMBER_HT_SCORELESS_TEXT, MEMBER_NOTICE_TEXTS, MEMBER_STREAK_TEXTS, STALE_DATA_TEXT } from '../services/member/labels'
 import { buildMemberPayload } from '../services/member/payload'
 import { assertMemberPayload } from '../services/member/schema'
 import { formatRate } from '../utils/format'
@@ -23,6 +23,11 @@ import { makeMatch } from '../services/analysis/testUtils'
 import type { MemberPayload } from '../services/member/payload'
 import { streakMeanText, categoryChoices, dayChip, dayTitle, isOverstated, isStale, listFor, OTHER_COMPUTED_TAG, PERCENT_LABELS, PERCENT_NOTE, percentKind, secondPercentLabel, updatedText } from './view'
 
+/** Sürüm 11'den eski paket: önerilerde piyasa yüzdesi (mkt) alanı yoktur */
+const withoutMkt = (p: MemberPayload): void => {
+  for (const d of p.days) for (const l of d.lists) for (const i of l.items) delete i.mkt
+}
+
 // Üye sayfasının görünümü: bileşenler sunucu tarafı çizimle (tarayıcısız) HTML'e çevrilir.
 // Tıklama gerektiren akışlar (gün ve kategori seçimi) açılış seçimi verilerek çizilir;
 // gerçek tıklamalar Chrome'daki uçtan uca denemede sınanır.
@@ -35,6 +40,17 @@ const html = (element: ReactElement, path = '/uye'): string => renderToStaticMar
 /** Etiketler atılmış görünen metin */
 const textOf = (markup: string): string => markup.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim()
 const noop = () => undefined
+/**
+ * Piyasa yüzdesinin onaylı metinleri birebir çıkarılır: kart etiketi ("Piyasa %54"), "Nasıl okunur?" başlığı
+ * (etiketin kendisi) ve not. Başka yerde geçen "piyasa" yine yakalanır (derleme denetimindeki istisnanın karşılığı).
+ */
+const withoutMarketText = (markup: string): string =>
+  markup
+    .split(MEMBER_MARKET_NOTE)
+    .join(' ')
+    .split(`>${MEMBER_MARKET_LABEL}</h3>`)
+    .join('></h3>')
+    .replace(new RegExp(`(^|>|\\s)${MEMBER_MARKET_LABEL}(\\s|<[^>]*>)*%\\d{1,3}(?!\\d)`, 'g'), '$1')
 
 const shell = (children: ReactElement, now = NOW, refreshError: MemberErrorKind | null = null, p = payload) =>
   html(createElement(MemberShell, { payload: p, now, today: DAY, refreshError, onLogout: noop, children }))
@@ -388,6 +404,7 @@ describe('kategori listeleri ve üye kartı', () => {
   it('sürüm 6 paketteki maç geneli satır gösterilmez; paket yine açılır', () => {
     const v6 = JSON.parse(JSON.stringify(payload)) as MemberPayload
     ;(v6 as { v: number }).v = 6
+    withoutMkt(v6)
     delete v6.streak
     for (const d of v6.days) for (const m of d.matches) { delete m.homeForm; delete m.awayForm }
     for (const scope of ['all', 'shared'] as const) delete v6.statistics[scope].htScoreless
@@ -498,6 +515,7 @@ describe('kategori listeleri ve üye kartı', () => {
 
     const v1 = JSON.parse(JSON.stringify(payload)) as MemberPayload
     ;(v1 as { v: number }).v = 1
+    withoutMkt(v1)
     for (const scope of ['all', 'shared'] as const) delete v1.statistics[scope].main
     for (const d of v1.days) for (const l of d.lists) for (const item of l.items) delete item.others
     const markup = html(createElement(MemberAnalysis, { payload: v1, today: DAY, initialCategory: 'over25' }))
@@ -535,11 +553,15 @@ describe('kategori listeleri ve üye kartı', () => {
       expect(body).toContain(item.title)
       for (const paragraph of item.paragraphs) expect(body).toContain(paragraph)
     }
-    expect(HOW_TO_READ.map((i) => i.title)).toEqual(['Büyük yüzde', 'Yıldız', 'Geçmiş veri', 'AI öneri güveni', 'Çelişki rozetleri', 'Lig sırası ve oynanan maç', 'Aynı maçın diğer önerileri', 'Hiçbiri garanti değildir'])
+    expect(HOW_TO_READ.map((i) => i.title)).toEqual(['Büyük yüzde', MEMBER_MARKET_LABEL, 'Yıldız', 'Geçmiş veri', 'AI öneri güveni', 'Çelişki rozetleri', 'Lig sırası ve oynanan maç', 'Aynı maçın diğer önerileri', 'Hiçbiri garanti değildir'])
   })
 
   it('"Nasıl okunur?" metni sabittir: paketten gelmez, eşik sayısı ve yasak terim içermez', () => {
-    const all = HOW_TO_READ.flatMap((i) => [i.title, ...i.paragraphs]).join(' ')
+    // Piyasa maddesi yalnızca onaylı iki metindir (kartın etiketi ve notu); taramaya girmez.
+    expect(HOW_TO_READ.find((i) => i.title === MEMBER_MARKET_LABEL)!.paragraphs).toEqual([MEMBER_MARKET_NOTE])
+    const all = HOW_TO_READ.flatMap((i) => [i.title, ...i.paragraphs])
+      .filter((t) => t !== MEMBER_MARKET_LABEL && t !== MEMBER_MARKET_NOTE)
+      .join(' ')
     expect(JSON.stringify(payload)).not.toContain('Nasıl okunur')
     expect(all.toLocaleLowerCase('tr')).not.toMatch(/oran|piyasa|xg|csv|kaynak|footystats|bağlantı|odds|ortalama|https?:/)
     // Sayı olarak yalnızca yıldız ölçeği (1–5), örnek yüzde (%100), örnek maç sayısı ("en az 4 maç"),
@@ -589,6 +611,7 @@ describe('istatistik sayfası', () => {
   it('eski paket (ana kategoriler alanı olmayan) eski "GENEL BAŞARI" kartıyla açılır', () => {
     const old = JSON.parse(JSON.stringify(payload)) as MemberPayload
     ;(old as { v: number }).v = 2
+    withoutMkt(old)
     for (const scope of ['all', 'shared'] as const) delete old.statistics[scope].main
     const markup = html(createElement(MemberStatsPage, { payload: old }), '/uye/istatistik')
     const text = textOf(markup)
@@ -629,7 +652,7 @@ describe('SIZINTI: çizilen sayfada yasak terim yok', () => {
   const FORBIDDEN = /oran|piyasa|xg|csv|kaynak|footystats|bağlantı|https?:|www\.|odds|ortalama/
   /** Görünen metin ve kullanıcıya okunan öznitelikler (ipucu, erişilebilirlik adı, yer tutucu) */
   const visible = (markup: string): string =>
-    [textOf(markup), ...[...markup.matchAll(/\s(?:title|aria-label|alt|placeholder|value)="([^"]*)"/g)].map((m) => m[1])].join(' ').toLocaleLowerCase('tr')
+    [textOf(withoutMarketText(markup)), ...[...markup.matchAll(/\s(?:title|aria-label|alt|placeholder|value)="([^"]*)"/g)].map((m) => m[1])].join(' ').toLocaleLowerCase('tr')
 
   const pages: [string, string][] = [
     ...(['credentials', 'network', 'missing', 'invalid', 'outdated', 'corrupt', 'unsupported'] as const).map(
@@ -711,6 +734,7 @@ describe('günün öne çıkanları kutusu', () => {
     expect(html(createElement(MemberAnalysis, { payload: none, today: DAY }))).not.toContain('member-highlights')
     const v3 = JSON.parse(JSON.stringify(payload)) as MemberPayload
     ;(v3 as { v: number }).v = 3
+    withoutMkt(v3)
     for (const day of v3.days) delete day.highlights
     expect(html(createElement(MemberAnalysis, { payload: v3, today: DAY }))).not.toContain('member-highlights')
   })
@@ -745,6 +769,7 @@ describe('geçmiş veri rozeti ve tahmini maç sayısı', () => {
     for (const version of [3, 4]) {
       const old = JSON.parse(JSON.stringify(payload)) as MemberPayload
       ;(old as { v: number }).v = version
+      withoutMkt(old)
       for (const day of old.days) {
         if (version === 3) delete day.highlights
         for (const list of day.lists) for (const item of list.items) delete item.sample
@@ -834,6 +859,7 @@ describe('seri takibi sayfası', () => {
     expect(textOf(shell(analysis()))).toContain('SERİ TAKİBİ')
     const v7 = JSON.parse(JSON.stringify(payload)) as MemberPayload
     ;(v7 as { v: number }).v = 7
+    withoutMkt(v7)
     delete v7.streak
     for (const d of v7.days) for (const m of d.matches) { delete m.homeForm; delete m.awayForm }
     for (const scope of ['all', 'shared'] as const) delete v7.statistics[scope].htScoreless
@@ -877,6 +903,7 @@ describe('üye kartı: form, gol ve gol yemediği maç satırları (sürüm 9)',
   it('sürüm 8 paket (alanlar yok) eskisi gibi çizilir', () => {
     const v8 = JSON.parse(JSON.stringify(payload)) as MemberPayload
     ;(v8 as { v: number }).v = 8
+    withoutMkt(v8)
     for (const d of v8.days) for (const m of d.matches) { delete m.homeForm; delete m.awayForm }
     for (const scope of ['all', 'shared'] as const) delete v8.statistics[scope].htScoreless
     expect(() => assertMemberPayload(v8)).not.toThrow()
@@ -886,7 +913,7 @@ describe('üye kartı: form, gol ve gol yemediği maç satırları (sürüm 9)',
   })
 
   it('satırlarda yasak kelime ve bahis terimi yok', () => {
-    const text = textOf(cardOf('Kuzey Yıldızı')).toLocaleLowerCase('tr')
+    const text = textOf(withoutMarketText(cardOf('Kuzey Yıldızı'))).toLocaleLowerCase('tr')
     expect(/oran|piyasa|xg|csv|kaynak|footystats|bağlantı|odds|ortalama|bahis|kupon|iddaa|banko|clean sheet/.exec(text)?.[0] ?? null).toBeNull()
   })
 
@@ -970,6 +997,7 @@ describe('istatistik sayfası: İY 0.5 ÜST tutmadığında 2. yarı kutusu', ()
   it('sürüm 9 paket (alan yok) yeni sitede açılır; kutu görünmez, sayfanın kalanı çizilir', () => {
     const v9 = JSON.parse(JSON.stringify(payload)) as MemberPayload
     ;(v9 as { v: number }).v = 9
+    withoutMkt(v9)
     for (const scope of ['all', 'shared'] as const) delete v9.statistics[scope].htScoreless
     expect(() => assertMemberPayload(v9)).not.toThrow()
     const markup = html(createElement(MemberStatsPage, { payload: v9 }))
@@ -980,3 +1008,74 @@ describe('istatistik sayfası: İY 0.5 ÜST tutmadığında 2. yarı kutusu', ()
   })
 })
 
+describe('üye kartı: piyasa yüzdesi (sürüm 11)', () => {
+  const cardsOf = (markup: string): string[] => markup.split('data-testid="member-card"').slice(1)
+  const cards = (p: MemberPayload, categoryId: (typeof CATEGORIES)[number]['id']) => cardsOf(html(createElement(MemberAnalysis, { payload: p, today: DAY, initialDay: 0, initialCategory: categoryId })))
+  const over25 = payload.days[0].lists.find((l) => l.categoryId === 'over25')!
+
+  it('değeri olan kartta Model satırının altında, yıldızlardan önce "Piyasa %N"; "?" kapalı gelir, not çizilmez', () => {
+    const item = over25.items[0]
+    expect(item.mkt).toBeDefined()
+    const card = cards(payload, 'over25')[0]
+    const line = /data-testid="member-market"[\s\S]*?<\/p>/.exec(card)![0]
+    // Görünen metin: etiket, yüzde ve (ekran okuyucudan gizli) "?" işareti.
+    expect(textOf(`<p ${line}`)).toBe(`${MEMBER_MARKET_LABEL} %${item.mkt} ?`)
+    expect(card.indexOf('member-percent-label')).toBeLessThan(card.indexOf('member-market'))
+    if (item.model !== null) expect(card.indexOf('member-model')).toBeLessThan(card.indexOf('member-market'))
+    expect(card.indexOf('member-market"')).toBeLessThan(card.indexOf('role="img"'))
+    // "?" düğmesi: erişilebilir adı var, kapalı gelir ve notu gösterir/gizler; not kapalıyken hiç çizilmez.
+    const toggle = /<button[^>]*data-testid="member-market-toggle"[^>]*>/.exec(card)![0]
+    expect(toggle).toContain(`aria-label="${MEMBER_MARKET_NOTE_BUTTON}"`)
+    expect(toggle).toContain('aria-expanded="false"')
+    expect(toggle).toMatch(/aria-controls="[^"]+"/)
+    expect(card).not.toContain('member-market-note')
+    expect(card).not.toContain(MEMBER_MARKET_NOTE)
+  })
+
+  it('değeri olmayan kartta ve oransız listelerde satır, düğme ve boşluk yoktur', () => {
+    // Oransız listeler (2.5 Üst & KG Var, kart, Taraf & Gol): alan hiç yok.
+    for (const categoryId of ['over25btts', 'cards35', 'homeWin15'] as const) {
+      const list = payload.days[0].lists.find((l) => l.categoryId === categoryId)!
+      expect(list.items.length, categoryId).toBeGreaterThan(0)
+      for (const card of cards(payload, categoryId)) expect(card, categoryId).not.toContain('member-market')
+    }
+    // Oranlı listede değer yoksa kart, sürüm 10 kartıyla bayt bayt aynıdır (boş satır ya da yer tutucu yok).
+    const none = JSON.parse(JSON.stringify(payload)) as MemberPayload
+    withoutMkt(none)
+    expect(cards(none, 'over25').every((card) => !card.includes('member-market'))).toBe(true)
+    const v10 = JSON.parse(JSON.stringify(none)) as MemberPayload
+    ;(v10 as { v: number }).v = 10
+    expect(() => assertMemberPayload(v10)).not.toThrow()
+    expect(cards(v10, 'over25')).toEqual(cards(none, 'over25'))
+  })
+
+  it('sürüm 1-10 paketler açılır; satır görünmez', () => {
+    for (const version of [1, 5, 9, 10]) {
+      const old = JSON.parse(JSON.stringify(payload)) as MemberPayload
+      withoutMkt(old)
+      ;(old as { v: number }).v = version
+      const markup = html(createElement(MemberAnalysis, { payload: old, today: DAY, initialDay: 0, initialCategory: 'over25' }))
+      expect(markup, String(version)).toContain('data-testid="member-card"')
+      expect(markup, String(version)).not.toContain('member-market')
+    }
+  })
+
+  it('piyasa yüzdesi yalnızca kartın kendi satırındadır: diğer öneriler, öne çıkanlar ve seri sayfasına girmez', () => {
+    const markup = html(createElement(MemberAnalysis, { payload, today: DAY, initialDay: 0, initialCategory: 'over25' }))
+    const others = [...markup.matchAll(/data-testid="member-others"[\s\S]*?<\/p>/g)].map((m) => m[0]).join(' ')
+    expect(others.length).toBeGreaterThan(0)
+    expect(others).not.toContain(MEMBER_MARKET_LABEL)
+    const highlights = /data-testid="member-highlights"[\s\S]*?<\/section>/.exec(markup)?.[0] ?? ''
+    expect(highlights).not.toContain(MEMBER_MARKET_LABEL)
+    expect(html(createElement(MemberStreak, { streak: payload.streak! }))).not.toContain(MEMBER_MARKET_LABEL)
+    expect(textOf(html(createElement(MemberStatsPage, { payload })))).not.toContain(MEMBER_MARKET_LABEL)
+  })
+
+  it('metinler: "Nasıl okunur?" ile aynı cümle; oran, bahis, kazanç, tahmin, öneri, fırsat ve değer dili yok', () => {
+    expect(HOW_TO_READ.find((i) => i.title === MEMBER_MARKET_LABEL)!.paragraphs).toEqual([MEMBER_MARKET_NOTE])
+    expect(MEMBER_MARKET_NOTE).toBe('Maç öncesi piyasa fiyatlamasından hesaplanan olasılık; bilgi amaçlıdır. Kartın büyük yüzdesinden ayrı bir ölçüdür.')
+    for (const text of [MEMBER_MARKET_LABEL, MEMBER_MARKET_NOTE, MEMBER_MARKET_NOTE_BUTTON]) {
+      expect(/oran|bahis|kazan|tahmin|öner|fırsat|değer|kupon|iddaa|banko|xg|csv|kaynak|odds|ortalama|\d/.exec(text.toLocaleLowerCase('tr'))?.[0] ?? null, text).toBeNull()
+    }
+  })
+})

@@ -5,6 +5,11 @@ import { memberInput, PICKS, RESULTS } from './__fixtures__/rawData'
 import { buildMemberPayload, MEMBER_PAYLOAD_VERSION, type MemberPayload } from './payload'
 import { assertMemberPayload, MEMBER_HT_SCORELESS, MEMBER_KEYS, MemberPayloadError } from './schema'
 
+/** Sürüm 11'den eski paket: önerilerde piyasa yüzdesi (mkt) alanı yoktur */
+const withoutMkt = (p: MemberPayload): void => {
+  for (const d of p.days) for (const l of d.lists) for (const i of l.items) delete i.mkt
+}
+
 // "İY 0.5 ÜST tutmadığında 2. yarı" sayımının üye paketindeki hâli: yalnızca iki sayı.
 
 const TEAM_CANARY = 'Kanarya Spor'
@@ -30,8 +35,8 @@ const withHt = (p: MemberPayload, value: unknown): MemberPayload => {
 }
 
 describe('üye paketi: İY 0.5 ÜST tutmadığında 2. yarı (sürüm 10)', () => {
-  it('paket sürümü 10; eşikler tek sabittir', () => {
-    expect(MEMBER_PAYLOAD_VERSION).toBe(10)
+  it('paket sürümü 11; eşikler tek sabittir', () => {
+    expect(MEMBER_PAYLOAD_VERSION).toBe(11)
     expect(MEMBER_HT_SCORELESS).toEqual({ min: 20, low: 50 })
     expect(MEMBER_KEYS.htScoreless).toEqual(['n', 'over'])
   })
@@ -103,15 +108,17 @@ describe('üye paketi: İY 0.5 ÜST tutmadığında 2. yarı (sürüm 10)', () =
   it('sürüm 9 paket (bu alan olmadan) hâlâ açılır; sürümler karıştırılamaz', () => {
     const v9 = copy(build(40, 24, 14))
     ;(v9 as { v: number }).v = 9
+    withoutMkt(v9)
     for (const scope of ['all', 'shared'] as const) delete v9.statistics[scope].htScoreless
     expect(() => assertMemberPayload(v9)).not.toThrow()
     expect(Object.keys(v9.statistics.all)).toEqual(MEMBER_KEYS.statsV9)
     // Sürüm 9 pakette alan bulunamaz; sürüm 10 pakette bulunmak zorundadır.
     const mixed = copy(build(40, 24, 14))
     ;(mixed as { v: number }).v = 9
+    withoutMkt(mixed)
     expect(() => assertMemberPayload(mixed)).toThrow('izinli olmayan alan: htScoreless')
     const future = copy(build(40, 24, 14))
-    ;(future as { v: number }).v = 11
+    ;(future as { v: number }).v = 12
     expect(() => assertMemberPayload(future)).toThrow('desteklenmeyen paket sürümü')
   })
 })

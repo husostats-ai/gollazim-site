@@ -37,9 +37,9 @@ describe('üye paketi: model kaynağı sızmaz', () => {
     expect(JSON.stringify(buildMemberPayload(memberInput({ days, picks: PICKS })))).toBe(text)
   })
 
-  it('paket sürümü 10; şema denetimi geçer ve bilinmeyen alanı reddeder', () => {
-    expect(MEMBER_PAYLOAD_VERSION).toBe(10)
-    expect(payload.v).toBe(10)
+  it('paket sürümü 11; şema denetimi geçer ve bilinmeyen alanı reddeder', () => {
+    expect(MEMBER_PAYLOAD_VERSION).toBe(11)
+    expect(payload.v).toBe(11)
     expect(() => assertMemberPayload(JSON.parse(text))).not.toThrow()
     const leaked = JSON.parse(text)
     leaked.days[0].lists.find((l: { items: unknown[] }) => l.items.length > 0).items[0].modelSource = 'xg'

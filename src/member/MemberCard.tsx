@@ -1,7 +1,8 @@
+import { useId, useState } from 'react'
 import Stars from '../components/Stars'
 import TeamForm from '../components/TeamForm'
 import type { ReliabilityLevel } from '../services/analysis/types'
-import { MEMBER_AI_LEVEL_LABELS, MEMBER_AI_PROVIDER_LABELS, memberAiSummary, memberAiTitle, MEMBER_CONFLICT_LABELS, MEMBER_DATA_TERM, MEMBER_OUTCOMES, MEMBER_RELIABILITY_LABELS, memberSampleText, MEMBER_STATUS_LABELS, STALE_TABLE_LABEL, standingText } from '../services/member/labels'
+import { MEMBER_AI_LEVEL_LABELS, MEMBER_AI_PROVIDER_LABELS, memberAiSummary, memberAiTitle, MEMBER_CONFLICT_LABELS, MEMBER_DATA_TERM, MEMBER_MARKET_LABEL, MEMBER_MARKET_NOTE, MEMBER_MARKET_NOTE_BUTTON, MEMBER_OUTCOMES, MEMBER_RELIABILITY_LABELS, memberSampleText, MEMBER_STATUS_LABELS, STALE_TABLE_LABEL, standingText } from '../services/member/labels'
 import type { MemberItem, MemberMatch, MemberStanding } from '../services/member/payload'
 import type { PickOutcome } from '../types'
 import { categoryLabel as labelOf, isOverstated, OTHER_COMPUTED_TAG, percentKind } from './view'
@@ -64,6 +65,9 @@ export default function MemberCard({ rank, match, item, categoryLabel, percentLa
   const overstated = isOverstated(item)
   // Sürüm 1 paketlerde bu alan yoktur.
   const others = item.others ?? []
+  // Piyasa yüzdesinin "?" notu: başlık bloğunun altında tam genişlikte açılır.
+  const [marketNote, setMarketNote] = useState(false)
+  const marketNoteId = useId()
   return (
     <article className="flex min-w-0 flex-col gap-3 rounded-2xl border border-line bg-navy-700 p-4" data-testid="member-card" data-overstated={overstated}>
       <div className="flex min-w-0 items-center gap-2 text-xs text-muted">
@@ -91,9 +95,36 @@ export default function MemberCard({ rank, match, item, categoryLabel, percentLa
               {secondLabel} <span className="font-bold text-white">%{item.model}</span>
             </p>
           )}
+          {/* Sürüm 11: yalnızca oranı olan listelerde ve değer varken; yoksa satır hiç çizilmez. */}
+          {item.mkt !== undefined && (
+            <p className="mt-1 flex items-center justify-end gap-1 text-xs text-muted" data-testid="member-market">
+              <span>
+                {MEMBER_MARKET_LABEL} <span className="font-bold text-white">%{item.mkt}</span>
+              </span>
+              <button
+                type="button"
+                aria-label={MEMBER_MARKET_NOTE_BUTTON}
+                aria-expanded={marketNote}
+                aria-controls={marketNoteId}
+                onClick={() => setMarketNote((open) => !open)}
+                className="-my-1 grid h-6 w-6 place-items-center rounded-full text-[11px] font-bold text-muted hover:text-white"
+                data-testid="member-market-toggle"
+              >
+                <span aria-hidden="true" className="grid h-4 w-4 place-items-center rounded-full border border-navy-500">
+                  ?
+                </span>
+              </button>
+            </p>
+          )}
           <Stars count={item.stars} className="mt-1.5 block text-sm" />
         </div>
       </div>
+
+      {item.mkt !== undefined && marketNote && (
+        <p id={marketNoteId} className="rounded-xl border border-line bg-navy-800 px-3 py-2 text-xs leading-relaxed text-muted" data-testid="member-market-note">
+          {MEMBER_MARKET_NOTE}
+        </p>
+      )}
 
       <div className="flex flex-wrap items-center gap-1.5">
         {outcome && item.outcome && (

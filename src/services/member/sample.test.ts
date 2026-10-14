@@ -88,8 +88,23 @@ it.runIf(process.env.UYE_ORNEK && process.env.UYE_BACKUP)(
       { day, n: Number(process.env.UYE_N ?? 1), publishedAt: process.env.UYE_AT ?? new Date().toISOString(), texts: DEFAULT_MEMBER_TEXTS },
     )
 
-    // UYE_SURUM=7: seri takibi alanı olmayan eski biçimde paket (üye sitesinin eski paketi açtığını denemek için).
-    const sealed: MemberPayload = process.env.UYE_SURUM === '7' ? (({ streak: _streak, ...rest }) => ({ ...rest, v: 7 }))(payload) : payload
+    // UYE_SURUM=7: eski biçimde paket (üye sitesinin eski paketi açtığını denemek için). Sürüm 8-11'de gelen
+    // alanlar çıkarılır: seri takibi (8), form satırları (9), "İY 0.5 tutmadığında 2. yarı" (10), piyasa yüzdesi (11).
+    const toV7 = (source: MemberPayload): MemberPayload => {
+      const old = JSON.parse(JSON.stringify(source)) as MemberPayload
+      old.v = 7
+      delete old.streak
+      for (const d of old.days) {
+        for (const m of d.matches) {
+          delete m.homeForm
+          delete m.awayForm
+        }
+        for (const l of d.lists) for (const i of l.items) delete i.mkt
+      }
+      for (const scope of ['all', 'shared'] as const) delete (old.statistics[scope] as { htScoreless?: unknown }).htScoreless
+      return old
+    }
+    const sealed: MemberPayload = process.env.UYE_SURUM === '7' ? toV7(payload) : payload
     assertMemberPayload(sealed)
 
     const keys = await deriveMemberKeys({ username: login.username, password: login.password, siteSalt })

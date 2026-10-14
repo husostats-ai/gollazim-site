@@ -1,3 +1,5 @@
+import { MEMBER_MARKET_LABEL, MEMBER_MARKET_NOTE } from '../services/member/labels'
+
 // "Nasıl okunur?" kutusunun sabit metni. Paketten gelmez; üye sayfasının kodunda durur.
 // Anlatılanlar uygulamanın hesaplarıyla örtüşür ama eşik ya da sınır sayısı vermez.
 
@@ -17,6 +19,11 @@ export const HOW_TO_READ: HowToReadItem[] = [
       '“Hesaplanan tahmin”: geçmişte kaç kez görüldüğü değil, bir hesabın verdiği olasılıktır. 2.5 Üst & KG Var, Kart ve Taraf & Gol listelerindeki yüzdeler böyledir.',
       'Bazı kartlarda büyük yüzdenin altında “Model” ya da “İkinci hesap” adıyla ikinci bir yüzde görünür: aynı sonucun başka bir yöntemle yapılmış hesabıdır.',
     ],
+  },
+  {
+    // Kartın "?" notuyla aynı cümle (derleme denetimi yalnızca bu iki metni tanır).
+    title: MEMBER_MARKET_LABEL,
+    paragraphs: [MEMBER_MARKET_NOTE],
   },
   {
     title: 'Yıldız',

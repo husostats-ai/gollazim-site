@@ -19,7 +19,7 @@ import { assertMemberPayload, MEMBER_HT_SCORELESS, MEMBER_STREAK_LIMITS } from '
 // SIFIRDAN kurulur. Bu dosyada nesne yayma (`...match`, `...prediction`) kullanılmaz.
 //
 // Pakete GİRMEZ: ham CSV (Match.stats), FootyStats kolonları ve bağlantıları, oranlar,
-// piyasa yüzdesi ve piyasa çelişkisi, xG, gol/korner/kart ortalamaları, "Kaynak" satırı,
+// piyasa çelişkisi ve "oran yok" notu (yalnızca marjı çıkarılmış piyasa yüzdesi tam sayı olarak girer: mkt), xG, gol/korner/kart ortalamaları, "Kaynak" satırı,
 // rozet ipucu metinleri, "xG zayıf" ve "model piyasadan sapıyor" rozetleri, eşikler ve diğer ayarlar,
 // yapay zekâ kararlarının gerekçesi, riski, skor tahmini ve kayıt zamanı (yalnızca koşulu sağlayan maçın
 // karar seviyeleri girer), skor olasılıkları, paylaşım kayıtları, kalibrasyon tabloları.
@@ -38,13 +38,16 @@ import { assertMemberPayload, MEMBER_HT_SCORELESS, MEMBER_STREAK_LIMITS } from '
  * 9: maçlarda lig tablosundan form, gol ve "gol yemediği maç" (homeForm, awayForm) bulunabilir;
  *    alanlar yalnızca doluyken yazılır.
  * 10: istatistiklerde "İY 0.5 ÜST tutmadığında 2. yarı" sayımı (htScoreless) var: yalnızca iki sayı.
+ * 11: oranı olan listelerdeki önerilerde marjı çıkarılmış piyasa yüzdesi (mkt) bulunabilir; yalnızca
+ *    değer varken yazılır.
  * Sürüm 1 (others alanı olmayan), sürüm 2 (main alanı olmayan), sürüm 3 (highlights alanı olmayan),
  * sürüm 4 (sample alanı olmayan), sürüm 5 (ai alanı olmayan), sürüm 6 (ai alanı maçta olan) ve
- * sürüm 7 (streak alanı olmayan), sürüm 8 (form alanları olmayan) ve sürüm 9 (htScoreless alanı olmayan)
+ * sürüm 7 (streak alanı olmayan), sürüm 8 (form alanları olmayan), sürüm 9 (htScoreless alanı olmayan) ve
+ * sürüm 10 (mkt alanı olmayan)
  * paketler üye sayfasında hâlâ açılır;
  * sürüm 6'daki maç geneli satır gösterilmez.
  */
-export const MEMBER_PAYLOAD_VERSION = 10
+export const MEMBER_PAYLOAD_VERSION = 11
 
 /** Günlük dökümde pakete giren en fazla gün sayısı (en yeniler) */
 export const MEMBER_DAILY_LIMIT = 90
@@ -211,6 +214,12 @@ export interface MemberItem {
    * öneride vardır; diğerlerinde alan hiç yazılmaz. Sürüm 1-6 paketlerde bu alan yoktur.
    */
   ai?: MemberAi
+  /**
+   * Marjı çıkarılmış piyasa yüzdesi (0-100, tam sayı). Yalnızca oranı olan listelerde ve iki yönlü oranın
+   * ikisi de varken yazılır; yoksa alan hiç bulunmaz. Oranın kendisi, çelişki bilgisi ve "oran yok" notu
+   * pakete girmez. Yalnızca gösterilir: sıralamayı ve yıldızı etkilemez. Sürüm 1-10 paketlerde bu alan yoktur.
+   */
+  mkt?: number
   /** Dondurulmuş önerinin sonucu; skor girilmediyse null */
   outcome: PickOutcome | null
   /** Sonucun kategoriye özgü ayrıntısı ("İY 1-0", "Korner 11"); yoksa null */
@@ -315,7 +324,7 @@ export interface MemberStreak {
 }
 
 export interface MemberPayload {
-  v: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | typeof MEMBER_PAYLOAD_VERSION
+  v: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | typeof MEMBER_PAYLOAD_VERSION
   /** Yayın numarası */
   n: number
   /** Yayın anı (ISO) */
@@ -504,6 +513,8 @@ function dayOf(input: MemberPayloadInput, day: MemberDayInput, now: Date, sentAi
     }
     // Tahmini maç sayısı yalnızca çıkarılabildiyse yazılır; yoksa alan hiç bulunmaz.
     if (prediction.reliability.sampleSize !== null) item.sample = prediction.reliability.sampleSize
+    // Piyasa yüzdesi yalnızca değer varken yazılır (oranı olmayan maçta ve listede alan bulunmaz).
+    if (prediction.market !== undefined && prediction.market.percent !== null) item.mkt = prediction.market.percent
     // "AI öneri güveni" satırı yalnızca çağıranın seçtiği öneride yazılır; alanlar tek tek kopyalanır.
     const row = aiByKey.get(`${prediction.match.id}|${prediction.categoryId}`)
     if (row) {

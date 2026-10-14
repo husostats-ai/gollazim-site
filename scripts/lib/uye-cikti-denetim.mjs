@@ -42,6 +42,15 @@ const FORBIDDEN = [
 
 /** Üye sayfasında hiçbir biçimde geçmemesi gereken terimler (küçük harfe çevrilmiş metinde aranır) */
 const FORBIDDEN_WORDS = ['oran', 'piyasa', 'kaynak', 'ortalama', 'bağlantı', 'footystats', 'csv', 'odds']
+/**
+ * Yasak terim içerip yine de izinli olan TEK metinler: kartın piyasa yüzdesi etiketi ve notu
+ * (src/services/member/labels.ts: MEMBER_MARKET_LABEL, MEMBER_MARKET_NOTE; eşitlik testle denetlenir).
+ * Tarama öncesinde metinden yalnızca tırnak içindeki birebir aynı hâlleri çıkarılır; başka bir yerde
+ * geçen "piyasa" (ya da bu metinlerin değiştirilmiş hâli) yine yakalanır.
+ */
+export const ALLOWED_PHRASES = ['Piyasa', 'Maç öncesi piyasa fiyatlamasından hesaplanan olasılık; bilgi amaçlıdır. Kartın büyük yüzdesinden ayrı bir ölçüdür.']
+const QUOTES = ['"', "'", '`']
+const withoutAllowedPhrases = (text) => ALLOWED_PHRASES.reduce((rest, phrase) => QUOTES.reduce((t, q) => t.split(`${q}${phrase}${q}`).join(`${q}${q}`), rest), text)
 /** Kısa olduğu için yalnızca sözcük olarak aranan terimler (küçültülmüş kodda rastgele harf dizisi olarak geçebilir) */
 const FORBIDDEN_WHOLE_WORDS = ['xg']
 const WORD_CHAR = 'a-zçğıöşü0-9_'
@@ -82,7 +91,7 @@ export function checkMemberBuild(dir) {
   for (const file of files.filter((f) => TEXT.test(f.path))) {
     const text = file.content.toString('utf8')
     for (const [name, pattern] of FORBIDDEN) if (pattern.test(text)) problems.push(`${file.path}: ${name}`)
-    const lower = text.toLocaleLowerCase('tr')
+    const lower = withoutAllowedPhrases(text).toLocaleLowerCase('tr')
     for (const word of FORBIDDEN_WORDS) if (lower.includes(word)) problems.push(`${file.path}: yasak terim "${word}"`)
     for (const word of FORBIDDEN_WHOLE_WORDS) if (new RegExp(`(^|[^${WORD_CHAR}])${word}([^${WORD_CHAR}]|$)`).test(lower)) problems.push(`${file.path}: yasak terim "${word}"`)
   }

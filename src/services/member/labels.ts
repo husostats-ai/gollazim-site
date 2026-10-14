@@ -23,6 +23,16 @@ export const MEMBER_RELIABILITY_LABELS: Record<ReliabilityLevel, string> = {
   'market-partial': 'Model tabanlı (kısmi)',
 }
 
+/**
+ * Kartın piyasa yüzdesi satırının etiketi ("Piyasa %54") ve "?" ile açılan notu. Bu iki metin üye sitesinde
+ * "piyasa" geçebilen TEK yerdir: derleme denetimi (scripts/lib/uye-cikti-denetim.mjs) yalnızca bunları birebir
+ * tanır; değiştirilirse orada da değiştirilmelidir (testle denetlenir).
+ */
+export const MEMBER_MARKET_LABEL = 'Piyasa'
+export const MEMBER_MARKET_NOTE = 'Maç öncesi piyasa fiyatlamasından hesaplanan olasılık; bilgi amaçlıdır. Kartın büyük yüzdesinden ayrı bir ölçüdür.'
+/** "?" düğmesinin ekran okuyucu adı */
+export const MEMBER_MARKET_NOTE_BUTTON = 'Açıklama'
+
 export const MEMBER_CONFLICT_LABELS: Record<MemberConflict, string> = {
   model: 'Model çelişkisi',
   hesap: 'Hesaplar çelişiyor',

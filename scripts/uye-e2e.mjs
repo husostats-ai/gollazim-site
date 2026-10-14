@@ -20,6 +20,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { createRequire } from 'node:module'
 import { homedir, tmpdir } from 'node:os'
 import { extname, join, normalize, resolve } from 'node:path'
+import { ALLOWED_PHRASES } from './lib/uye-cikti-denetim.mjs'
 
 if (!process.env.UYE_BACKUP || !existsSync(resolve(process.env.UYE_BACKUP))) {
   console.error('UYE_BACKUP (JSON yedek) verilmeli.')
@@ -103,8 +104,11 @@ const requests = []
 const watch = (page) => page.on('request', (r) => requests.push(r.url()))
 const sel = (id) => `[data-testid="${id}"]`
 const text = (page, id) => page.$eval(sel(id), (el) => el.textContent.trim())
+// Piyasa yüzdesinin onaylı metinleri (kart etiketi "Piyasa %N", "Nasıl okunur?" başlığı ve not) birebir
+// çıkarılır; başka yerde geçen "piyasa" yine yakalanır (derleme denetimindeki istisnanın karşılığı).
+const [MARKET_LABEL, MARKET_NOTE] = ALLOWED_PHRASES
 const visibleText = (page) =>
-  page.evaluate(() => [document.body.innerText, ...[...document.querySelectorAll('[title],[aria-label],[alt],[placeholder]')].flatMap((el) => ['title', 'aria-label', 'alt', 'placeholder'].map((a) => el.getAttribute(a) ?? ''))].join(' ').toLocaleLowerCase('tr'))
+  page.evaluate(([label, note]) => [document.body.innerText.split(note).join(' ').replace(new RegExp(`(^|\\s)${label} %\\d{1,3}(?!\\d)`, 'g'), '$1').replace(new RegExp(`(^|\\n)${label}(?=\\n)`, 'g'), '$1'), ...[...document.querySelectorAll('[title],[aria-label],[alt],[placeholder]')].flatMap((el) => ['title', 'aria-label', 'alt', 'placeholder'].map((a) => el.getAttribute(a) ?? ''))].join(' ').toLocaleLowerCase('tr'), [MARKET_LABEL, MARKET_NOTE])
 const overflow = (page) => page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, inner: window.innerWidth }))
 const session = (page) => page.evaluate(() => ({ session: { ...sessionStorage }, local: { ...localStorage }, cookie: document.cookie }))
 async function shot(page, name, width) {
@@ -394,6 +398,93 @@ try {
     report.ekranlar.push({ dosya: `nasil-okunur-acik-${width}.png`, genislik: width, tasma: size.scroll > size.inner ? 'VAR' : 'yok' })
   }
   await page.click(`${sel('member-howto')} summary`)
+
+  // Piyasa yüzdesi (sürüm 11): yalnızca değer varken, Model satırının altında; "?" notu başlık bloğunun altında tam genişlikte
+  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 })
+  const marketCards = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid="member-card"]')].map((card) => {
+        const line = card.querySelector('[data-testid="member-market"]')
+        const stars = card.querySelector('[role="img"]')
+        const prev = stars.previousElementSibling
+        return {
+          line: line ? line.querySelector('span').textContent.replace(/\s+/g, ' ').trim() : null,
+          toggles: card.querySelectorAll('[data-testid="member-market-toggle"]').length,
+          // Yıldızların üstündeki boşluk: değer yoksa satır yer tutmaz (yalnızca mt-1.5 = 6 px)
+          gap: Math.round(stars.getBoundingClientRect().top - prev.getBoundingClientRect().bottom),
+          prev: prev.dataset.testid,
+        }
+      }),
+    )
+  const withMarket = (await marketCards()).filter((c) => c.line !== null)
+  step('piyasa satırı: "Piyasa %N" ve tek "?" düğmesi', withMarket.length > 0 && withMarket.every((c) => new RegExp(`^${MARKET_LABEL} %\\d{1,3}$`).test(c.line) && c.toggles === 1), `${withMarket.length} kartta · ${withMarket[0]?.line}`)
+  const marketToggle = sel('member-market-toggle')
+  const note = () =>
+    page.evaluate(() => {
+      const card = document.querySelector('[data-testid="member-market-toggle"]').closest('[data-testid="member-card"]')
+      const el = card.querySelector('[data-testid="member-market-note"]')
+      const head = card.querySelector('[data-testid="member-percent"]').parentElement.parentElement
+      const toggle = card.querySelector('[data-testid="member-market-toggle"]')
+      if (!el) return { open: false, expanded: toggle.getAttribute('aria-expanded') }
+      const box = el.getBoundingClientRect()
+      const cardBox = card.getBoundingClientRect()
+      const padding = parseFloat(getComputedStyle(card).paddingLeft)
+      return {
+        open: true,
+        expanded: toggle.getAttribute('aria-expanded'),
+        controls: toggle.getAttribute('aria-controls') === el.id,
+        text: el.textContent.trim(),
+        below: box.top >= head.getBoundingClientRect().bottom - 0.5,
+        full: Math.abs(box.width - (cardBox.width - 2 * padding - 2)) <= 2,
+        inside: box.left >= cardBox.left && box.right <= cardBox.right + 0.5,
+      }
+    })
+  const closedNote = await note()
+  step('"?" notu kapalı geliyor (aria-expanded=false, not çizilmemiş)', !closedNote.open && closedNote.expanded === 'false')
+  await page.click(marketToggle)
+  const openNote = await note()
+  step('"?" tıklanınca not açılıyor: onaylı cümle, başlık bloğunun altında, kart genişliğinde', openNote.open && openNote.expanded === 'true' && openNote.controls && openNote.text === MARKET_NOTE && openNote.below && openNote.full && openNote.inside, JSON.stringify({ ...openNote, text: openNote.text?.slice(0, 40) }))
+  await page.click(marketToggle)
+  step('"?" yeniden tıklanınca not kapanıyor', !(await note()).open)
+  await page.focus(marketToggle)
+  await page.keyboard.press('Enter')
+  step('"?" klavyeyle (Enter) açılıyor', (await note()).open)
+  for (const width of [320, 360, 390]) {
+    await page.setViewport({ width, height: 844, deviceScaleFactor: 2 })
+    await new Promise((r) => setTimeout(r, 150))
+    const size = await overflow(page)
+    const fits = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid="member-market"], [data-testid="member-market-toggle"], [data-testid="member-market-note"]')].every((el) => {
+        const box = el.getBoundingClientRect()
+        const card = el.closest('[data-testid="member-card"]').getBoundingClientRect()
+        return box.left >= card.left && box.right <= card.right + 0.5 && box.right <= window.innerWidth + 0.5
+      }),
+    )
+    const nextNote = await note()
+    step(`piyasa satırı ve açık not ${width} px'te taşmıyor`, size.scroll <= size.inner && fits && nextNote.open && nextNote.full, `${size.scroll} / ${size.inner}`)
+    if (width === 320) {
+      await page.evaluate(() => (document.querySelector('header').style.position = 'static'))
+      await (await page.$(`${sel('member-card')}:has(${sel('member-market-note')})`)).screenshot({ path: join(shots, 'kart-piyasa-not-320.png') })
+      await page.evaluate(() => (document.querySelector('header').style.position = ''))
+      report.ekranlar.push({ dosya: 'kart-piyasa-not-320.png', genislik: 320, tasma: 'yok' })
+    }
+  }
+  await page.click(marketToggle)
+  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 })
+  // Değeri olmayan kart: satır, düğme ve boşluk yok (oransız listeler; oranlı listede değeri olmayan kart varsa o da)
+  const bareCards = []
+  for (const chip of await page.$$eval('[data-testid^="member-category-"]', (els) => els.map((el) => el.dataset.testid))) {
+    await page.click(sel(chip))
+    await new Promise((r) => setTimeout(r, 60))
+    for (const card of await marketCards()) if (card.line === null) bareCards.push({ chip, ...card })
+  }
+  step(
+    'değeri olmayan kartta piyasa satırı, düğme ve boşluk yok',
+    bareCards.length > 0 && bareCards.every((c) => c.toggles === 0 && c.gap === 6 && c.prev !== 'member-market'),
+    `${bareCards.length} kart · ${[...new Set(bareCards.map((c) => c.chip.replace('member-category-', '')))].join(', ')} · boşluk ${[...new Set(bareCards.map((c) => c.gap))].join('/')} px`,
+  )
+  await page.click(sel((await page.$$eval('[data-testid^="member-category-"]', (els) => els.map((el) => el.dataset.testid)))[0]))
+
   // Öneri satırlı bir kartın yakın görüntüsü (320 px)
   await page.setViewport({ width: 320, height: 844, deviceScaleFactor: 2 })
   await page.evaluate(() => (document.querySelector('header').style.position = 'static'))
