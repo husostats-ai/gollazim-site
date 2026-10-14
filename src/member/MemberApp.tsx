@@ -8,6 +8,7 @@ import MemberLogin from './MemberLogin'
 import MemberShell, { MemberFrame } from './MemberShell'
 import MemberStatsPage from './MemberStatsPage'
 import MemberStreak from './MemberStreak'
+import type { MemberSortMode } from './view'
 
 const controller = createMemberController({
   url: MEMBER_PACKAGE_URL,
@@ -26,6 +27,8 @@ const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'scroll'] as const
 export default function MemberApp({ basePath = '/uye' }: { basePath?: string }) {
   const state = useSyncExternalStore(controller.subscribe, controller.getState)
   const [now, setNow] = useState(() => Date.now())
+  // Listenin dizilişi yalnızca bellekte tutulur: sayfa yenilenince "Yüzdeye göre" başlar.
+  const [sortMode, setSortMode] = useState<MemberSortMode>('percent')
   const { pathname } = useLocation()
   const home = basePath || '/'
   const signedIn = state.status === 'signedIn'
@@ -87,7 +90,7 @@ export default function MemberApp({ basePath = '/uye' }: { basePath?: string }) 
   return (
     <MemberShell payload={state.payload} now={now} today={today} refreshError={state.refreshError} onLogout={controller.logout} basePath={basePath}>
       <Routes>
-        <Route index element={<MemberAnalysis payload={state.payload} today={today} />} />
+        <Route index element={<MemberAnalysis payload={state.payload} today={today} sortMode={sortMode} onSortModeChange={setSortMode} />} />
         <Route path="istatistik" element={<MemberStatsPage payload={state.payload} />} />
         {/* Sürüm 1-7 paketlerde seri takibi yoktur: sekme çıkmaz, adres ana sayfaya döner. */}
         {state.payload.streak && <Route path="seri" element={<MemberStreak streak={state.payload.streak} />} />}

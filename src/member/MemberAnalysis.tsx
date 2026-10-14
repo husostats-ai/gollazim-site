@@ -5,7 +5,8 @@ import type { MemberPayload } from '../services/member/payload'
 import { HOW_TO_READ, HOW_TO_READ_TITLE } from './howToRead'
 import MemberCard from './MemberCard'
 import MemberHighlights from './MemberHighlights'
-import { categoryChoices, dayChip, dayTitle, listFor, PERCENT_LABELS, PERCENT_NOTE, percentKind, secondPercentLabel } from './view'
+import MemberSortToggle from './MemberSortToggle'
+import { categoryChoices, dayChip, dayTitle, listFor, orderItems, PERCENT_LABELS, PERCENT_NOTE, percentKind, secondPercentLabel, SORT_ANNOUNCE, TIME_SORT_NOTE, type MemberSortMode } from './view'
 
 const CHIP = 'shrink-0 rounded-xl border px-3.5 py-2 text-sm font-bold whitespace-nowrap transition-colors'
 const chipTone = (active: boolean) => (active ? 'border-brand bg-navy-700 text-brand' : 'border-navy-600 text-muted hover:border-navy-500 hover:text-white')
@@ -16,10 +17,25 @@ interface Props {
   /** Açılışta seçili gün ve kategori (verilmezse ilk gün ve ilk dolu liste) */
   initialDay?: number
   initialCategory?: CategoryId
+  /**
+   * Listenin dizilişi. MemberApp verir (yalnızca bellekte; gün/kategori/sekme değişince korunur).
+   * Verilmezse bileşen kendi içinde tutar ve "Yüzdeye göre" başlar.
+   */
+  sortMode?: MemberSortMode
+  onSortModeChange?: (mode: MemberSortMode) => void
 }
 
 /** Günün kategori listeleri: gün seçici, kategori seçici ve salt okunur kartlar. */
-export default function MemberAnalysis({ payload, today, initialDay = 0, initialCategory }: Props) {
+export default function MemberAnalysis({ payload, today, initialDay = 0, initialCategory, sortMode, onSortModeChange }: Props) {
+  const [ownSortMode, setOwnSortMode] = useState<MemberSortMode>('percent')
+  const mode = sortMode ?? ownSortMode
+  // Ekran okuyucu duyurusu yalnızca geçişe dokunulunca yazılır (açılışta okunmaz).
+  const [announce, setAnnounce] = useState('')
+  const changeSort = (next: MemberSortMode) => {
+    if (next !== mode) setAnnounce(SORT_ANNOUNCE[next])
+    if (onSortModeChange) onSortModeChange(next)
+    else setOwnSortMode(next)
+  }
   const [dayIndex, setDayIndex] = useState(initialDay)
   const [categoryId, setCategoryId] = useState<CategoryId | null>(initialCategory ?? null)
   // Yeni yayında gün sayısı azalmış olabilir.
@@ -71,9 +87,20 @@ export default function MemberAnalysis({ payload, today, initialDay = 0, initial
               )
             })}
           </div>
-          <p className="mt-3 text-xs text-muted">
-            {choices.find((c) => c.categoryId === list.categoryId)!.label} · {list.items.length} öneri · Saatler TSİ
-          </p>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <p className="min-w-0 text-xs text-muted" data-testid="member-list-meta">
+              {choices.find((c) => c.categoryId === list.categoryId)!.label} · {list.items.length} öneri · Saatler TSİ
+            </p>
+            <MemberSortToggle mode={mode} onChange={changeSort} />
+          </div>
+          <span className="sr-only" aria-live="polite" data-testid="member-sort-live">
+            {announce}
+          </span>
+          {mode === 'time' && (
+            <p className="mt-1.5 text-xs text-muted" data-testid="member-sort-note">
+              {TIME_SORT_NOTE}
+            </p>
+          )}
           <p className="mt-1.5 text-xs text-muted" data-testid="member-percent-note">
             {PERCENT_NOTE}
           </p>
@@ -93,8 +120,8 @@ export default function MemberAnalysis({ payload, today, initialDay = 0, initial
             </div>
           </details>
           <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2" data-testid="member-cards">
-            {list.items.map((item, i) => (
-              <MemberCard key={`${list.categoryId}:${item.match}`} rank={i + 1} match={day.matches[item.match]} item={item} categoryLabel={choices.find((c) => c.categoryId === list.categoryId)!.label} percentLabel={PERCENT_LABELS[percentKind(list.categoryId)]} secondLabel={secondPercentLabel(list.categoryId)} />
+            {orderItems(list.items, day.matches, mode).map(({ item, rank }) => (
+              <MemberCard key={`${list.categoryId}:${item.match}`} rank={rank} match={day.matches[item.match]} item={item} categoryLabel={choices.find((c) => c.categoryId === list.categoryId)!.label} percentLabel={PERCENT_LABELS[percentKind(list.categoryId)]} secondLabel={secondPercentLabel(list.categoryId)} />
             ))}
           </div>
         </>

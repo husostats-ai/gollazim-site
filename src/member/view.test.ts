@@ -21,7 +21,7 @@ import MemberStreak from './MemberStreak'
 import { CALCULATORS } from '../services/analysis/calculators'
 import { makeMatch } from '../services/analysis/testUtils'
 import type { MemberPayload } from '../services/member/payload'
-import { streakMeanText, categoryChoices, dayChip, dayTitle, isOverstated, isStale, listFor, OTHER_COMPUTED_TAG, PERCENT_LABELS, PERCENT_NOTE, percentKind, secondPercentLabel, updatedText } from './view'
+import { streakMeanText, categoryChoices, dayChip, dayTitle, isOverstated, isStale, listFor, orderItems, OTHER_COMPUTED_TAG, PERCENT_LABELS, PERCENT_NOTE, percentKind, secondPercentLabel, SORT_ANNOUNCE, SORT_GROUP_LABEL, SORT_LABELS, TIME_SORT_NOTE, updatedText } from './view'
 
 /** Sürüm 11'den eski paket: önerilerde piyasa yüzdesi (mkt) alanı yoktur */
 const withoutMkt = (p: MemberPayload): void => {
@@ -872,7 +872,8 @@ describe('seri takibi sayfası', () => {
 })
 
 describe('üye kartı: form, gol ve gol yemediği maç satırları (sürüm 9)', () => {
-  const cardsOf = (markup: string): string[] => markup.split('data-testid="member-card"').slice(1)
+  // useId kimlikleri sunucu çıktısında ağaçtaki konuma bağlıdır (tarayıcıda anahtar sabit olduğundan korunur): karşılaştırmada ayıklanır.
+  const cardsOf = (markup: string): string[] => markup.split('data-testid="member-card"').slice(1).map((card) => card.slice(0, card.indexOf('</article>')).replace(/_R_[0-9a-zA-Z]+_/g, '_R_'))
   const cardOf = (home: string, p: MemberPayload = payload): string => cardsOf(html(createElement(MemberAnalysis, { payload: p, today: DAY, initialDay: 0, initialCategory: 'over25' }))).find((c) => c.includes(home))!
 
   it('doğrulanan maçta sabit satırlar: G/B/M kutucukları, gol ve gol yemediği maç; açılır kutu yok', () => {
@@ -1009,7 +1010,8 @@ describe('istatistik sayfası: İY 0.5 ÜST tutmadığında 2. yarı kutusu', ()
 })
 
 describe('üye kartı: piyasa yüzdesi (sürüm 11)', () => {
-  const cardsOf = (markup: string): string[] => markup.split('data-testid="member-card"').slice(1)
+  // useId kimlikleri sunucu çıktısında ağaçtaki konuma bağlıdır (tarayıcıda anahtar sabit olduğundan korunur): karşılaştırmada ayıklanır.
+  const cardsOf = (markup: string): string[] => markup.split('data-testid="member-card"').slice(1).map((card) => card.slice(0, card.indexOf('</article>')).replace(/_R_[0-9a-zA-Z]+_/g, '_R_'))
   const cards = (p: MemberPayload, categoryId: (typeof CATEGORIES)[number]['id']) => cardsOf(html(createElement(MemberAnalysis, { payload: p, today: DAY, initialDay: 0, initialCategory: categoryId })))
   const over25 = payload.days[0].lists.find((l) => l.categoryId === 'over25')!
 
@@ -1077,5 +1079,85 @@ describe('üye kartı: piyasa yüzdesi (sürüm 11)', () => {
     for (const text of [MEMBER_MARKET_LABEL, MEMBER_MARKET_NOTE, MEMBER_MARKET_NOTE_BUTTON]) {
       expect(/oran|bahis|kazan|tahmin|öner|fırsat|değer|kupon|iddaa|banko|xg|csv|kaynak|odds|ortalama|\d/.exec(text.toLocaleLowerCase('tr'))?.[0] ?? null, text).toBeNull()
     }
+  })
+})
+
+describe('liste sıralaması: Yüzdeye göre | Saate göre', () => {
+  // useId kimlikleri sunucu çıktısında ağaçtaki konuma bağlıdır (tarayıcıda anahtar sabit olduğundan korunur): karşılaştırmada ayıklanır.
+  const cardsOf = (markup: string): string[] => markup.split('data-testid="member-card"').slice(1).map((card) => card.slice(0, card.indexOf('</article>')).replace(/_R_[0-9a-zA-Z]+_/g, '_R_'))
+  /** Kartın sıra numarası (sol üstteki yuvarlak) */
+  const rankOf = (card: string): number => Number(/rounded-full bg-navy-600 px-1\.5 font-bold text-white">(\d+)</.exec(card)![1])
+  const item = (match: number, percent: number) => ({ match, percent, model: null, conflict: null, stars: 3, reliability: 'high' as const, outcome: null, detail: null, others: [] })
+  const match = (time: string | null) => ({ home: 'A', away: 'B', league: null, time, status: null, score: null, homeStanding: null, awayStanding: null })
+
+  it('yüzde modunda paketteki sıra aynen kalır; numara 1, 2, 3…', () => {
+    const items = [item(0, 90), item(1, 85), item(2, 80)]
+    const ordered = orderItems(items, [match('21:00'), match('13:00'), match('18:00')], 'percent')
+    expect(ordered.map((r) => r.item)).toEqual(items)
+    expect(ordered.map((r) => r.rank)).toEqual([1, 2, 3])
+  })
+
+  it('saat modunda saat artan; eşit saatte paketteki sıra; saati olmayan sona; numara değişmez', () => {
+    const matches = [match('21:00'), match(null), match('00:30'), match('19:00'), match('19:00'), match(null), match('13:15')]
+    const items = [item(0, 95), item(1, 94), item(2, 93), item(3, 92), item(4, 91), item(5, 90), item(6, 89)]
+    const ordered = orderItems(items, matches, 'time')
+    expect(ordered.map((r) => r.rank)).toEqual([3, 7, 4, 5, 1, 2, 6])
+    expect(ordered.map((r) => matches[r.item.match].time)).toEqual(['00:30', '13:15', '19:00', '19:00', '21:00', null, null])
+    // Girdi dizisi değişmez (paketteki sıra korunur).
+    expect(items.map((i) => i.match)).toEqual([0, 1, 2, 3, 4, 5, 6])
+  })
+
+  it('gece yarısını geçen maç (00:30) günün listesinde en başta; aynı saatli maçlar mevcut sırayı korur', () => {
+    const ordered = orderItems([item(0, 90), item(1, 80), item(2, 70)], [match('23:45'), match('00:30'), match('23:45')], 'time')
+    expect(ordered.map((r) => r.rank)).toEqual([2, 1, 3])
+  })
+
+  // Fikstürün 2.5 ÜST listesine bilinen saatler verilir: gece yarısı, eşit saatler ve saati olmayan maç.
+  const timed = structuredClone(payload)
+  const timedDay = timed.days[0]
+  const timedList = timedDay.lists.find((l) => l.categoryId === 'over25')!
+  const TIMES = ['21:45', null, '00:30', '19:00', '19:00']
+  timedList.items.forEach((it, i) => (timedDay.matches[it.match].time = TIMES[i % TIMES.length]))
+  const render = (sortMode?: 'percent' | 'time') => html(createElement(MemberAnalysis, { payload: timed, today: DAY, initialDay: 0, initialCategory: 'over25', ...(sortMode && { sortMode }) }))
+
+  it('fikstür listesi sıralamayı sınayacak kadar uzun', () => {
+    expect(timedList.items.length).toBeGreaterThanOrEqual(TIMES.length)
+  })
+
+  it('varsayılan "Yüzdeye göre": geçiş kategori satırında, basılı düğme aria-pressed; not ve duyuru yok', () => {
+    const markup = render()
+    expect(markup).toContain(`role="group" aria-label="${SORT_GROUP_LABEL}" data-testid="member-sort"`)
+    expect(markup).toMatch(/aria-pressed="true" data-testid="member-sort-percent"/)
+    expect(markup).toMatch(/aria-pressed="false" data-testid="member-sort-time"/)
+    expect(markup).not.toContain('member-sort-note')
+    expect(markup).toMatch(/aria-live="polite" data-testid="member-sort-live"><\/span>/)
+    // Geçiş, liste satırıyla aynı kapta (dar ekranda alt satıra iner).
+    expect(markup).toMatch(/flex-wrap[^>]*><p[^>]*data-testid="member-list-meta">[\s\S]*?<\/p><div[^>]*data-testid="member-sort"/)
+    expect(cardsOf(markup).map(rankOf)).toEqual(timedList.items.map((_, i) => i + 1))
+  })
+
+  it('"Saate göre": kartlar saate göre dizilir, numara ve kartın içeriği (yıldız, rozet) birebir aynı kalır', () => {
+    const byPercent = cardsOf(render('percent'))
+    const markup = render('time')
+    const byTime = cardsOf(markup)
+    expect(markup).toMatch(/aria-pressed="true" data-testid="member-sort-time"/)
+    expect(textOf(markup)).toContain(TIME_SORT_NOTE)
+    expect(byTime).toHaveLength(byPercent.length)
+    // Her kart, yüzde modundaki kendi kartının aynısıdır (yalnızca yeri değişir).
+    for (const card of byTime) expect(byPercent[rankOf(card) - 1]).toBe(card)
+    const times = byTime.map((card) => timedDay.matches[timedList.items[rankOf(card) - 1].match].time)
+    const known = times.filter((t) => t !== null)
+    expect(known).toEqual([...known].sort())
+    expect(times.slice(known.length).every((t) => t === null)).toBe(true)
+    expect(times[0]).toBe('00:30')
+    // Eşit saatte numara artan.
+    for (let i = 1; i < byTime.length; i++) if (times[i] === times[i - 1]) expect(rankOf(byTime[i])).toBeGreaterThan(rankOf(byTime[i - 1]))
+  })
+
+  it('yeni metinlerde oran, bahis, kazanç, tahmin, öneri, fırsat, değer, piyasa ve aciliyet dili yok; "#" yok', () => {
+    for (const text of [SORT_GROUP_LABEL, ...Object.values(SORT_LABELS), ...Object.values(SORT_ANNOUNCE), TIME_SORT_NOTE]) {
+      expect(/oran|bahis|kazan|tahmin|öner|fırsat|değer|piyasa|kupon|iddaa|banko|yaklaşan|kaçırma|acele|hemen|#/.exec(text.toLocaleLowerCase('tr'))?.[0] ?? null, text).toBeNull()
+    }
+    expect(TIME_SORT_NOTE).toBe('Numara, yüzde sırasını gösterir.')
   })
 })

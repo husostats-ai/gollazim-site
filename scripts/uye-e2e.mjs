@@ -581,6 +581,118 @@ try {
   const outcomes = await page.$$eval(sel('member-outcome'), (els) => [...new Set(els.map((el) => el.textContent.trim()))])
   step('önceki günde sonuç işaretleri görünüyor', outcomes.some((o) => o.startsWith('✓')) && outcomes.some((o) => o.startsWith('✗')), outcomes.join(' | '))
 
+  // 4b) Sıralama: "Yüzdeye göre | Saate göre" (yalnızca bellekte; numara yüzde sırasıdır)
+  const sortState = () =>
+    page.evaluate(() => {
+      const q = (id) => document.querySelector(`[data-testid="${id}"]`)
+      const meta = q('member-list-meta').getBoundingClientRect()
+      const group = q('member-sort')
+      const box = group.getBoundingClientRect()
+      return {
+        pressed: [...group.querySelectorAll('button')].filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.dataset.testid),
+        role: group.getAttribute('role'),
+        label: group.getAttribute('aria-label'),
+        live: q('member-sort-live')?.getAttribute('aria-live') ?? null,
+        announce: q('member-sort-live')?.textContent.trim() ?? null,
+        note: q('member-sort-note')?.textContent.trim() ?? null,
+        sameRow: group.parentElement === q('member-list-meta').parentElement,
+        // Geçiş, meta yazısının yanında ya da (dar ekranda) altında; kategori şeridinin altında ve ekranda
+        placed: (box.top >= meta.bottom - 1 || box.left >= meta.right - 1) && box.top >= document.querySelector('[data-testid^="member-category-"]').getBoundingClientRect().bottom && box.left >= 0 && box.right <= window.innerWidth + 0.5,
+        buttons: [...group.querySelectorAll('button')].map((b) => Math.round(b.getBoundingClientRect().height)),
+        cards: [...document.querySelectorAll('[data-testid="member-card"]')].map((card) => {
+          const spans = [...card.firstElementChild.children]
+          return { rank: Number(spans[0].textContent), time: /^\d{2}:\d{2}$/.test(spans[1]?.textContent ?? '') ? spans[1].textContent : null, match: card.querySelector('h3').textContent.trim(), note: card.querySelector('[data-testid="member-market-note"]') !== null }
+        }),
+      }
+    })
+  /** Saat modunda beklenen diziliş: saat artan, saati olmayan sona, eşit saatte numara artan */
+  const timeOrdered = (cards) =>
+    cards.every((c, i) => {
+      if (i === 0) return true
+      const p = cards[i - 1]
+      if (p.time === null) return c.time === null && c.rank > p.rank
+      if (c.time === null) return true
+      return p.time < c.time || (p.time === c.time && p.rank < c.rank)
+    })
+  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 })
+  await page.evaluate(() => window.scrollTo(0, 0))
+  const sortDefault = await sortState()
+  step('sıralama: varsayılan "Yüzdeye göre"; role=group, aria-pressed, aria-live; not ve duyuru yok', JSON.stringify(sortDefault.pressed) === '["member-sort-percent"]' && sortDefault.role === 'group' && sortDefault.label === 'Sıralama' && sortDefault.live === 'polite' && sortDefault.announce === '' && sortDefault.note === null && sortDefault.sameRow && sortDefault.placed, JSON.stringify({ ...sortDefault, cards: sortDefault.cards.length }))
+  step('sıralama: yüzde modunda numara 1, 2, 3…', sortDefault.cards.every((c, i) => c.rank === i + 1))
+  // Saat modunun dizilişi değiştirdiği bir liste seç (bugün); bulunamazsa ilk liste.
+  let sortChip = null
+  for (const chip of await page.$$eval('[data-testid^="member-category-"]', (els) => els.map((el) => el.dataset.testid))) {
+    await tap(chip)
+    await page.waitForFunction((s) => document.querySelector(s)?.getAttribute('aria-selected') === 'true', {}, sel(chip))
+    const { cards } = await sortState()
+    if (!timeOrdered(cards) && cards.some((c) => c.time !== null) && (await page.$(sel('member-market-toggle'))) !== null) {
+      sortChip = chip
+      break
+    }
+  }
+  sortChip ??= (await page.$$eval('[data-testid^="member-category-"]', (els) => els.map((el) => el.dataset.testid)))[0]
+  await tap(sortChip)
+  await page.waitForFunction((s) => document.querySelector(s)?.getAttribute('aria-selected') === 'true', {}, sel(sortChip))
+  // Bir kartın "Açıklama" notunu aç: diziliş değişince aynı kartta açık kalmalı (React anahtarı aynı).
+  const noteCard = await page.evaluate(() => {
+    const toggle = document.querySelector('[data-testid="member-market-toggle"]')
+    if (!toggle) return null
+    toggle.click()
+    return Number(toggle.closest('[data-testid="member-card"]').firstElementChild.firstElementChild.textContent)
+  })
+  const beforeTime = await sortState()
+  await tap('member-sort-time')
+  await page.waitForFunction((s) => document.querySelector(s)?.getAttribute('aria-pressed') === 'true', {}, sel('member-sort-time'))
+  const byTime = await sortState()
+  const sameCards = JSON.stringify([...byTime.cards].sort((a, b) => a.rank - b.rank).map(({ rank, match, time }) => [rank, match, time])) === JSON.stringify(beforeTime.cards.map(({ rank, match, time }) => [rank, match, time]))
+  step('sıralama: "Saate göre" saat artan, saati olmayan sonda, eşit saatte numara artan; numara ve maç eşleşmesi değişmez', timeOrdered(byTime.cards) && sameCards && byTime.cards.map((c) => c.rank).join() !== beforeTime.cards.map((c) => c.rank).join(), `${sortChip.replace('member-category-', '')}: ${byTime.cards.map((c) => `${c.rank}@${c.time ?? '—'}`).join(' ')}`)
+  step('sıralama: saat modunda not ve ekran okuyucu duyurusu', byTime.note === 'Numara, yüzde sırasını gösterir.' && byTime.announce === 'Saate göre sıralandı' && JSON.stringify(byTime.pressed) === '["member-sort-time"]', `${byTime.note} · ${byTime.announce}`)
+  step('sıralama: açık "Açıklama" notu aynı kartta açık kalıyor', noteCard !== null && byTime.cards.filter((c) => c.note).map((c) => c.rank).join() === String(noteCard), `kart ${noteCard}`)
+  await page.evaluate(() => document.querySelector('[data-testid="member-market-toggle"][aria-expanded="true"]')?.click())
+  const sortStore = await session(page)
+  step('sıralama: tarayıcı deposuna yazılmıyor (yalnızca bellekte)', Object.keys(sortStore.session).join() === 'gollazim.uye.oturum' && Object.keys(sortStore.local).length === 0, JSON.stringify(Object.keys(sortStore.session)))
+  const sortLeak = FORBIDDEN.exec(await visibleText(page)) ?? /bahis|kazan|tahmin|öner|fırsat|değer|#/.exec(`${byTime.note} ${byTime.announce} ${byTime.label} ${await text(page, 'member-sort')}`.toLocaleLowerCase('tr'))
+  step('sıralama: saat modunda sayfada ve yeni metinlerde yasak terim yok', sortLeak === null, sortLeak?.[0] ?? '')
+  for (const width of [320, 360, 390]) {
+    await page.setViewport({ width, height: 844, deviceScaleFactor: 2 })
+    await page.evaluate(() => window.scrollTo(0, 0))
+    await sleep(150)
+    const size = await overflow(page)
+    const st = await sortState()
+    step(`sıralama: ${width} px taşma yok; geçiş ekranda, düğmeler tam`, size.scroll <= size.inner && st.placed && st.buttons.every((h) => h >= 28), `${size.scroll} / ${size.inner} · düğme ${st.buttons.join('/')} px`)
+    await page.evaluate(() => (document.querySelector('header').style.position = 'static'))
+    const top = await page.$eval(sel('member-day-title'), (el) => el.getBoundingClientRect().top + window.scrollY)
+    const bottom = await page.$eval(sel('member-cards'), (el) => Math.min(el.getBoundingClientRect().top + window.scrollY + 420, document.documentElement.scrollHeight))
+    await page.screenshot({ path: join(shots, `siralama-saat-${width}.png`), clip: { x: 0, y: top, width, height: bottom - top } })
+    await page.evaluate(() => (document.querySelector('header').style.position = ''))
+    report.ekranlar.push({ dosya: `siralama-saat-${width}.png`, genislik: width, tasma: size.scroll > size.inner ? `${size.scroll} > ${size.inner}` : 'yok' })
+  }
+  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 })
+  // Gün ve kategori değişince seçim korunur.
+  const keepsTime = async () => JSON.stringify((await sortState()).pressed) === '["member-sort-time"]' && timeOrdered((await sortState()).cards)
+  await tap('member-day-1')
+  await page.waitForFunction((s) => document.querySelector(s)?.getAttribute('aria-selected') === 'true', {}, sel('member-day-1'))
+  const keptDay = await keepsTime()
+  const otherChip = (await page.$$eval('[data-testid^="member-category-"]', (els) => els.map((el) => el.dataset.testid))).find((c) => c !== sortChip)
+  await tap(otherChip)
+  await page.waitForFunction((s) => document.querySelector(s)?.getAttribute('aria-selected') === 'true', {}, sel(otherChip))
+  const keptChip = await keepsTime()
+  await tap('member-day-0')
+  await page.waitForFunction((s) => document.querySelector(s)?.getAttribute('aria-selected') === 'true', {}, sel('member-day-0'))
+  step('sıralama: gün ve kategori değişince "Saate göre" korunuyor', keptDay && keptChip && (await keepsTime()))
+  // Klavye: Enter ile "Yüzdeye göre"ye dön; paketteki sıra geri gelir.
+  await page.focus(sel('member-sort-percent'))
+  await page.keyboard.press('Enter')
+  await page.waitForFunction((s) => document.querySelector(s)?.getAttribute('aria-pressed') === 'true', {}, sel('member-sort-percent'))
+  const backPercent = await sortState()
+  step('sıralama: klavyeyle "Yüzdeye göre"ye dönülüyor; numara 1, 2, 3…, not kalkıyor', backPercent.cards.every((c, i) => c.rank === i + 1) && backPercent.note === null && backPercent.announce === 'Yüzdeye göre sıralandı')
+  await shot(page, 'siralama-yuzde', 320)
+  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 })
+  // İstatistik ve Seri Takibi sekmesine gidip dönünce korunduğu aşağıda denenir.
+  await tap('member-sort-time')
+  await page.waitForFunction((s) => document.querySelector(s)?.getAttribute('aria-pressed') === 'true', {}, sel('member-sort-time'))
+  await page.evaluate(() => window.scrollTo(0, 0))
+
   // 5) İstatistik
   await page.click(`a[href="${T.stats}"]`)
   await page.waitForSelector(sel('member-overall'))
@@ -602,6 +714,9 @@ try {
   step('istatistikte yasak terim yok (canlı sayfa)', statLeak === null, statLeak?.[0] ?? '')
   step('istatistik 390 px taşma yok', await shot(page, 'istatistik', 390))
   step('istatistik 320 px taşma yok', await shot(page, 'istatistik', 320))
+  await page.click(`a[href="${T.home}"]`)
+  await page.waitForSelector(sel('member-cards'))
+  step('sıralama: İstatistik sekmesinden dönünce "Saate göre" korunuyor', await keepsTime())
 
   // 5b) Seri takibi (paket sürümü 8)
   await page.click(`a[href="${T.streak}"]`)
@@ -632,8 +747,16 @@ try {
   step('seri takibi: yüzde, yıldız, skor, geçmiş veri ve yasak sözcük yok', streakLeak === null && FORBIDDEN.exec(await visibleText(page)) === null, streakLeak?.[0] ?? '')
   step('seri takibi 390 px taşma yok', await shot(page, 'seri', 390))
   step('seri takibi 320 px taşma yok', await shot(page, 'seri', 320))
+  await page.click(`a[href="${T.home}"]`)
+  await page.waitForSelector(sel('member-cards'))
+  step('sıralama: Seri Takibi sekmesinden dönünce "Saate göre" korunuyor', await keepsTime())
+  await page.click(`a[href="${T.streak}"]`)
+  await page.waitForSelector(sel('member-streak'))
   await page.reload({ waitUntil: 'networkidle0' })
   step('seri takibi: sayfa yenilenince aynı sayfada kalıyor', (await page.$(sel('member-streak'))) !== null && (await page.evaluate(() => location.hash)) === T.streak)
+  await page.click(`a[href="${T.home}"]`)
+  await page.waitForSelector(sel('member-cards'))
+  step('sıralama: sayfa yenilenince varsayılan "Yüzdeye göre"', JSON.stringify((await sortState()).pressed) === '["member-sort-percent"]')
 
   // 6) Üye oturumunda admin yolları
   if (T.prefix === '/gollazim-uye/') {
@@ -654,15 +777,20 @@ try {
   step('üye oturumunda #/admin üye sayfasına yönleniyor', (await page.evaluate(() => location.hash)).startsWith(T.home) && !requests.some((u) => /AdminRoot-/.test(u)), await page.evaluate(() => location.hash))
 
   // 7) Yeni yayın: aynı oturumda şifre sorulmadan
+  await page.waitForSelector(sel('member-sort-time'))
+  await tap('member-sort-time')
+  await page.waitForFunction((s) => document.querySelector(s)?.getAttribute('aria-pressed') === 'true', {}, sel('member-sort-time'))
   packageFile = 'paket-2.json'
   await refreshNow(page)
   await page.waitForFunction((s) => document.querySelector(s)?.textContent.trim() === 'Yayın no 2', { timeout: 15000 }, sel('member-publish-no'))
   step('yeni yayın oturum içinde, şifre sorulmadan açıldı', true, await text(page, 'member-publish-no'))
+  step('sıralama: paket yenilenince "Saate göre" korunuyor', await keepsTime())
 
   // 8) Sayfa yenileme: oturum sürer
   await page.reload({ waitUntil: 'networkidle0' })
   await page.waitForSelector(sel('member-cards'))
   step('sayfa yenilenince oturum sürüyor; yasal uyarı penceresi çıkmıyor', (await page.$(sel('member-login'))) === null && (await page.$(sel('member-legal'))) === null)
+  step('sıralama: sayfa yenilenince yine "Yüzdeye göre"', JSON.stringify((await sortState()).pressed) === '["member-sort-percent"]')
 
   // 9) Eski paket uyarısı
   packageFile = 'paket-eski.json'

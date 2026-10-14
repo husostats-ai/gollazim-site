@@ -1,5 +1,5 @@
 import { CATEGORIES, GROUPS, type CategoryId } from '../config/categories'
-import type { MemberDay, MemberItem, MemberList } from '../services/member/payload'
+import type { MemberDay, MemberItem, MemberList, MemberMatch } from '../services/member/payload'
 import { toAppDateTime } from '../utils/date'
 import { formatDateChip, formatDay, formatPlainDate } from '../utils/format'
 
@@ -42,6 +42,45 @@ export function categoryChoices(day: MemberDay): CategoryChoice[] {
 export function listFor(day: MemberDay, categoryId: CategoryId | null): MemberList | null {
   const filled = day.lists.filter((list) => list.items.length > 0)
   return filled.find((list) => list.categoryId === categoryId) ?? filled[0] ?? null
+}
+
+/**
+ * Listenin dizilişi. percent: paketteki sıra (yüzdeye göre, varsayılan). time: başlama saatine göre.
+ * Yalnızca dizilişi değiştirir; kartlardaki sıra numarası her iki modda da paketteki sıradır.
+ */
+export type MemberSortMode = 'percent' | 'time'
+
+export const SORT_GROUP_LABEL = 'Sıralama'
+export const SORT_LABELS: Record<MemberSortMode, string> = { percent: 'Yüzdeye göre', time: 'Saate göre' }
+/** Mod değişince ekran okuyucuya okunan metin */
+export const SORT_ANNOUNCE: Record<MemberSortMode, string> = { percent: 'Yüzdeye göre sıralandı', time: 'Saate göre sıralandı' }
+/** Saat modunda listenin üstündeki kısa not */
+export const TIME_SORT_NOTE = 'Numara, yüzde sırasını gösterir.'
+
+export interface RankedItem {
+  item: MemberItem
+  /** Paketteki sıra (1'den başlar); diziliş değişse de aynı kalır */
+  rank: number
+}
+
+/**
+ * Listeyi seçili moda göre dizer. Saat modunda: saat artan ("HH:mm", Türkiye saati; gece yarısını geçen
+ * maç zaten ertesi günün listesindedir), saati olmayan sona, eşit saatte paketteki sıra.
+ */
+export function orderItems(items: MemberItem[], matches: MemberMatch[], mode: MemberSortMode): RankedItem[] {
+  const ranked = items.map((item, i) => ({ item, rank: i + 1 }))
+  if (mode === 'percent') return ranked
+  const timeOf = (r: RankedItem): string | null => matches[r.item.match]?.time ?? null
+  return ranked.sort((a, b) => {
+    const ta = timeOf(a)
+    const tb = timeOf(b)
+    if (ta !== tb) {
+      if (ta === null) return 1
+      if (tb === null) return -1
+      return ta < tb ? -1 : 1
+    }
+    return a.rank - b.rank
+  })
 }
 
 /** Seri başına tutan adım: "2,5"; biten seri yoksa "—" */
