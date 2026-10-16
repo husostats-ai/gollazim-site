@@ -1,16 +1,18 @@
 import Papa from 'papaparse'
 import { AI_CATEGORY_IDS, AI_DECISIONS, AI_PROVIDERS, decisionLabel } from '../../config/ai'
 import { CATEGORIES, categoriesInGroup, getCategory, type CategoryId } from '../../config/categories'
+import { BASELINE_COMPUTED_AT, BASELINE_SOURCE, formatBaseline, LEAGUE_BASELINES } from '../../config/leagueBaselines'
 import { MAIN_CATEGORY_IDS } from '../../config/mainCategories'
 import type { AiVerdict, Match, MatchResult, Pick, ScoreLine, SharedPick, Thresholds, Upload } from '../../types'
 import { toAppDateTime } from '../../utils/date'
-import { formatDay, formatNumber, formatRate, shiftDate } from '../../utils/format'
+import { formatDay, formatNumber, formatPoints, formatRate, shiftDate } from '../../utils/format'
 import { AI_SOURCES, buildLegacyAiStats, buildPreMatchAiStats, type AiSource, type AiStats } from '../ai/aiStats'
 import { MODEL_CONFLICT_LIMIT } from '../analysis/goalModel'
 import { RELIABILITY_LABELS, SAMPLE_HINT } from '../analysis/reliability'
 import { stat } from '../analysis/stat'
 import { findActiveShared, sharedPicksOnly } from '../story/shared'
 import { buildCompetitionStats, COMPETITION_LABELS } from './competitionStats'
+import { buildLeagueCategoryStats, LEAGUE_CATEGORY_MIN_N, type CategoryCell, type GroupCategoryRow } from './leagueCategoryStats'
 import { buildLeagueStats, LEAGUE_MAX_ROWS, LEAGUE_MIN_DECIDED, type LeagueRow } from './leagueStats'
 import { buildMarginStats, MARGIN_BANDS } from './marginStats'
 import { backfillMarket, buildMarketStats } from './marketStats'
@@ -24,7 +26,7 @@ import { buildStats, LOW_SAMPLE_LIMIT, tally, type Tally } from './statsEngine'
 // Yeni bir hesap içermez: sayılar statsEngine, marketStats ve aiStats çıktılarıdır ve
 // sayfadaki biçimle (formatRate) yazılır. Metne kişisel veri, takım adı, maç kimliği, ham CSV
 // içeriği ya da ayar anahtarı girmez. Tek istisna lig adıdır (ülke · lig): yalnızca
-// "Lig bazlı başarı" bölümünde yazılır, başka hiçbir bölümde geçmez.
+// "Lig bazlı başarı" ve "Lig bazlı ana kategoriler" bölümlerinde yazılır, başka hiçbir bölümde geçmez.
 
 export type SummaryScope = { kind: 'all' } | { kind: 'last7' } | { kind: 'last30' } | { kind: 'range'; from: string; to: string }
 
@@ -128,6 +130,61 @@ const leagueLabel = (r: LeagueRow): string =>
       : r.kind === 'unknown'
         ? 'Bilinmiyor (maç kaydı yok)'
         : 'Tüm ligler'
+
+/** "Lig bazlı ana kategoriler" bölümlerinin başlığı (kapsam adı tire ile eklenir); lig adı bu bölümlerde de yazılır */
+export const LEAGUE_CATEGORY_SECTION_TITLE = 'Lig bazlı ana kategoriler'
+const LEAGUE_CATEGORY_SCOPES = { all: 'Tüm öneriler', shared: 'Paylaşılanlar' } as const
+
+/** "n / tutan · %x [%lo – %hi] · m maç"; n < 20 ise yüzde ve aralık yerine "az veri"; öneri yoksa "—" */
+const leagueCategoryCell = (c: CategoryCell): string =>
+  c.decided === 0
+    ? '—'
+    : c.lowSample || !c.interval
+      ? `${c.decided} / ${c.won} · ${c.matches} maç · az veri`
+      : `${c.decided} / ${c.won} · ${formatRate(c.rate)} [${formatRate(c.interval.low)} – ${formatRate(c.interval.high)}] · ${c.matches} maç`
+const gapCell = (c: CategoryCell): string => (c.baselineGap === null ? '—' : `${formatPoints(c.baselineGap)} puan`)
+
+/** "Lig bazlı ana kategoriler — <kapsam>" bölümü: grup tablosu, grup üyeliği, lig tablosu, hücre sayımı, not */
+function leagueCategorySection(scope: keyof typeof LEAGUE_CATEGORY_SCOPES, picks: Pick[], matches: Match[]): string[] {
+  const out = [`## ${LEAGUE_CATEGORY_SECTION_TITLE} — ${LEAGUE_CATEGORY_SCOPES[scope]}`, '']
+  const s = buildLeagueCategoryStats(picks, matches)
+  if (s.total.decided === 0) return [...out, 'Bu kapsamda ana kategorilerde sonuçlanmış öneri yok.', '']
+  const labels = MAIN_CATEGORY_IDS.map((id) => getCategory(id).label)
+  const name = (text: string) => text.replaceAll('|', '/')
+  const groupRow = (g: GroupCategoryRow) => [g.label, g.leagues.length, g.decided, g.matches, ...MAIN_CATEGORY_IDS.map((id) => leagueCategoryCell(g.cells[id]))]
+  out.push(
+    `Ana kategorilerde ${s.total.decided} sonuçlanmış öneri, ${s.total.matches} benzersiz maç, ${s.leagues.length} lig.`,
+    '',
+    '### Gruplar',
+    '',
+    table(['Grup', 'Lig', 'Sonuçlanan', 'Maç', ...labels], [...s.groups.map(groupRow), ...(s.unknown ? [groupRow(s.unknown)] : []), groupRow(s.total)]),
+    '',
+    'Gruptaki ligler (sonuçlanmış öneri):',
+    ...s.groups.map((g) => `- ${g.label}: ${g.leagues.map((l) => `${name(l.name)} (${l.decided})`).join(', ') || '—'}`),
+    '',
+    '### Ligler',
+    '',
+    table(
+      ['Lig', 'Sonuçlanan', 'Maç', ...labels, 'Taban KG VAR', 'Taban 2.5 ÜST', 'Fark KG VAR (bizim − taban)', 'Fark 2.5 ÜST (bizim − taban)'],
+      s.leagues.map((l) => [
+        name(l.name),
+        l.decided,
+        l.matches,
+        ...MAIN_CATEGORY_IDS.map((id) => leagueCategoryCell(l.cells[id])),
+        l.baseline ? formatBaseline(l.baseline.btts) : '—',
+        l.baseline ? formatBaseline(l.baseline.over25) : '—',
+        gapCell(l.cells.btts),
+        gapCell(l.cells.over25),
+      ]),
+    ),
+    '',
+    `Hücre sayımı: ${s.cellCounts.cells} lig hücresi (${s.leagues.length} lig × ${MAIN_CATEGORY_IDS.length} kategori); sonuçlanmış önerisi olan ${s.cellCounts.withData}, n ≥ ${LEAGUE_CATEGORY_MIN_N} olan ${s.cellCounts.comparable}, taban farkı yazılan ${s.cellCounts.baselineGaps}.`,
+    '',
+    `Yalnızca sabit ana kategoriler (${labels.join(', ')}) ve sonuçlanmış öneriler. Lig = ülke · lig adı (önerinin maç kaydından); sonuçlanmış öneri sayısına göre azalan sırada, en az 1 sonuçlanmış önerisi olan tüm ligler (sınır ve "Diğer ligler" toplaması yok). Hücre: sonuçlanan / tutan · başarı [Wilson %95] · benzersiz maç. n < ${LEAGUE_CATEGORY_MIN_N} hücrelerde yüzde, aralık ve taban farkı yazılmaz ("az veri"). Çok sayıda lig ve kategori karşılaştırıldığı için en iyi/en kötü görünen hücreler şansa bağlı olabilir; n<50 satırlardan sonuç çıkarılmamalı. Aynı maçın önerileri bağımsız değildir. Gruplar sabit listedir, veriye göre değişmez; listede olmayan lig "Diğer yetişkin ligler"dedir. Taban: ligin geçmiş sezonlardaki tüm maçlarında KG VAR / 2.5 ÜST oranı (${BASELINE_SOURCE}; hesap: ${formatDay(BASELINE_COMPUTED_AT)}; sezonlar: ${LEAGUE_BASELINES.map((b) => `${name(b.league)} ${b.seasons}`).join(', ')}). Fark = bizim − taban, puan; yalnızca n ≥ ${LEAGUE_CATEGORY_MIN_N} olan KG VAR ve 2.5 ÜST hücrelerinde. İY 0.5 ÜST için taban yok.`,
+    '',
+  )
+  return out
+}
 
 const RANK_SECTION_TITLE = 'Sıraya göre başarı (yeniden hesaplanmış ve doğrulanmış sıra)'
 
@@ -249,6 +306,8 @@ export function buildStatsSummary(input: SummaryInput): string {
     `Lig = ülke · lig adı (önerinin maç kaydından); sonuçlanmış öneri sayısına göre azalan sırada. Kendi satırını alan ligler: en az ${LEAGUE_MIN_DECIDED} sonuçlanmış önerisi olan en çok ${LEAGUE_MAX_ROWS} lig; kalanı "Diğer ligler" satırındadır. Maç: önerisi olan benzersiz maç. Çok sayıda lig karşılaştırıldığı için en iyi/en kötü görünen ligler şansa bağlı olabilir; n<50 satırlardan sonuç çıkarılmamalı. Aralık Wilson %95; aynı maçın önerileri bağımsız değildir. Hazır ort., beklenen ve düzeltilmiş fark "Lig türüne göre başarı" tablosundaki yöntemle hesaplanır. Düzeltilmiş fark yaklaşıktır: kategori başarısı ligin kendi önerilerini de içerir; büyük lig sıfıra yaklaşır. "az veri" (n < ${LOW_SAMPLE_LIMIT}) satırlarında düzeltilmiş fark yazılmaz (—).`,
     '',
   )
+
+  out.push(...leagueCategorySection('all', picks, input.matches), ...leagueCategorySection('shared', sharedPicksOnly(picks, shared), input.matches))
 
   out.push('## Veri güvenilirliğine göre başarı', '')
   out.push(

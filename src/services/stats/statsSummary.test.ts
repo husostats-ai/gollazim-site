@@ -753,13 +753,14 @@ describe('özet: lig bazlı başarı', () => {
     expect(body).toContain('satırlarında düzeltilmiş fark yazılmaz')
   })
 
-  it('lig adı yalnızca bu bölümde geçer; takım adı (ev ve deplasman) hiçbir yerde geçmez', () => {
+  it('lig adı yalnızca lig bölümlerinde (bu bölüm ve "Lig bazlı ana kategoriler") geçer; takım adı (ev ve deplasman) hiçbir yerde geçmez', () => {
     const everyLeague = buildStatsSummary(input({ kind: 'all' }, { matches: matches.map((m, i) => (i < 21 ? { ...m, league: 'England · Premier League' } : m)) }))
     const own = section(everyLeague, NAME)
     expect(own).toContain('England · Premier League')
     expect(own).toContain('England · EFL Trophy')
-    const rest = everyLeague.replace(own, '')
-    expect(rest.length).toBe(everyLeague.length - own.length)
+    const leagueSections = [own, section(everyLeague, 'Lig bazlı ana kategoriler — Tüm öneriler'), section(everyLeague, 'Lig bazlı ana kategoriler — Paylaşılanlar')]
+    const rest = leagueSections.reduce((text, part) => text.replace(part, ''), everyLeague)
+    expect(rest.length).toBe(everyLeague.length - leagueSections.reduce((sum, part) => sum + part.length, 0))
     expect(rest).not.toMatch(/England|Premier League|EFL/)
     expect(everyLeague).not.toMatch(/Ev \d|Dep \d/)
   })
@@ -770,5 +771,65 @@ describe('özet: lig bazlı başarı', () => {
     const none = section(buildStatsSummary(input({ kind: 'all' }, { matches: [] })), NAME)
     expect(row(none, 'Bilinmiyor (maç kaydı yok)')[1]).toBe(row(none, 'Tüm ligler')[1])
     expect(buildStatsSummary(input({ kind: 'all' }, { picks: [pick('pending', 'over25', '2026-10-09')] }))).not.toContain(NAME)
+  })
+})
+
+describe('özet: lig bazlı ana kategoriler', () => {
+  const ALL = 'Lig bazlı ana kategoriler — Tüm öneriler'
+  const SHARED = 'Lig bazlı ana kategoriler — Paylaşılanlar'
+  // 21 sonuçlanmış 2.5 Üst önerisi Premier League'de (12 tuttu); kalanı EFL Trophy
+  const leagueMatches = matches.map((m, i) => (i < 21 ? { ...m, league: 'England · Premier League' } : m))
+  const text = buildStatsSummary(input({ kind: 'all' }, { matches: leagueMatches }))
+  const all = section(text, ALL)
+  const shared_ = section(text, SHARED)
+
+  it('iki bölüm "Lig bazlı başarı"dan sonra, "Veri güvenilirliğine göre başarı"dan önce, bu sırayla gelir', () => {
+    const at = (title: string) => text.indexOf(`## ${title}`)
+    expect(at('Lig bazlı başarı')).toBeLessThan(at(ALL))
+    expect(at(ALL)).toBeLessThan(at(SHARED))
+    expect(at(SHARED)).toBeLessThan(at('Veri güvenilirliğine göre başarı'))
+  })
+
+  it('lig satırı: n ≥ 20 hücrede yüzde, Wilson aralığı ve taban farkı; n < 20 hücrede yüzde yok, "az veri"', () => {
+    const premier = row(all, 'England · Premier League')
+    // 12 / 21: Wilson %95 = %36,5 – %75,5; 57,1 − 56,6 = +0,5 puan
+    expect(premier.slice(0, 4)).toEqual(['England · Premier League', '21', '21', '21 / 12 · %57,1 [%36,5 – %75,5] · 21 maç'])
+    expect(premier.slice(6)).toEqual(['%55,3', '%56,6', '—', '+0,5 puan'])
+    const trophy = row(all, 'England · EFL Trophy')
+    for (const cell of trophy.slice(3, 6).filter((c) => c !== '—')) {
+      expect(cell).toContain('az veri')
+      expect(cell).not.toContain('%')
+    }
+    expect(trophy.slice(6)).toEqual(['—', '—', '—', '—'])
+  })
+
+  it('grup tablosu ve grup üyeliği; grup toplamı genel toplamla aynı', () => {
+    expect(row(all, 'Grup')).toEqual(['Grup', 'Lig', 'Sonuçlanan', 'Maç', '2.5 ÜST', 'KG VAR', 'İLK YARI 0.5 ÜST'])
+    const total = row(all, 'Tümü')
+    const groups = ['Beş büyük lig', 'Avrupa kupaları', 'Gençlik / U-takım', 'Diğer kupalar', 'Belirsiz', 'Diğer yetişkin ligler'].map((g) => row(all, g))
+    expect(groups.reduce((sum, g) => sum + Number(g[2]), 0)).toBe(Number(total[2]))
+    expect(all).toContain('- Beş büyük lig: England · Premier League (21)')
+    expect(all).toContain('- Diğer kupalar: England · EFL Trophy (')
+  })
+
+  it('n<20 hücrelerde yorum yok; "n<50" uyarısı, hücre sayımı ve taban kaynağı var; bahis dili yok', () => {
+    expect(all).toContain('n<50 satırlardan sonuç çıkarılmamalı')
+    expect(all).toMatch(/Hücre sayımı: \d+ lig hücresi/)
+    expect(all).toContain('openfootball maç sonuçları, 90 dk skoru')
+    expect(all).not.toMatch(/umut|güçlü|zayıf|iyi gidiyor|öner(?!i)|oyna|kupon|bahis|value|değerli/i)
+    expect(shared_).not.toMatch(/umut|güçlü|zayıf|oyna|kupon|bahis|value|değerli/i)
+  })
+
+  it('Paylaşılanlar bölümündeki n, "Paylaşılan ve tüm öneriler" tablosuyla aynı', () => {
+    const sharedTotal = row(shared_, 'Tümü')
+    const pairs = section(text, 'Paylaşılan ve tüm öneriler')
+    const over25 = row(pairs, '2.5 ÜST')[2]
+    expect(over25).toContain(`n=${sharedTotal[4].split(' / ')[0]}`)
+    expect(Number(sharedTotal[4].split(' / ')[0])).toBeGreaterThan(0)
+  })
+
+  it('kapsamda sonuçlanmış öneri yoksa bölüm bunu yazar', () => {
+    const none = buildStatsSummary(input({ kind: 'all' }, { matches: leagueMatches, shared: [] }))
+    expect(section(none, SHARED)).toContain('Bu kapsamda ana kategorilerde sonuçlanmış öneri yok.')
   })
 })

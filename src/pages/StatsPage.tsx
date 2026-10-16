@@ -7,6 +7,7 @@ import ScoreStatsCard from '../components/stats/ScoreStatsCard'
 import StatsSummaryPanel from '../components/stats/StatsSummaryPanel'
 import GoalModelStatsCard from '../components/stats/GoalModelStatsCard'
 import HtScorelessCard from '../components/stats/HtScorelessCard'
+import LeagueCategoryCard from '../components/stats/LeagueCategoryCard'
 import MarketStatsCard from '../components/stats/MarketStatsCard'
 import LowSampleBadge from '../components/stats/LowSampleBadge'
 import RateBars from '../components/stats/RateBars'
@@ -21,6 +22,7 @@ import { aiRepo, matchesRepo, picksRepo, resultsRepo, sharedRepo, uploadsRepo } 
 import { buildStarStats, recomputedNote } from '../services/stats/starStats'
 import { SCOPE_LABELS, sharedPicksOnly, type StatsScope } from '../services/story/shared'
 import { buildHtScorelessStats } from '../services/stats/htScoreless'
+import { buildLeagueCategoryStats } from '../services/stats/leagueCategoryStats'
 import { buildMainStats } from '../services/stats/mainStats'
 import { backfillMarket, buildMarketStats } from '../services/stats/marketStats'
 import { buildStats, LOW_SAMPLE_LIMIT, type Bucket } from '../services/stats/statsEngine'
@@ -120,6 +122,8 @@ export default function StatsPage() {
   const main = useMemo(() => buildMainStats(scopedPicks), [scopedPicks])
   /** İY 0.5 ÜST önerilip ilk yarısı 0-0 biten maçlarda 2. yarı; seçili ölçüde */
   const htScoreless = useMemo(() => buildHtScorelessStats(scopedPicks, results), [scopedPicks, results])
+  /** Lig × ana kategori ve sabit lig grupları; seçili ölçüde */
+  const leagueCategory = useMemo(() => buildLeagueCategoryStats(scopedPicks, legacyMatches), [scopedPicks, legacyMatches])
   // Kategori bazlı kararlar ile eski maç geneli kararlar ayrı ölçülür; aynı orana karışmaz.
   // Kategori bazlı kartta yalnızca maç başlamadan önce kaydedilmiş kararlar sayılır.
   const aiCategoryStats = useMemo(() => buildPreMatchAiStats(picks ?? [], verdicts, legacyMatches), [picks, verdicts, legacyMatches])
@@ -184,7 +188,7 @@ export default function StatsPage() {
             </div>
             <p className="min-w-0 text-xs text-muted" data-testid="stats-scope-note">
               {scope === 'shared'
-                ? `${SCOPE_LABELS.shared}: ana kategoriler, tüm kategoriler, kategori, geçmiş veri ve zaman tabloları yalnızca Story görselinde paylaşılan dondurulmuş önerileri sayar. Kalibrasyon, model/piyasa ve yapay zekâ kartları her zaman tüm önerileri kullanır.`
+                ? `${SCOPE_LABELS.shared}: ana kategoriler, lig bazlı ana kategoriler, tüm kategoriler, kategori, geçmiş veri ve zaman tabloları yalnızca Story görselinde paylaşılan dondurulmuş önerileri sayar. Kalibrasyon, model/piyasa ve yapay zekâ kartları her zaman tüm önerileri kullanır.`
                 : `${SCOPE_LABELS.all}: tüm dondurulmuş öneriler sayılır.`}
             </p>
           </div>
@@ -248,6 +252,14 @@ export default function StatsPage() {
             note="İLK YARI 0.5 ÜST olarak dondurulmuş önerilerden ilk yarısı 0-0 biten maçlar."
           >
             <HtScorelessCard stats={htScoreless} />
+          </Card>
+
+          <Card
+            title={`LİG BAZLI ANA KATEGORİLER · ${scope === 'shared' ? 'Paylaşılan' : 'Tümü'}`}
+            testId="league-category-card"
+            note={`${main.categories.map((id) => getCategory(id).label).join(' · ')}; lig = ülke · lig adı, sabit gruplar ve lig tabanı.`}
+          >
+            <LeagueCategoryCard stats={leagueCategory} />
           </Card>
 
           {starStats.byCategory.length > 0 && (
