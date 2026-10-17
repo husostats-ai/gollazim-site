@@ -7,7 +7,8 @@ import { analyzeDay } from '../analysis/engine'
 import { makeMatch } from '../analysis/testUtils'
 import { assembleBackup, isBackupFile } from '../data/backupFormat'
 import { ageGroup, aliasId, findStanding, matchTeams, normalizeAliases, normalizeLeagueTables, normalizeTeam, NOT_IN_TABLE } from './matching'
-import { fitsAverage, checkRow, parseLeagueTable } from './parser'
+import { fitsAverage, checkRow, NO_PPG_WARNING, parseLeagueTable } from './parser'
+import { SCOTLAND_PREMIERSHIP_SPLIT } from './__fixtures__/scotlandPremiership'
 import { FORM_BLOCK_TEXT, matchForms, matchStandings, playedHint, ppgDiffers, standingInfo, tableAgeText } from './standing'
 import { nextSnapshot, normalizeSnapshots, sameRows, seedSnapshots, snapshotAt, snapshotId } from './history'
 import { buildMemberPayload } from '../member/payload'
@@ -105,6 +106,95 @@ describe('parseLeagueTable', () => {
   it('"Stats" sütunu olmayan düz kopya da okunur', () => {
     const text = ['1', 'A FC', '3', '1', '1', '1', '4', '4', '0', '4'].join('\t')
     expect(parseLeagueTable(text).rows[0]).toMatchObject({ rank: 1, team: 'A FC', played: 3, points: 4, ppg: null })
+  })
+
+  it('"Last 5" beş satıra bölünmüş kopya: harfler birleşir, PPG ve ek sütunlar harflerden sonraki satırdan okunur', () => {
+    const { rows, errors, warnings } = parseLeagueTable(SCOTLAND_PREMIERSHIP_SPLIT)
+    expect(errors).toEqual([])
+    expect(warnings).toEqual([])
+    const values = (r: (typeof rows)[number]) => [r.rank, r.team, r.played, r.points, r.ppg, r.last5, r.cs, r.btts, r.xgf, r.cards, r.corners, r.over15, r.over25, r.avgGoals]
+    expect(rows.map(values)).toEqual([
+      [1, 'Celtic FC', 8, 21, 2.63, 'WWWLW', 50, 38, 2.47, 3.38, 13.26, 63, 50, 2.5],
+      [2, 'Rangers FC', 8, 19, 2.38, 'WWWWW', 50, 50, 2.16, 3.38, 11.76, 50, 38, 2],
+      [3, 'Heart of Midlothian FC', 8, 16, 2, 'WWLDW', 25, 75, 1.74, 4.5, 10.63, 100, 88, 3.38],
+      [4, 'Dundee FC', 8, 13, 1.63, 'LDLWW', 25, 63, 1.34, 3.25, 12.01, 88, 50, 2.38],
+      [5, 'Saint Johnstone FC', 8, 11, 1.38, 'DWLDW', 13, 63, 1.18, 2.25, 10.38, 63, 38, 2.5],
+      [6, 'Dundee United FC', 8, 11, 1.38, 'WLDWW', 38, 25, 1.73, 5, 12.13, 88, 50, 2.63],
+      [7, 'Saint Mirren FC', 8, 10, 1.25, 'WLLLL', 38, 25, 1.38, 3.88, 11.5, 63, 50, 2.75],
+      [8, 'Aberdeen FC', 8, 8, 1, 'LDWDL', 25, 25, 1.23, 4.88, 12.63, 63, 38, 2],
+      [9, 'Motherwell FC', 8, 8, 1, 'WLLLL', 25, 38, 1.52, 3.13, 11.13, 75, 63, 2.75],
+      [10, 'Hibernian FC', 8, 7, 0.88, 'LLLDL', 0, 75, 1.75, 3.38, 12.63, 75, 63, 2.5],
+      [11, 'Falkirk FC', 8, 6, 0.75, 'LDWDL', 13, 75, 1.29, 4, 11, 88, 50, 2.25],
+      [12, 'Kilmarnock FC', 8, 5, 0.63, 'LDWDL', 25, 50, 1.2, 4, 11.51, 63, 50, 3.13],
+    ])
+    expect(rows.map((r) => [r.won, r.drawn, r.lost, r.goalsFor, r.goalsAgainst, r.goalDiff])[0]).toEqual([7, 0, 1, 16, 4, 12])
+  })
+
+  describe('bölünmüş "Last 5" sınır durumları', () => {
+    const VALUES = ['2.63', '50%', '38%', '2.47', '3.38', '13.26', '63%', '50%', '2.50'].join('\t')
+    const team = line(1, 'A FC', 8, 7, 0, 1, 16, 4, '+12', 21)
+    const next = line(2, 'B FC', 8, 0, 0, 8, 0, 9, '-9', 0)
+    const NEXT_VALUES = ['0.00', '0%', '0%', '0.10', '1.00', '5.00', '50%', '13%', '1.13'].join('\t')
+
+    it('beşten az harf (sezon başı): okunan harfler ve değer satırı kaydedilir', () => {
+      const { rows, warnings } = parseLeagueTable([team, 'W', 'D', 'L', VALUES].join('\n'))
+      expect(warnings).toEqual([])
+      expect(rows[0]).toMatchObject({ last5: 'WDL', ppg: 2.63, cs: 50, avgGoals: 2.5 })
+    })
+
+    it('harfler arasındaki ve sonrasındaki boş satır (ya da boş hücre) atlanır', () => {
+      for (const text of [[team, 'W', '', 'W', 'L', 'D', 'W', VALUES], [team, 'W', 'W', 'L', 'D', 'W', '\t', VALUES]]) {
+        const { rows, warnings } = parseLeagueTable(text.join('\n'))
+        expect(warnings).toEqual([])
+        expect(rows[0]).toMatchObject({ last5: 'WWLDW', ppg: 2.63, cs: 50 })
+      }
+    })
+
+    it('beşten fazla harf varsa Last 5 boş kalır ve uyarı verilir; PPG yine okunur', () => {
+      const { rows, warnings } = parseLeagueTable([team, 'W', 'W', 'W', 'L', 'W', 'D', VALUES].join('\n'))
+      expect(rows[0]).not.toHaveProperty('last5')
+      expect(rows[0]).toMatchObject({ ppg: 2.63, cs: 50 })
+      expect(warnings.map((w) => [w.line, w.message])).toEqual([[2, 'A FC: Last 5 için 6 sonuç harfi var; Last 5 boş bırakıldı.']])
+    })
+
+    it('harflerden sonraki değer satırı bozuksa satır kaydedilir, PPG okunur, ek alanlar boş kalır ve uyarı verilir', () => {
+      const { rows, errors, warnings } = parseLeagueTable([team, 'W', 'W', 'W', 'L', 'W', '2.63\t50%\t38%'].join('\n'))
+      expect(errors).toEqual([])
+      expect(rows[0]).toMatchObject({ last5: 'WWWLW', ppg: 2.63 })
+      expect(rows[0]).not.toHaveProperty('cs')
+      expect(warnings.map((w) => w.line)).toEqual([7])
+    })
+
+    it('harflerden hemen sonra sonraki takım geliyorsa PPG boş kalır; komşu takımın değeri alınmaz', () => {
+      const { rows } = parseLeagueTable([team, 'W', 'W', 'L', next, 'L', 'L', 'L', 'L', 'L', NEXT_VALUES].join('\n'))
+      expect(rows[0]).toMatchObject({ last5: 'WWL', ppg: null })
+      expect(rows[0]).not.toHaveProperty('cs')
+      expect(rows[1]).toMatchObject({ last5: 'LLLLL', ppg: 0, cs: 0 })
+    })
+
+    it('son takımdan sonra en fazla 7 satıra bakılır; daha aşağıdaki metin değer satırı sayılmaz', () => {
+      const { rows } = parseLeagueTable([team, 'W', 'W', 'W', 'L', 'W', '', '', VALUES].join('\n'))
+      expect(rows[0]).toMatchObject({ last5: 'WWWLW', ppg: null })
+      expect(rows[0]).not.toHaveProperty('cs')
+    })
+
+    it('tek harf ve hemen ardından değer satırı eski yoldan okunur', () => {
+      const { rows, warnings } = parseLeagueTable([team, 'W', VALUES].join('\n'))
+      expect(warnings).toEqual([])
+      expect(rows[0]).toMatchObject({ last5: 'W', ppg: 2.63, cs: 50 })
+    })
+  })
+
+  it('hiçbir satırda PPG okunamadıysa tablonun bütünü için uyarı verilir; PPG okunan tabloda verilmez', () => {
+    const noPpg = parseLeagueTable([line(1, 'A FC', 3, 1, 1, 1, 4, 4, '0', 4), line(2, 'B FC', 3, 0, 1, 2, 1, 5, '-4', 1)].join('\n'))
+    expect(noPpg.rows.map((r) => r.ppg)).toEqual([null, null])
+    expect(noPpg.warnings).toEqual([{ line: 0, text: '', message: 'PPG okunamadı: bu tablo için form satırları doğrulanamaz. Tabloyu PPG sütunuyla birlikte kopyala.' }])
+    expect(noPpg.warnings[0].message).toBe(NO_PPG_WARNING)
+    expect(parseLeagueTable(SAMPLE).warnings).toEqual([])
+    expect(parseLeagueTable(SCOTLAND_PREMIERSHIP_SPLIT).warnings).toEqual([])
+    // Bir satırda bile PPG varsa uyarı yoktur (sağlamadan geçmeyen ya da boş metin de uyarı üretmez).
+    expect(parseLeagueTable([line(1, 'A FC', 2, 2, 0, 0, 4, 0, '+4', 6), line(2, 'B FC', 2, 0, 0, 2, 0, 4, '-4', 0), 'LL', '0.00'].join('\n')).warnings).toEqual([])
+    expect(parseLeagueTable('').warnings).toEqual([])
   })
 })
 

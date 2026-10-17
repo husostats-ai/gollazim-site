@@ -2,7 +2,8 @@
 // Pts ve PPG ile birlikte kalan sütunlar da okunur: "Last 5" ve değer satırındaki CS, BTTS,
 // xGF, kart, korner, 1.5+, 2.5+, AVG. Sağlaması tutmayan satır kaydedilmez ve nedeniyle
 // birlikte bildirilir. Değer satırı beklenen biçimde değilse ya da AVG tutmuyorsa satır
-// kaydedilir, yalnızca ek alanları boş kalır ve uyarı verilir.
+// kaydedilir, yalnızca ek alanları boş kalır ve uyarı verilir. "Last 5" hücresi her biri tek harf
+// olan satırlara bölünmüş kopya da okunur. Hiçbir satırda PPG yoksa tablonun bütünü için uyarı verilir.
 
 export interface ParsedTableRow {
   rank: number
@@ -29,7 +30,7 @@ export interface ParsedTableRow {
 }
 
 export interface TableParseError {
-  /** Yapıştırılan metindeki satır numarası (1'den başlar) */
+  /** Yapıştırılan metindeki satır numarası (1'den başlar); 0 ise uyarı tablonun bütününe aittir */
   line: number
   text: string
   message: string
@@ -55,6 +56,13 @@ const toSigned = (text: string): number | null => {
 const toDecimal = (text: string): number | null => (DECIMAL.test(text) ? Number(text.replace(',', '.')) : null)
 
 const LAST5 = /^[WDL]{1,5}$/
+/** "Last 5" hücresinin harf harf bölündüğü kopyada her satırda tek bir sonuç harfi */
+const FORM_LETTER = /^[WDL]$/
+/** Bölünmüş kopyada takım satırından sonra en fazla bu kadar satıra bakılır: 5 harf, değer satırı ve bir boş satır payı */
+const SPLIT_LOOKAHEAD = 7
+
+/** Tablonun hiçbir satırında PPG okunamadığında verilen uyarı */
+export const NO_PPG_WARNING = 'PPG okunamadı: bu tablo için form satırları doğrulanamaz. Tabloyu PPG sütunuyla birlikte kopyala.'
 /** Değer satırındaki ondalık sütunlar tam sayı da yazılabilir ("3") */
 const toAmount = (text: string): number | null => (/^\d+([.,]\d+)?$/.test(text) ? Number(text.replace(',', '.')) : null)
 const toPercent = (text: string): number | null => {
@@ -124,6 +132,26 @@ export function parseLeagueTable(text: string): TableParseResult {
       ppg = toDecimal(nextFields[0])
     }
 
+    // Bölünmüş kopya: "Last 5" hücresi her biri tek harf olan satırlara ayrılmış, değer satırı
+    // harflerden sonra gelir. Yalnızca yukarıdaki arama PPG bulamadıysa ve takım satırını tek bir
+    // harf izliyorsa denenir; değer satırı iki satır içinde olan eski kopyalar bu yola girmez.
+    let split: { letters: string; valueLine: number | null } | null = null
+    if (ppg === null && FORM_LETTER.test((lines[index + 1] ?? '').trim().toUpperCase())) {
+      split = { letters: '', valueLine: null }
+      for (let next = index + 1; next <= index + SPLIT_LOOKAHEAD && next < lines.length; next++) {
+        if (looksLikeTeamLine(lines[next].split('\t').map((f) => f.trim()))) break
+        const text = lines[next].trim().toUpperCase()
+        if (text === '') continue
+        if (FORM_LETTER.test(text)) {
+          split.letters += text
+          continue
+        }
+        split.valueLine = next
+        break
+      }
+      if (split.valueLine !== null) ppg = toDecimal(lines[split.valueLine].split('\t')[0].trim())
+    }
+
     const row: ParsedTableRow = {
       rank: Number(fields[0]),
       team,
@@ -142,6 +170,26 @@ export function parseLeagueTable(text: string): TableParseResult {
     if (seenTeams.has(team)) return fail(`“${team}” tabloda birden fazla kez geçiyor.`)
     seenTeams.add(team)
 
+    const warnAt = (next: number, message: string) => warnings.push({ line: next + 1, text: lines[next].trim(), message: `${team}: ${message}` })
+    const readValues = (next: number, nextFields: string[]) => {
+      const extras = readExtras(nextFields)
+      if (!extras) warnAt(next, 'Değer satırı beklenen 9 sütun (PPG, CS, BTTS, xGF, kart, korner, 1.5+, 2.5+, AVG) biçiminde değil; ek alanlar boş bırakıldı.')
+      else if (!fitsAverage(extras.avgGoals, row)) warnAt(next, `AVG (${extras.avgGoals}) (GF+GA)/MP ile tutmuyor; ek alanlar boş bırakıldı.`)
+      else Object.assign(row, extras)
+    }
+
+    if (split) {
+      // Harfler yapıştırıldığı sırayla birleştirilir (soldan sağa eskiden yeniye).
+      if (split.letters.length <= 5) row.last5 = split.letters
+      else warnAt(index + 1, `Last 5 için ${split.letters.length} sonuç harfi var; Last 5 boş bırakıldı.`)
+      if (split.valueLine !== null) {
+        const nextFields = lines[split.valueLine].split('\t').map((f) => f.trim())
+        if (nextFields.length >= 2) readValues(split.valueLine, nextFields)
+      }
+      rows.push(row)
+      return
+    }
+
     // Ek sütunlar: takım satırını izleyen iki satırda "Last 5" ve değer satırı aranır.
     for (let next = index + 1; next <= index + 2 && next < lines.length; next++) {
       const nextFields = lines[next].split('\t').map((f) => f.trim())
@@ -152,15 +200,14 @@ export function parseLeagueTable(text: string): TableParseResult {
         continue
       }
       if (nextFields.length < 2) continue
-      const warn = (message: string) => warnings.push({ line: next + 1, text: lines[next].trim(), message: `${team}: ${message}` })
-      const extras = readExtras(nextFields)
-      if (!extras) warn('Değer satırı beklenen 9 sütun (PPG, CS, BTTS, xGF, kart, korner, 1.5+, 2.5+, AVG) biçiminde değil; ek alanlar boş bırakıldı.')
-      else if (!fitsAverage(extras.avgGoals, row)) warn(`AVG (${extras.avgGoals}) (GF+GA)/MP ile tutmuyor; ek alanlar boş bırakıldı.`)
-      else Object.assign(row, extras)
+      readValues(next, nextFields)
       break
     }
     rows.push(row)
   })
+
+  // Her kaydedilen satırda Pts okunmuştur; buna rağmen hiçbirinde PPG yoksa tablo doğrulamada işe yaramaz.
+  if (rows.length > 0 && rows.every((r) => r.ppg === null)) warnings.push({ line: 0, text: '', message: NO_PPG_WARNING })
 
   return { rows, errors, warnings }
 }

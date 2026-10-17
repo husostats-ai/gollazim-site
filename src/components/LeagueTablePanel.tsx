@@ -56,6 +56,8 @@ export default function LeagueTablePanel() {
     () => (preview ? preview.rows.flatMap((r) => canonicalRow(r) ?? []) : (stored?.rows ?? [])),
     [preview, stored],
   )
+  // Satır 0 tablonun bütününe ait uyarıdır; "ek alanları boş" sayısına girmez.
+  const rowWarnings = preview ? preview.warnings.filter((w) => w.line > 0).length : 0
   // Kayıtlı seçimlerin üzerine taslak seçimler uygulanır.
   const aliases: TeamAlias[] = useMemo(() => {
     const kept = teamAliases.filter((a) => a.league === selected && draft[a.csvTeam] === undefined)
@@ -175,7 +177,7 @@ export default function LeagueTablePanel() {
                 <span className="font-bold">Önizleme (kaydedilmedi):</span>{' '}
                 <span data-testid="league-preview-summary">
                   {preview.rows.length} satır okundu · {preview.errors.length} satır sağlamadan geçmedi
-                  {preview.warnings.length > 0 && ` · ${preview.warnings.length} satırın ek alanları boş`}
+                  {rowWarnings > 0 && ` · ${rowWarnings} satırın ek alanları boş`}
                 </span>
               </p>
               {preview.errors.length > 0 && (
@@ -192,7 +194,13 @@ export default function LeagueTablePanel() {
                 <ul className="mt-2 space-y-1.5 text-xs" data-testid="league-warnings">
                   {preview.warnings.map((w) => (
                     <li key={w.line} className="break-words text-warn">
-                      <span className="font-bold">Satır {w.line}:</span> {w.message} Satır kaydedilir.
+                      {w.line === 0 ? (
+                        <span className="font-bold">{w.message}</span>
+                      ) : (
+                        <>
+                          <span className="font-bold">Satır {w.line}:</span> {w.message} Satır kaydedilir.
+                        </>
+                      )}
                     </li>
                   ))}
                 </ul>
