@@ -50,7 +50,8 @@ export default defineConfig(() => {
     build: {
       outDir: 'dist-uye',
       emptyOutDir: true,
-      rollupOptions: { input: 'uye.html' },
+      // Lisans yorumları (bayraklar: flag-icons, MIT) küçültülmüş pakette korunur.
+      rollupOptions: { input: 'uye.html', output: { comments: { legal: true } } },
     },
   }
 })

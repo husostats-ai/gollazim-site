@@ -5,6 +5,7 @@ import type { ReliabilityLevel } from '../services/analysis/types'
 import { MEMBER_AI_LEVEL_LABELS, MEMBER_AI_PROVIDER_LABELS, memberAiSummary, memberAiTitle, MEMBER_CONFLICT_LABELS, MEMBER_DATA_TERM, MEMBER_MARKET_LABEL, MEMBER_MARKET_NOTE, MEMBER_MARKET_NOTE_BUTTON, MEMBER_OUTCOMES, MEMBER_RELIABILITY_LABELS, memberSampleText, MEMBER_STATUS_LABELS, STALE_TABLE_LABEL, standingText } from '../services/member/labels'
 import type { MemberItem, MemberMatch, MemberStanding } from '../services/member/payload'
 import type { PickOutcome } from '../types'
+import CountryFlag from './CountryFlag'
 import { categoryLabel as labelOf, isOverstated, OTHER_COMPUTED_TAG, percentKind } from './view'
 
 // Renkler düz onaltılık değerlerdir (Chrome < 111 oklch paletini çizemez) ve yalnızca bu kartta
@@ -73,7 +74,12 @@ export default function MemberCard({ rank, match, item, categoryLabel, percentLa
       <div className="flex min-w-0 items-center gap-2 text-xs text-muted">
         <span className="grid h-6 min-w-6 shrink-0 place-items-center rounded-full bg-navy-600 px-1.5 font-bold text-white">{rank}</span>
         {match.time && <span className="shrink-0 font-semibold text-white">{match.time}</span>}
-        {match.league && <span className="min-w-0 truncate">{match.league}</span>}
+        {match.league && (
+          <span className="flex min-w-0 items-center gap-1.5">
+            <CountryFlag league={match.league} />
+            <span className="min-w-0 truncate">{match.league}</span>
+          </span>
+        )}
       </div>
 
       <div className="flex items-start justify-between gap-3">
