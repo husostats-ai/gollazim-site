@@ -1,12 +1,15 @@
 import { useId, useState } from 'react'
-import Stars from '../components/Stars'
-import TeamForm from '../components/TeamForm'
 import type { ReliabilityLevel } from '../services/analysis/types'
-import { MEMBER_AI_LEVEL_LABELS, MEMBER_AI_PROVIDER_LABELS, memberAiSummary, memberAiTitle, MEMBER_CONFLICT_LABELS, MEMBER_DATA_TERM, MEMBER_MARKET_LABEL, MEMBER_MARKET_NOTE, MEMBER_MARKET_NOTE_BUTTON, MEMBER_OUTCOMES, MEMBER_RELIABILITY_LABELS, memberSampleText, MEMBER_STATUS_LABELS, STALE_TABLE_LABEL, standingText } from '../services/member/labels'
-import type { MemberItem, MemberMatch, MemberStanding } from '../services/member/payload'
+import { MEMBER_AI_LEVEL_LABELS, MEMBER_AI_PROVIDER_LABELS, memberAiSummary, memberAiTitle, MEMBER_CONFLICT_LABELS, MEMBER_DATA_TERM, MEMBER_MARKET_LABEL, MEMBER_MARKET_NOTE, MEMBER_MARKET_NOTE_BUTTON, MEMBER_OUTCOMES, MEMBER_RELIABILITY_LABELS, memberSampleText, MEMBER_STATUS_LABELS } from '../services/member/labels'
+import type { CategoryId } from '../config/categories'
+import type { MemberItem, MemberMatch } from '../services/member/payload'
 import type { PickOutcome } from '../types'
 import CountryFlag from './CountryFlag'
-import { categoryLabel as labelOf, isOverstated, OTHER_COMPUTED_TAG, percentKind } from './view'
+import MemberOthers from './MemberOthers'
+import MemberSpread from './MemberSpread'
+import MemberStars from './MemberStars'
+import MemberTeams from './MemberTeams'
+import { isOverstated, spreadPoints } from './view'
 
 // Renkler düz onaltılık değerlerdir (Chrome < 111 oklch paletini çizemez) ve yalnızca bu kartta
 // kullanılır; admin kartının rozetleri ayrıdır.
@@ -34,16 +37,6 @@ export const OUTCOME_TONE: Record<PickOutcome, string> = {
 
 export const BADGE = 'inline-flex max-w-full items-center gap-x-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold'
 
-function Standing({ side, standing }: { side: string; standing: MemberStanding | null }) {
-  if (!standing) return null
-  return (
-    <p className="break-words">
-      <span className="font-semibold text-white">{side}:</span> {standingText(standing)}
-      {standing.stale && <span className="font-bold text-warn"> · {STALE_TABLE_LABEL}</span>}
-    </p>
-  )
-}
-
 /**
  * Üye sayfasının salt okunur maç kartı. Yalnızca yayın paketindeki alanları gösterir;
  * hiçbir hesap yapmaz ve uygulama durumuna bağlı değildir.
@@ -52,13 +45,14 @@ interface Props {
   rank: number
   match: MemberMatch
   item: MemberItem
+  categoryId: CategoryId
   categoryLabel: string
   /** Büyük yüzdenin altındaki sabit etiket: yüzdenin neyi ölçtüğü */
   percentLabel: string
   secondLabel: string
 }
 
-export default function MemberCard({ rank, match, item, categoryLabel, percentLabel, secondLabel }: Props) {
+export default function MemberCard({ rank, match, item, categoryId, categoryLabel, percentLabel, secondLabel }: Props) {
   const outcome = item.outcome ? MEMBER_OUTCOMES[item.outcome] : null
   const status = match.status ? MEMBER_STATUS_LABELS[match.status] : null
   const isModelBased = item.reliability === 'market' || item.reliability === 'market-partial'
@@ -122,9 +116,11 @@ export default function MemberCard({ rank, match, item, categoryLabel, percentLa
               </button>
             </p>
           )}
-          <Stars count={item.stars} className="mt-1.5 block text-sm" />
+          <MemberStars count={item.stars} />
         </div>
       </div>
+
+      <MemberSpread points={spreadPoints(item, categoryId, MEMBER_MARKET_LABEL)} />
 
       {item.mkt !== undefined && marketNote && (
         <p id={marketNoteId} className="rounded-xl border border-line bg-navy-800 px-3 py-2 text-xs leading-relaxed text-muted" data-testid="member-market-note">
@@ -183,36 +179,10 @@ export default function MemberCard({ rank, match, item, categoryLabel, percentLa
         </div>
       )}
 
-      {others.length > 0 && (
-        // Küçük ve soluk: ana yüzdeyle yarışmaz. Sığmayan öneri alt satıra iner.
-        <p className="text-[11px] leading-relaxed text-muted" data-testid="member-others">
-          <span className="mr-1.5">Aynı maçın diğer önerileri:</span>
-          {others.map((other, index) => {
-            const dim = isOverstated(other)
-            return (
-              <span key={other.categoryId} className="inline-block max-w-full break-words" data-testid="member-other" data-category={other.categoryId} data-overstated={dim}>
-                {index > 0 && <span aria-hidden="true">&nbsp;·&nbsp;</span>}
-                {labelOf(other.categoryId)} <span className={dim ? '' : 'font-semibold text-white'}>%{other.percent}</span>
-                {percentKind(other.categoryId) === 'model' && <span> {OTHER_COMPUTED_TAG}</span>}
-              </span>
-            )
-          })}
-        </p>
-      )}
+      <MemberOthers others={others} />
 
-      {(match.homeStanding || match.awayStanding) && (
-        <div className="border-t border-line pt-2.5 text-xs text-muted" data-testid="member-standing">
-          <Standing side="Ev" standing={match.homeStanding} />
-          <Standing side="Dep" standing={match.awayStanding} />
-        </div>
-      )}
-
-      {/* Sürüm 9: lig tablosundan form, gol ve gol yemediği maç; alan yalnızca doluyken pakette bulunur. */}
-      {(match.homeForm || match.awayForm) && (
-        <div className="border-t border-line pt-2.5">
-          <TeamForm home={match.homeForm ?? null} away={match.awayForm ?? null} testId="member-form" />
-        </div>
-      )}
+      {/* Sıra ve (sürüm 9) lig tablosundan form, gol, gol yemediği maç: tek blok; alanlar yalnızca doluyken çizilir. */}
+      <MemberTeams homeStanding={match.homeStanding} awayStanding={match.awayStanding} homeForm={match.homeForm ?? null} awayForm={match.awayForm ?? null} />
     </article>
   )
 }

@@ -305,8 +305,8 @@ describe('kategori listeleri ve üye kartı', () => {
     expect(done).toMatch(/Geçmiş veri: (Az|Orta|Çok) · en az \d+ maç/)
     expect(done).not.toMatch(/Güvenilirlik|Düşük|Yüksek/)
     expect(done).toContain('⚠ Model çelişkisi')
-    expect(done).toContain('Ev: 1. sıra · 8 maç')
-    expect(done).toContain('Dep: 4. sıra · 7 maç')
+    expect(done).toContain('Ev 1. sıra · 8 maç')
+    expect(done).toContain('Dep 4. sıra · 7 maç')
     expect(html(analysis(0, 'over25'))).toContain('aria-label="3 / 5 yıldız"')
 
     expect(drawn.find((c) => c.includes('Doğu Gençlik'))).toContain('✗ Tutmadı')
@@ -882,11 +882,11 @@ describe('üye kartı: form, gol ve gol yemediği maç satırları (sürüm 9)',
     const text = textOf(card)
     expect(text).toContain('Son 5 maç (sağdaki en yeni) · Gol: attığı–yediği')
     // Ham W W D W W -> G G B G G; L W D W L -> M G B G M (en sağdaki en yeni)
-    expect(text).toContain('Ev Galibiyet, Galibiyet, Beraberlik, Galibiyet, Galibiyet G G B G G Gol: 18–6 Gol yemediği maç: %50')
-    expect(text).toContain('Dep Mağlubiyet, Galibiyet, Beraberlik, Galibiyet, Mağlubiyet M G B G M Gol: 10–9 Gol yemediği maç: %29')
+    expect(text).toContain('Ev 1. sıra · 8 maç Galibiyet, Galibiyet, Beraberlik, Galibiyet, Galibiyet G G B G G Gol 18–6 Gol yemediği maç: %50')
+    expect(text).toContain('Dep 4. sıra · 7 maç Mağlubiyet, Galibiyet, Beraberlik, Galibiyet, Mağlubiyet M G B G M Gol 10–9 Gol yemediği maç: %29')
     expect(card).not.toMatch(/<details|<summary/)
-    // Mevcut sıra satırı aynen durur.
-    expect(text).toContain('Ev: 1. sıra · 8 maç')
+    // Sıra bilgisi aynı satırda, kutucuklardan önce durur.
+    expect(text).toContain('Ev 1. sıra · 8 maç')
     // Ham harfler ve admin notları üyeye görünmez.
     expect(text).not.toMatch(/WWDWW|LWDWL|üyeye gitmez|doğrulanamadı|tablo eski olabilir|turu/)
   })
@@ -895,7 +895,7 @@ describe('üye kartı: form, gol ve gol yemediği maç satırları (sürüm 9)',
     const card = cardOf('Doğu Gençlik')
     expect(card).not.toContain('data-testid="member-form"')
     expect(textOf(card)).not.toContain('Son 5 maç')
-    expect(textOf(card)).toContain('Ev: 9. sıra · 8 maç')
+    expect(textOf(card)).toContain('Ev 9. sıra · 8 maç')
     const noTable = cardOf('İç Anadolu FK')
     expect(noTable).not.toContain('data-testid="member-form"')
     expect(noTable).not.toContain('data-testid="member-standing"')
@@ -910,7 +910,7 @@ describe('üye kartı: form, gol ve gol yemediği maç satırları (sürüm 9)',
     expect(() => assertMemberPayload(v8)).not.toThrow()
     const card = cardOf('Kuzey Yıldızı', v8)
     expect(card).not.toContain('data-testid="member-form"')
-    expect(textOf(card)).toContain('Ev: 1. sıra · 8 maç')
+    expect(textOf(card)).toContain('Ev 1. sıra · 8 maç')
   })
 
   it('satırlarda yasak kelime ve bahis terimi yok', () => {

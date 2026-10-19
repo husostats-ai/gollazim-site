@@ -125,3 +125,42 @@ export const PERCENT_NOTE = "Yüzdeler geçmiş verilere ve model hesaplarına d
 
 /** %100 ama az maça dayanan yüzde: kesinlik izlenimi vermesin diye sönük gösterilir */
 export const isOverstated = (item: Pick<MemberItem, 'percent' | 'reliability'>): boolean => item.percent === 100 && item.reliability === 'low'
+
+/** Karttaki yüzde çubuğunda bir nokta: yalnızca kartta zaten gösterilen bir yüzde */
+export interface SpreadPoint {
+  kind: 'model' | 'market' | 'history'
+  label: string
+  value: number
+}
+
+/**
+ * Yüzde çubuğunun noktaları, karttaki değerlerden (yeni sayı üretilmez). Model: ikinci hesap (varsa);
+ * Piyasa: piyasa yüzdesi (varsa); Geçmiş: büyük yüzde, yalnızca geçmiş sıklık olduğu listelerde
+ * (hesaplanan tahmin olan listelerde büyük yüzde "Geçmiş" diye gösterilmez). Eksik olan çizilmez.
+ */
+export function spreadPoints(item: Pick<MemberItem, 'percent' | 'model' | 'mkt'>, categoryId: CategoryId, marketLabel: string): SpreadPoint[] {
+  const points: SpreadPoint[] = []
+  if (item.model !== null) points.push({ kind: 'model', label: secondPercentLabel(categoryId), value: item.model })
+  if (item.mkt !== undefined) points.push({ kind: 'market', label: marketLabel, value: item.mkt })
+  if (percentKind(categoryId) === 'history') points.push({ kind: 'history', label: 'Geçmiş', value: item.percent })
+  return points
+}
+
+/** "Üç yüzde arası fark: 8 puan" / "İki yüzde arası fark: …"; tek nokta varsa null */
+export function spreadText(points: SpreadPoint[]): string | null {
+  if (points.length < 2) return null
+  const values = points.map((p) => p.value)
+  return `${points.length === 3 ? 'Üç' : 'İki'} yüzde arası fark: ${Math.max(...values) - Math.min(...values)} puan`
+}
+
+/** Diğer analizler bölümünün başlığı */
+export const othersTitle = (count: number): string => `Diğer analizler (${count})`
+
+/**
+ * Yıldız açıklaması. Kural (analysis/confidence.ts starsFor + hesaplayıcıların maxStars sınırı): yıldız,
+ * büyük yüzdenin listeye özgü basamaklardan hangisinde olduğuna göre 1–5 verilir; geçmiş veri Orta ise
+ * en çok 4, Az ya da ölçülemiyorsa en çok 3; hesaplar arasında belirgin çelişki varsa ayrıca sınırlanır.
+ */
+export const STARS_NOTE =
+  'Yıldız, kartın büyük yüzdesinin hangi basamakta olduğunu gösterir; geçmiş veri azsa ya da hesaplar arasında belirgin çelişki varsa üst sınırı düşer. Ayrı bir olasılık değildir, sonucu öngörmez.'
+export const starsButtonLabel = (count: number): string => `${count} / 5 yıldız, açıklama`

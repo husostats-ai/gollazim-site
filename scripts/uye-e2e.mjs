@@ -405,7 +405,8 @@ try {
     page.evaluate(() =>
       [...document.querySelectorAll('[data-testid="member-card"]')].map((card) => {
         const line = card.querySelector('[data-testid="member-market"]')
-        const stars = card.querySelector('[role="img"]')
+        // Yıldızlar bir düğmenin içindedir; ölçü düğmeyi saran blokla alınır.
+        const stars = card.querySelector('[data-testid="member-stars"]').parentElement
         const prev = stars.previousElementSibling
         return {
           line: line ? line.querySelector('span').textContent.replace(/\s+/g, ' ').trim() : null,
@@ -484,6 +485,64 @@ try {
     `${bareCards.length} kart · ${[...new Set(bareCards.map((c) => c.chip.replace('member-category-', '')))].join(', ')} · boşluk ${[...new Set(bareCards.map((c) => c.gap))].join('/')} px`,
   )
   await page.click(sel((await page.$$eval('[data-testid^="member-category-"]', (els) => els.map((el) => el.dataset.testid)))[0]))
+
+  // Yüzde çubuğu: yalnızca kartta yazan değerler; her noktanın bir etiketi var, noktalar çubuğun içinde
+  const spreads = await page.evaluate(() =>
+    [...document.querySelectorAll('[data-testid="member-spread"]')].map((el) => {
+      const bar = el.firstElementChild.getBoundingClientRect()
+      const dots = [...el.querySelectorAll('[data-testid="member-spread-dot"]')]
+      return {
+        dots: dots.length,
+        labels: el.querySelectorAll('[data-testid="member-spread-label"]').length,
+        gap: el.querySelector('[data-testid="member-spread-gap"]')?.textContent ?? null,
+        inside: dots.every((d) => { const b = d.getBoundingClientRect(); return b.left >= bar.left - 6 && b.right <= bar.right + 6 }),
+      }
+    }),
+  )
+  step('yüzde çubuğu: yalnızca 2+ değerde; nokta sayısı = etiket sayısı, fark satırı var, noktalar çubukta', spreads.length > 0 && spreads.every((s) => s.dots === s.labels && s.dots >= 2 && s.gap !== null && s.inside), `${spreads.length} kart · ${[...new Set(spreads.map((s) => s.dots))].join('/')} nokta`)
+
+  // Yıldız açıklaması: klavyeyle aç / kapa, Esc ve dışarı dokunma kapatır
+  const starsState = () =>
+    page.evaluate(() => {
+      const button = document.querySelector('[data-testid="member-stars"]')
+      const noteEl = button.parentElement.querySelector('[data-testid="member-stars-note"]')
+      const box = noteEl?.getBoundingClientRect()
+      return { expanded: button.getAttribute('aria-expanded'), open: !!noteEl, controls: noteEl ? button.getAttribute('aria-controls') === noteEl.id : null, inView: box ? box.left >= 0 && box.right <= window.innerWidth + 0.5 : null, text: noteEl?.textContent ?? '' }
+    })
+  await page.setViewport({ width: 320, height: 844, deviceScaleFactor: 2 })
+  await page.focus(sel('member-stars'))
+  await page.keyboard.press('Enter')
+  const starsOpen = await starsState()
+  step('yıldız açıklaması klavyeyle (Enter) açılıyor; bağlı, 320 px ekranda taşmıyor', starsOpen.open && starsOpen.expanded === 'true' && starsOpen.controls && starsOpen.inView && !FORBIDDEN.test(starsOpen.text.toLocaleLowerCase('tr')), starsOpen.text.slice(0, 60))
+  await page.keyboard.press('Escape')
+  step('yıldız açıklaması Esc ile kapanıyor', !(await starsState()).open)
+  await page.keyboard.press('Space')
+  const spaceOpen = (await starsState()).open
+  await page.keyboard.press('Space')
+  step('yıldız açıklaması klavyeyle (Boşluk) açılıp kapanıyor', spaceOpen && !(await starsState()).open)
+  await page.keyboard.press('Enter')
+  await page.click(sel('member-day-title'))
+  step('yıldız açıklaması dışarı dokununca kapanıyor', !(await starsState()).open)
+
+  // Diğer analizler: varsayılan kapalı; açılınca içerik görünür, başlık yerinden oynamaz
+  const othersState = () =>
+    page.evaluate(() => {
+      const toggle = document.querySelector('[data-testid="member-others-toggle"]')
+      const region = document.getElementById(toggle.getAttribute('aria-controls'))
+      return { expanded: toggle.getAttribute('aria-expanded'), title: toggle.textContent.trim(), height: region.offsetHeight, visible: getComputedStyle(region).visibility === 'visible', top: Math.round(toggle.getBoundingClientRect().top), scroll: Math.round(window.scrollY) }
+    })
+  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 })
+  await page.evaluate(() => document.querySelector('[data-testid="member-others-toggle"]').scrollIntoView({ block: 'center' }))
+  await new Promise((r) => setTimeout(r, 100))
+  const othersClosed = await othersState()
+  step('"Diğer analizler (N)" varsayılan kapalı ve yer tutmuyor', othersClosed.expanded === 'false' && othersClosed.height === 0 && !othersClosed.visible && /^Diğer analizler \(\d+\) ▾$/.test(othersClosed.title), othersClosed.title)
+  await page.click(sel('member-others-toggle'))
+  await new Promise((r) => setTimeout(r, 350))
+  const othersOpen = await othersState()
+  step('tıklanınca açılıyor (▴); başlık ve sayfa kaydırması yerinde kalıyor', othersOpen.expanded === 'true' && othersOpen.height > 0 && othersOpen.visible && othersOpen.title.endsWith('▴') && othersOpen.top === othersClosed.top && othersOpen.scroll === othersClosed.scroll, `${othersOpen.height} px`)
+  await page.click(sel('member-others-toggle'))
+  await new Promise((r) => setTimeout(r, 350))
+  step('yeniden tıklanınca kapanıyor', (await othersState()).height === 0)
 
   // Öneri satırlı bir kartın yakın görüntüsü (320 px)
   await page.setViewport({ width: 320, height: 844, deviceScaleFactor: 2 })

@@ -50,6 +50,10 @@ const ALLOWED = [
   'src/member/MemberAnalysis.tsx',
   'src/member/MemberApp.tsx',
   'src/member/MemberCard.tsx',
+  'src/member/MemberOthers.tsx',
+  'src/member/MemberSpread.tsx',
+  'src/member/MemberStars.tsx',
+  'src/member/MemberTeams.tsx',
   'src/member/CountryFlag.tsx',
   'src/member/countryFlag.ts',
   'src/member/flags.ts',
@@ -81,7 +85,6 @@ const ALLOWED = [
   // Uygulamayla ortak, yalnızca çizim yapan bileşenler
   'src/components/EmptyState.tsx',
   'src/components/PageTitle.tsx',
-  'src/components/Stars.tsx',
   'src/components/TeamForm.tsx',
   'src/components/stats/chartTheme.ts',
 ].sort()

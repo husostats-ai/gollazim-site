@@ -121,7 +121,7 @@ export default function MemberAnalysis({ payload, today, initialDay = 0, initial
           </details>
           <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2" data-testid="member-cards">
             {orderItems(list.items, day.matches, mode).map(({ item, rank }) => (
-              <MemberCard key={`${list.categoryId}:${item.match}`} rank={rank} match={day.matches[item.match]} item={item} categoryLabel={choices.find((c) => c.categoryId === list.categoryId)!.label} percentLabel={PERCENT_LABELS[percentKind(list.categoryId)]} secondLabel={secondPercentLabel(list.categoryId)} />
+              <MemberCard key={`${list.categoryId}:${item.match}`} rank={rank} match={day.matches[item.match]} item={item} categoryId={list.categoryId} categoryLabel={choices.find((c) => c.categoryId === list.categoryId)!.label} percentLabel={PERCENT_LABELS[percentKind(list.categoryId)]} secondLabel={secondPercentLabel(list.categoryId)} />
             ))}
           </div>
         </>
