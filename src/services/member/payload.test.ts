@@ -1,4 +1,4 @@
-import { MAIN_CATEGORY_IDS } from '../../config/mainCategories'
+import { MAIN_CATEGORY_IDS, onlyMainCategories } from '../../config/mainCategories'
 import { describe, expect, it } from 'vitest'
 import { CATEGORIES, MAX_MATCHES_PER_CATEGORY } from '../../config/categories'
 import { DEFAULT_MEMBER_TEXTS, normalizeMemberTexts } from '../../config/memberTexts'
@@ -6,7 +6,7 @@ import type { Pick } from '../../types'
 import { analyzeDay } from '../analysis/engine'
 import { makeMatch } from '../analysis/testUtils'
 import { buildStarStats } from '../stats/starStats'
-import { buildStats } from '../stats/statsEngine'
+import { buildStats, decidedBuckets } from '../stats/statsEngine'
 import { sharedPicksOnly } from '../story/shared'
 import { DAY, dayMatches, MARKET_LIMIT, memberInput, PICKS, PREVIOUS_DAY, PUBLISHED_AT, SHARED, THRESHOLDS } from './__fixtures__/rawData'
 import { buildMemberPayload, conflictKindOf, MEMBER_DAILY_LIMIT, MEMBER_PAYLOAD_VERSION, type MemberDay } from './payload'
@@ -117,27 +117,30 @@ describe('buildMemberPayload', () => {
 
   it('istatistik değerleri istatistik sayfasının hesabıyla aynıdır (Tümü ve Paylaşılan)', () => {
     for (const [scope, picks] of [['all', PICKS], ['shared', sharedPicksOnly(PICKS, SHARED)]] as const) {
-      const expected = buildStats(picks)
-      const stars = buildStarStats(picks)
+      // "Kategori bazlı başarı" tüm kategorileri, diğer bütün değerler yalnızca ana kategorileri sayar.
+      const mainPicks = onlyMainCategories(picks)
+      const expected = buildStats(mainPicks)
+      const stars = buildStarStats(mainPicks)
       const actual = payload.statistics[scope]
       expect(actual.overall).toEqual(expected.overall)
       expect(actual.matches).toEqual(expected.matches)
-      expect(actual.byCategory).toEqual(expected.byCategory)
-      expect(actual.byReliability).toEqual(expected.byReliability)
+      expect(actual.byCategory).toEqual(buildStats(picks).byCategory)
+      expect(actual.byReliability).toEqual(decidedBuckets(expected.byReliability))
       expect(actual.daily).toEqual(expected.daily)
       expect(actual.weekly).toEqual(expected.weekly)
       expect(actual.monthly).toEqual(expected.monthly)
       expect(actual.stars).toEqual(stars)
-      // Ana kategoriler: aynı hesap, yalnızca sabit listedeki kategorilerin önerileriyle.
-      const mainPicks = picks.filter((p) => (MAIN_CATEGORY_IDS as readonly string[]).includes(p.categoryId))
-      const main = buildStats(mainPicks)
-      expect(actual.main).toEqual({ categories: [...MAIN_CATEGORY_IDS], overall: main.overall, matches: main.matches })
+      expect(actual.main).toEqual({ categories: [...MAIN_CATEGORY_IDS], overall: expected.overall, matches: expected.matches })
+      // Bütün toplamlar ana kategorilerin toplamına eşit
+      const sum = (rows: { tally: { decided: number } }[]) => rows.reduce((n, b) => n + b.tally.decided, 0)
+      for (const rows of [actual.byReliability, actual.daily, actual.weekly, actual.monthly]) expect(sum(rows)).toBe(expected.overall.decided)
+      expect(actual.stars.byCategory.every((c) => (MAIN_CATEGORY_IDS as readonly string[]).includes(c.key))).toBe(true)
     }
-    // Sabit liste gerçekten bir alt kümedir: ana kategoriler tüm önerilerden azdır.
+    // Sabit liste gerçekten bir alt kümedir; tüm kategoriler yalnızca kategori dökümündedir.
     expect(payload.statistics.all.main!.overall.total).toBeGreaterThan(0)
-    expect(payload.statistics.all.main!.overall.total).toBeLessThan(payload.statistics.all.overall.total)
-    expect(payload.statistics.all.overall.total).toBe(PICKS.length)
-    expect(payload.statistics.shared.overall.total).toBe(2)
+    expect(payload.statistics.all.overall.total).toBe(onlyMainCategories(PICKS).length)
+    expect(payload.statistics.all.byCategory.reduce((n, b) => n + b.tally.total, 0)).toBe(PICKS.length)
+    expect(payload.statistics.all.overall.total).toBeLessThan(PICKS.length)
   })
 
   it('günlük döküm en yeni 90 günle sınırlanır', () => {

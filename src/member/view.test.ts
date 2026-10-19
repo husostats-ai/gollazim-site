@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 import { CATEGORIES } from '../config/categories'
+import { MAIN_CATEGORY_IDS, MAIN_SCOPE_NOTE } from '../config/mainCategories'
 import { DEFAULT_MEMBER_TEXTS } from '../config/memberTexts'
 import { MEMBER_STALE_HOURS } from '../config/member'
 import { DAY, dayHighlights, HIGHLIGHT_PERCENT, memberInput, PREVIOUS_DAY, PUBLISHED_AT } from '../services/member/__fixtures__/rawData'
@@ -593,18 +594,21 @@ describe('istatistik sayfası', () => {
       const s = payload.statistics[scope]
       const text = textOf(stats(scope))
       const main = s.main!
-      // En üstteki kart ana kategorileri, altındaki soluk satır tüm kategorileri gösterir.
+      // En üstteki kart ana kategorileri gösterir; tüm kategorilerin toplamı yazılmaz (yalnızca kategori dökümü).
+      expect(text).toContain(MAIN_SCOPE_NOTE.replaceAll("'", '&#x27;'))
       expect(text).toContain('ANA KATEGORİLER BAŞARISI')
       expect(text).toContain('2.5 ÜST · KG VAR · İLK YARI 0.5 ÜST')
       expect(text).not.toContain('GENEL BAŞARI')
       expect(text).toContain(`· ${main.overall.decided} öneri · ${main.matches.decided} benzersiz maç`)
       expect(text).toContain(`Tuttu ${main.overall.won} Tutmadı ${main.overall.lost} Değerlendirilemedi`)
-      expect(text).toContain(`Tüm kategoriler: ${formatRate(s.overall.rate)} · ${s.overall.decided} öneri · ${s.matches.decided} benzersiz maç`)
+      expect(text).not.toContain('Tüm kategoriler:')
+      expect(stats(scope)).not.toContain('member-all-line')
       for (const bucket of s.byCategory) expect(text).toContain(CATEGORIES.find((c) => c.id === bucket.key)!.label)
     }
     // Sayfa hesap yapmaz: gösterilen başarı, paketteki değerin biçimlendirilmiş hâlidir.
     expect(/data-testid="member-overall"[^>]*>([^<]*)/.exec(stats('all'))![1]).toBe(formatRate(payload.statistics.all.main!.overall.rate))
-    expect(payload.statistics.all.main!.overall.rate).not.toBe(payload.statistics.all.overall.rate)
+    expect(payload.statistics.all.overall).toEqual(payload.statistics.all.main!.overall)
+    expect(payload.statistics.all.byCategory.some((b) => !(MAIN_CATEGORY_IDS as readonly string[]).includes(b.key))).toBe(true)
     expect(/data-testid="member-overall"[^>]*>([^<]*)/.exec(stats('shared'))![1]).toBe('%50')
   })
 
@@ -637,7 +641,9 @@ describe('istatistik sayfası', () => {
     expect(textOf(stats('all'))).toContain('GEÇMİŞ VERİ MİKTARINA GÖRE BAŞARI')
     expect(textOf(stats('all'))).not.toMatch(/GÜVENİLİRLİ|güvenilirlik/)
     expect(text).toContain('⚠ az veri')
-    expect(textOf(stats('all'))).toContain('Model tabanlı')
+    // Ana kategorilerde "Model tabanlı" / "Ölçülemedi" seviyesi yok: boş satır çizilmez.
+    expect(textOf(stats('all'))).not.toMatch(/Model tabanlı|Ölçülemedi/)
+    expect(payload.statistics.all.byReliability.every((b) => b.tally.decided > 0)).toBe(true)
     const empty = buildMemberPayload(memberInput({ picks: [], shared: [] }))
     expect(textOf(html(createElement(MemberStatsPage, { payload: empty })))).toContain('Bu ölçüde henüz sonuçlanan öneri yok.')
   })

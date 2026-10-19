@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import EmptyState from '../components/EmptyState'
 import PageTitle from '../components/PageTitle'
 import { CHART } from '../components/stats/chartTheme'
+import { MAIN_SCOPE_NOTE } from '../config/mainCategories'
 import type { ReliabilityLevel } from '../services/analysis/types'
 import { MEMBER_HT_SCORELESS_TEXT as HT, MEMBER_RELIABILITY_LABELS } from '../services/member/labels'
 import type { MemberBucket, MemberHtScoreless, MemberPayload, MemberTally } from '../services/member/payload'
@@ -179,6 +180,9 @@ export default function MemberStatsPage({ payload, initialScope = 'all', initial
           {SCOPES.find((s) => s.id === scope)!.note}
         </p>
       </div>
+      <p className="mt-2 text-xs text-muted" data-testid="member-main-scope-note">
+        {MAIN_SCOPE_NOTE}
+      </p>
 
       {overall.total === 0 ? (
         <div className="mt-4">
@@ -203,15 +207,10 @@ export default function MemberStatsPage({ payload, initialScope = 'all', initial
               <Figure label="Bekliyor" value={top.overall.pending} />
             </div>
             <p className="mt-2 text-xs text-muted">Aynı maç birden çok kategoride önerilebilir. “Değerlendirilemedi” ve “bekliyor” başarıya girmez.</p>
-            {main && (
-              <p className="mt-3 border-t border-line pt-2 text-xs text-muted" data-testid="member-all-line">
-                Tüm kategoriler: {formatRate(overall.rate)} · {overall.decided} öneri · {stats.matches.decided} benzersiz maç
-              </p>
-            )}
           </Card>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <Card title="KATEGORİ BAZLI BAŞARI" note="Çizgili çubuk: az veri (henüz az sayıda sonuçlanan öneri).">
+            <Card title="KATEGORİ BAZLI BAŞARI" note="Tüm kategoriler. Çizgili çubuk: az veri (henüz az sayıda sonuçlanan öneri).">
               <Bars rows={rowsOf(stats.byCategory, categoryLabel)} />
             </Card>
             <Card title="GEÇMİŞ VERİ MİKTARINA GÖRE BAŞARI" note="Geçmiş veri: yüzdenin kaç maçlık veriye dayandığı (önerinin sonuçlandığı andaki seviye). Maçın sonucuna güveni anlatmaz.">

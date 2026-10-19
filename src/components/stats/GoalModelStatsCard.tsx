@@ -44,7 +44,7 @@ export default function GoalModelStatsCard({ stats }: { stats: GoalModelStats })
               {stats.calibration.map(({ key, ready, model, gap, tally }) => (
                 <tr key={key} className="border-b border-line last:border-0">
                   <th scope="row" className="py-2 pr-3 font-semibold">
-                    {key === 'all' ? 'Dört kategori birlikte' : getCategory(key).label}
+                    {key === 'all' ? 'Hepsi birlikte' : getCategory(key).label}
                   </th>
                   <td className="py-2 pr-3 text-right">{formatRate(ready)}</td>
                   <td className="py-2 pr-3 text-right">{formatRate(model)}</td>

@@ -151,8 +151,8 @@ try {
     const raw = await dump(page)
     step('yeni sürüm: uygulama normal açıldı (6 sayfa), konsol hatası yok', errors.length === 0, errors[0] ?? '')
     await go(page, '/istatistik')
-    await page.waitForSelector('[data-testid="overall-rate"]', { timeout: 15000 })
-    const rate = await page.$eval('[data-testid="overall-rate"]', (el) => el.textContent.trim())
+    await page.waitForSelector('[data-testid="main-rate"]', { timeout: 15000 })
+    const rate = await page.$eval('[data-testid="main-rate"]', (el) => el.textContent.trim())
     await go(page, '/admin')
     const exported = await exportBackup(page)
     return { raw, rate, exported }

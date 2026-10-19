@@ -78,6 +78,7 @@ const ALLOWED = [
   'src/services/member/source.ts',
   // Ayar ve biçimlendirme (veri içermez)
   'src/config/categories.ts',
+  'src/config/mainCategories.ts',
   'src/config/member.ts',
   'src/config/memberTexts.ts',
   'src/utils/date.ts',

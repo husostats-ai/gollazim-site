@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { CATEGORIES, defaultThresholds, type CategoryId } from '../../config/categories'
 import type { AiVerdict, Match, Pick, PickOutcome } from '../../types'
 import { formatRate } from '../../utils/format'
-import { AI_SOURCES, buildLegacyAiStats, buildPreMatchAiStats } from '../ai/aiStats'
+import { MAIN_SCOPE_NOTE, onlyMainCategories } from '../../config/mainCategories'
+import { AI_SOURCES, buildLegacyAiStats, buildPreMatchAiStats, MAIN_AI_CATEGORY_IDS } from '../ai/aiStats'
 import { analyzeCategory } from '../analysis/engine'
 import { makeMatch } from '../analysis/testUtils'
 import { recordShare, sharedPicksOnly } from '../story/shared'
@@ -133,7 +134,8 @@ describe('kapsam seçici', () => {
     ['range', { kind: 'range', from: '2026-10-08', to: '2026-10-09' }, (d: string) => d >= '2026-10-08' && d <= '2026-10-09'],
   ] as [string, SummaryScope, (d: string) => boolean][])('%s: özet yalnızca kapsamdaki önerileri sayar', (_, scope, keep) => {
     const text = buildStatsSummary(input(scope))
-    const expected = buildStats(picks.filter((p) => keep(p.date)))
+    // Başlık yalnızca ana kategorileri sayar.
+    const expected = buildStats(onlyMainCategories(picks.filter((p) => keep(p.date))))
     expect(text).toContain(`- Dondurulmuş öneri: ${expected.overall.total}`)
     expect(text).toContain(`- Sonuçlanmış öneri (tuttu + tutmadı): ${expected.overall.decided} (tutan ${expected.overall.won}, tutmayan ${expected.overall.lost})`)
     expect(text).toContain(`- Genel başarı: ${formatRate(expected.overall.rate)}`)
@@ -148,14 +150,18 @@ describe('kapsam seçici', () => {
 
 describe('özet metni', () => {
   const text = buildStatsSummary(input())
-  const stats = buildStats(picks)
+  /** Kategori başarısı dışındaki bölümlerin kapsamı: ana kategoriler */
+  const mainPicks = onlyMainCategories(picks)
+  const stats = buildStats(mainPicks)
+  const everything = buildStats(picks)
 
   it('başlık ve kapsam bilgileri', () => {
     expect(text).toContain('- Oluşturulma: 10 Eki 2026 12:30 (Europe/Istanbul)')
-    expect(text).toContain('- Kapsam: Tümü')
-    expect(text).toContain('- Veri olan günler: 4 (1 Eyl 2026 – 9 Eki 2026)')
+    expect(text).toContain(`- Kapsam: Tümü. ${MAIN_SCOPE_NOTE}\n`)
+    // Korner / kart (8 Eki) ve Taraf & Gol (5 Eki) günleri ana kategorilerde yok: 1 Eyl, 8 Eki, 9 Eki
+    expect(text).toContain('- Veri olan günler: 3 (1 Eyl 2026 – 9 Eki 2026)')
     expect(text).toContain(`- Değerlendirilemedi: ${stats.overall.void}`)
-    expect(buildStatsSummary(input({ kind: 'last7' }))).toContain('- Kapsam: Son 7 gün (4 Eki 2026 – 10 Eki 2026)')
+    expect(buildStatsSummary(input({ kind: 'last7' }))).toContain(`- Kapsam: Son 7 gün (4 Eki 2026 – 10 Eki 2026). ${MAIN_SCOPE_NOTE}\n`)
   })
 
   it('güncel eşikler ve dondurma notu', () => {
@@ -168,7 +174,9 @@ describe('özet metni', () => {
 
   it('kategori tablosu istatistik motoruyla aynı sayıları ve yuvarlamayı kullanır', () => {
     const body = section(text, 'Kategori başarısı')
-    for (const bucket of stats.byCategory) {
+    // Kategori başarısı tek istisnadır: tüm kategoriler
+    expect(everything.byCategory.map((b) => b.key)).toEqual(['over25', 'ht05', 'btts', 'corners95', 'cards35', 'homeWin15'])
+    for (const bucket of everything.byCategory) {
       const t = bucket.tally
       const cells = row(body, CATEGORIES.find((c) => c.id === bucket.key)!.label)
       expect(cells.slice(1)).toEqual([String(t.decided), String(t.won), formatRate(t.rate), t.decided > 0 && t.lowSample ? 'az veri' : '', String(t.void), String(t.pending)])
@@ -189,6 +197,11 @@ describe('özet metni', () => {
     const low = stats.byReliability.find((b) => b.key === 'low')!.tally
     expect(row(reliability, 'Düşük').slice(1, 4)).toEqual([String(low.decided), String(low.won), formatRate(low.rate)])
     expect(row(reliability, 'Yüksek').slice(1, 4)).toEqual(['9', '0', '%0'])
+    // Korner / kart ("Ölçülemedi") ve Taraf & Gol ("Piyasa tabanlı") ana kategoride değil: satır yok
+    expect(reliability).not.toMatch(/\| (Ölçülemedi|Piyasa tabanlı|Piyasa \(kısmi\)|Bilinmiyor) \|/)
+    expect(reliability).toContain('Sonuçlanmış önerisi olmayan seviye yazılmaz.')
+    const total = (rows: { tally: { decided: number } }[]) => rows.reduce((sum, b) => sum + b.tally.decided, 0)
+    expect(total(stats.byReliability)).toBe(stats.overall.decided)
 
     // 2.5 Üst %90: düşük güvenilirlikte en çok 3 yıldız; yüksek güvenilirlikte 5
     expect(frozenStars(picks[0])).toBe(3)
@@ -201,9 +214,11 @@ describe('özet metni', () => {
     const stars = section(text, 'Yıldız sayısına göre başarı')
     expect(row(stars, '5 yıldız').slice(1, 4)).toEqual(['9', '0', '%0'])
     expect(row(stars, '2.5 ÜST')).toEqual(['2.5 ÜST', '%0 · n=9', '— · n=0', '%100 · n=12', '— · n=0', '— · n=0'])
-    expect(stars).toContain('4 eski öneride (Taraf & Gol ya da güvenilirliği kayıtlı olmayan) yıldız bulunamadığı için')
+    // Yıldızı bulunamayan Taraf & Gol önerileri artık bu bölümün kapsamında değil
+    expect(stars).not.toContain('yıldız bulunamadığı için')
+    expect(stars).not.toMatch(/\| (EV KAZANIR|KORNER|KART)/)
     // Bu test verisinde hiçbir öneride kayıtlı yıldız yok: hepsi yeniden hesaplanır
-    expect(stars).toContain(`${picks.length - 4} öneri yeniden hesaplandı (eski kayıt)`)
+    expect(stars).toContain(`${mainPicks.length} öneri yeniden hesaplandı (eski kayıt)`)
   })
 
   it('yıldız, analizin ürettiği yıldızla aynıdır', () => {
@@ -237,10 +252,11 @@ describe('özet metni', () => {
   it('kalibrasyon tabloları sayfadakilerle aynı fonksiyonlardan gelir', () => {
     const model = stats.goalModel!
     const all = model.calibration.find((r) => r.key === 'all')!
-    expect(row(section(text, 'Kalibrasyon: hazır yüzde ve gol modeli'), 'Dört kategori birlikte').slice(1, 4)).toEqual([formatRate(all.ready), formatRate(all.model), rateCell(all.tally)])
+    expect(row(section(text, 'Kalibrasyon: hazır yüzde ve gol modeli'), 'Hepsi birlikte').slice(1, 4)).toEqual([formatRate(all.ready), formatRate(all.model), rateCell(all.tally)])
+    expect(section(text, 'Kalibrasyon: hazır yüzde ve gol modeli')).toContain('2.5 ÜST ve KG VAR önerilerinden model yüzdesi dondurulmuş olanlar.')
     expect(row(section(text, 'Kalibrasyon: hazır yüzde ve gol modeli'), 'Çelişkili')).toEqual(['Çelişkili', '%100 · n=12'])
 
-    const market = buildMarketStats(backfillMarket(picks, matches, 25))!
+    const market = buildMarketStats(backfillMarket(mainPicks, matches, 25))!
     const over25 = market.rows.find((r) => r.key === 'over25')!
     expect(row(section(text, 'Kalibrasyon: hazır yüzde ve piyasa'), '2.5 ÜST')).toEqual([
       '2.5 ÜST',
@@ -253,12 +269,14 @@ describe('özet metni', () => {
     ])
     expect(text).toContain(`${market.backfilled} önerinin piyasa yüzdesi dondurma anında kayıtlı değildi`)
 
-    const side = stats.sideGoals!.calibration.find((r) => r.key === 'all')!
-    expect(row(section(text, 'Kalibrasyon: Taraf & Gol'), 'Tüm Taraf & Gol')).toEqual(['Tüm Taraf & Gol', '%60', rateCell(side.tally), '-10 puan'])
+    // Taraf & Gol kalibrasyonu yazılmaz (hesap durur: tüm öneriler verilince dolu çıkar)
+    expect(() => section(text, 'Kalibrasyon: Taraf & Gol')).toThrow()
+    expect(text).not.toContain('Taraf & Gol')
+    expect(everything.sideGoals!.calibration.find((r) => r.key === 'all')!.predicted).toBe(60)
   })
 
   it('yapay zekâ kararları: eski maç geneli kararlar kendi bölümünde; kaynak ve karar bazında, her hücrede n', () => {
-    const ai = buildLegacyAiStats(picks, verdicts)!
+    const ai = buildLegacyAiStats(mainPicks, verdicts)!
     const body = section(text, 'Yapay zekâ kararlarının başarısı: maç geneli kararlar (eski)')
     expect(row(body, 'ChatGPT')).toEqual(['ChatGPT', '2', rateCell(ai.approved.chatgpt)])
     expect(row(body, 'Claude')).toEqual(['Claude', '0', '— · n=0'])
@@ -286,7 +304,7 @@ describe('özet metni', () => {
     expect(row(body, 'Gemini')).toEqual(['Gemini', '2', '%100 · n=1'])
     expect(row(body, 'Çoğunluk kararı')).toEqual(['Çoğunluk kararı', '2', '%50 · n=2'])
     expect(row(body, 'Orta')).toEqual(['Orta', '%100 · n=1', '%100 · n=1', '%100 · n=1', '%100 · n=1'])
-    expect(body).toContain('Karar yalnızca şu kategoriler için alınır: 2.5 ÜST, İLK YARI 0.5 ÜST, KG VAR, 2.5 ÜST & KG VAR.')
+    expect(body).toContain('Burada yalnızca şu kategorilerin kararları ölçülür: 2.5 ÜST, İLK YARI 0.5 ÜST, KG VAR.')
     // Eski bölüm, kategori kararları eklenince değişmez.
     const legacyTitle = 'Yapay zekâ kararlarının başarısı: maç geneli kararlar (eski)'
     expect(section(mixed, legacyTitle)).toBe(section(text, legacyTitle))
@@ -305,8 +323,8 @@ describe('özet metni', () => {
       fresh(picks[14].matchId, 'chatgpt', 'reject', AFTER),
     ]
     const all = [...verdicts, ...category]
-    // Kartın hesabı (StatsPage): tüm öneriler, tüm kararlar, maç kayıtları
-    const card = buildPreMatchAiStats(picks, all, matches)!
+    // Kartın hesabı (StatsPage): ana kategorilerdeki öneriler ve kararlar, maç kayıtları
+    const card = buildPreMatchAiStats(mainPicks, all, matches, MAIN_AI_CATEGORY_IDS)!
     expect(card.excluded).toEqual({ late: 2, noKickoff: 0 })
     const body = section(buildStatsSummary(input({ kind: 'all' }, { verdicts: all })), 'Yapay zekâ kararlarının başarısı: kategori bazlı kararlar')
     const labels = { chatgpt: 'ChatGPT', gemini: 'Gemini', claude: 'Claude', majority: 'Çoğunluk kararı' }
@@ -344,15 +362,17 @@ describe('özet metni', () => {
 
   it('veri kısıtları', () => {
     const body = section(text, 'Veri kısıtları')
-    expect(body).toContain('- Korner sayısı girilmediği için değerlendirilemeyen korner önerisi: 4')
-    expect(body).toContain('- Kart sayısı girilmediği için değerlendirilemeyen kart önerisi: 1')
-    expect(body).toContain('- Diğer kategorilerde değerlendirilemeyen öneri: 0')
-    expect(body).toContain(`- Maç kaydı duran maç: ${picks.length} / ${picks.length}`)
-    const withoutOdds = matches.filter((m) => m.stats.oddsHome === undefined).length
+    // Korner ve kart önerileri ana kategoride değil: satırları yok, sayılmaz
+    expect(body).not.toMatch(/[Kk]orner|[Kk]art /)
+    expect(body).toContain('- Değerlendirilemeyen öneri: 0')
+    expect(body).toContain('- Sonuçlanmış önerisi 20\'den az olan kategori: 2 / 3')
+    expect(body).toContain(`- Maç kaydı duran maç: ${mainPicks.length} / ${mainPicks.length}`)
+    const mainIds = new Set(mainPicks.map((p) => p.matchId))
+    const withoutOdds = matches.filter((m) => mainIds.has(m.id) && m.stats.oddsHome === undefined).length
     expect(body).toContain(`- Bunlardan 1X2 oranı eksik: ${withoutOdds}`)
     expect(body).toContain(`- Maç öncesi xG eksik: ${withoutOdds}`)
-    // Maç kaydı silinmişse
-    expect(buildStatsSummary(input({ kind: 'all' }, { matches: matches.slice(0, 10) }))).toContain(`- Maç kaydı duran maç: 10 / ${picks.length}`)
+    // Maç kaydı silinmişse (ilk 10 maç ana kategoride)
+    expect(buildStatsSummary(input({ kind: 'all' }, { matches: matches.slice(0, 10) }))).toContain(`- Maç kaydı duran maç: 10 / ${mainPicks.length}`)
   })
 
   it('yönerge açıkken en üsttedir; kapalıyken hiç yoktur', () => {
@@ -372,9 +392,13 @@ describe('özet metni', () => {
     expect(empty).toContain(`${NO_DATA_TEXT}.`)
     expect(empty).not.toContain('## ')
     // Yalnızca değerlendirilemeyen öneri varsa da
-    const onlyVoid = buildStatsSummary(input({ kind: 'range', from: '2026-10-08', to: '2026-10-08' }, { picks: picks.filter((p) => p.outcome === 'void') }))
-    expect(onlyVoid).toContain('- Dondurulmuş öneri: 5')
+    const onlyVoid = buildStatsSummary(input({ kind: 'range', from: '2026-10-08', to: '2026-10-08' }, { picks: [...picks.filter((p) => p.outcome === 'void'), pick('void', 'btts', '2026-10-08')] }))
+    expect(onlyVoid).toContain('- Dondurulmuş öneri: 1')
     expect(onlyVoid).toContain(`${NO_DATA_TEXT}.`)
+    // Ana kategorilerde hiç öneri yoksa da (diğer kategorilerin önerileri sayılmaz)
+    const onlyOthers = buildStatsSummary(input({ kind: 'all' }, { picks: picks.filter((p) => p.categoryId === 'homeWin15'), includeGuide: false }))
+    expect(onlyOthers).toContain('- Dondurulmuş öneri: 0')
+    expect(onlyOthers).toContain(`${NO_DATA_TEXT}.`)
     // Kapsamda veri olmayan aralık
     expect(buildStatsSummary(input({ kind: 'range', from: '2026-01-01', to: '2026-01-02' }))).toContain(`${NO_DATA_TEXT}.`)
   })
@@ -516,14 +540,18 @@ describe('yıldız istatistiği: kayıtlı değer ve eski kayıt', () => {
     const allStored = buildStatsSummary(input({ kind: 'all' }, { picks: fresh, matches: [] }))
     const body = section(allStored, 'Yıldız sayısına göre başarı')
     expect(row(body, '5 yıldız').slice(1, 4)).toEqual(['3', '3', '%100'])
-    expect(row(body, 'EV KAZANIR & 1.5 ÜST')[4]).toBe('%0 · n=2')
+    // Taraf & Gol ana kategori değil: yıldız tablolarına girmez
+    expect(row(body, '2 yıldız').slice(1, 4)).toEqual(['0', '0', '—'])
+    expect(body).not.toContain('EV KAZANIR')
     expect(body).not.toContain('yeniden hesaplandı')
     expect(body).not.toContain('yıldız bulunamadığı')
 
-    const mixed = buildStatsSummary(input({ kind: 'all' }, { picks: [...fresh, pick('won', 'btts', TODAY), pick('won', 'awayWin15', TODAY, { reliability: 'market' })], matches: [] }))
+    const mixed = buildStatsSummary(
+      input({ kind: 'all' }, { picks: [...fresh, pick('won', 'btts', TODAY), pick('won', 'ht05', TODAY, { reliability: undefined }), pick('won', 'awayWin15', TODAY, { reliability: 'market' })], matches: [] }),
+    )
     const mixedBody = section(mixed, 'Yıldız sayısına göre başarı')
     expect(mixedBody).toContain('1 öneri yeniden hesaplandı (eski kayıt)')
-    expect(mixedBody).toContain('1 eski öneride (Taraf & Gol ya da güvenilirliği kayıtlı olmayan) yıldız bulunamadığı için')
+    expect(mixedBody).toContain('1 eski öneride (güvenilirliği kayıtlı olmayan) yıldız bulunamadığı için')
 
     const rows = buildDetailRows(input({ kind: 'all' }, { picks: fresh, matches: [] }))
     expect(rows.map((r) => r[DETAIL_CSV_COLUMNS.indexOf('yildiz')])).toEqual(['5', '5', '5', '2', '2'])
@@ -671,7 +699,7 @@ describe('özet: lig türüne göre başarı', () => {
   it('tür satırları: sonuçlanan, tutan, başarı, az veri; toplam satırı genel toplamla aynı', () => {
     expect(row(body, 'Milli takım').slice(1, 5)).toEqual(['12', '12', '%100', 'az veri'])
     expect(row(body, 'Gençlik / U-takım').slice(1, 5)).toEqual(['9', '0', '%0', 'az veri'])
-    const { overall } = buildStats(picks)
+    const { overall } = buildStats(onlyMainCategories(picks))
     expect(row(body, 'Tüm türler').slice(1, 5)).toEqual([String(overall.decided), String(overall.won), formatRate(overall.rate), ''])
     const typed = ['Gençlik / U-takım', 'Milli takım', 'Kupa (kulüp)'].map((label) => row(body, label))
     expect(typed.reduce((sum, r) => sum + Number(r[1]), 0)).toBe(overall.decided)
@@ -698,7 +726,7 @@ describe('özet: lig türüne göre başarı', () => {
 
   it('kapsam uygulanır; maç kaydı olmayan öneri "bilinmiyor" satırındadır', () => {
     const week = section(buildStatsSummary(input({ kind: 'last7' }, { matches: typedMatches })), NAME)
-    expect(row(week, 'Tüm türler')[1]).toBe(String(buildStats(picks.filter((p) => p.date >= '2026-10-04')).overall.decided))
+    expect(row(week, 'Tüm türler')[1]).toBe(String(buildStats(onlyMainCategories(picks.filter((p) => p.date >= '2026-10-04'))).overall.decided))
     const none = section(buildStatsSummary(input({ kind: 'all' }, { matches: [] })), NAME)
     expect(row(none, 'Bilinmiyor (maç kaydı yok)')[1]).toBe(row(none, 'Tüm türler')[1])
   })
@@ -711,11 +739,11 @@ describe('özet: lig türüne göre başarı', () => {
 describe('özet: lig bazlı başarı', () => {
   const NAME = 'Lig bazlı başarı'
   // 21 sonuçlanmış 2.5 Üst önerisi Premier League'de (12 tuttu), 3 KG Var önerisi başka ülkenin aynı adlı liginde;
-  // kalanı EFL Trophy (4 sonuçlanmış Taraf & Gol + 3 İY 0.5 Üst + değerlendirilemeyen ve bekleyenler)
+  // kalanı EFL Trophy (3 sonuçlanmış İY 0.5 Üst + bekleyen; Taraf & Gol, korner ve kart ana kategoride değil, sayılmaz)
   const leagueMatches = matches.map((m, i) => (i < 21 ? { ...m, league: 'England · Premier League' } : i < 24 ? { ...m, league: 'Wales · Premier League' } : m))
   const text = buildStatsSummary(input({ kind: 'all' }, { matches: leagueMatches }))
   const body = section(text, NAME)
-  const { overall } = buildStats(picks)
+  const { overall } = buildStats(onlyMainCategories(picks))
 
   it('"Lig türüne göre başarı"dan sonra, "Veri güvenilirliğine göre başarı"dan önce gelir', () => {
     const at = (title: string) => text.indexOf(`## ${title}`)
@@ -732,15 +760,15 @@ describe('özet: lig bazlı başarı', () => {
   it('az önerili ligler "Diğer ligler" satırında; n < 20 satırda "az veri" ve düzeltilmiş fark yerine —', () => {
     expect(body).not.toContain('| Wales · Premier League |')
     expect(body).not.toContain('| England · EFL Trophy |')
-    const other = row(body, 'Diğer ligler (2 lig, 10 öneri)')
-    expect(other.slice(1, 4)).toEqual(['10', '7', '%70'])
+    const other = row(body, 'Diğer ligler (2 lig, 6 öneri)')
+    expect(other.slice(1, 4)).toEqual(['6', '5', '%83,3'])
     expect(other[5]).toBe('az veri')
     expect(other[9]).toBe('—')
     expect(other[7]).not.toBe('—')
   })
 
   it('satırların toplamı genel toplamla aynıdır', () => {
-    const rows = [row(body, 'England · Premier League'), row(body, 'Diğer ligler (2 lig, 10 öneri)')]
+    const rows = [row(body, 'England · Premier League'), row(body, 'Diğer ligler (2 lig, 6 öneri)')]
     expect(rows.reduce((sum, r) => sum + Number(r[1]), 0)).toBe(overall.decided)
     expect(rows.reduce((sum, r) => sum + Number(r[2]), 0)).toBe(overall.won)
     expect(row(body, 'Tüm ligler').slice(1, 4)).toEqual([String(overall.decided), String(overall.won), formatRate(overall.rate)])
@@ -757,8 +785,8 @@ describe('özet: lig bazlı başarı', () => {
     const everyLeague = buildStatsSummary(input({ kind: 'all' }, { matches: matches.map((m, i) => (i < 21 ? { ...m, league: 'England · Premier League' } : m)) }))
     const own = section(everyLeague, NAME)
     expect(own).toContain('England · Premier League')
-    expect(own).toContain('England · EFL Trophy')
     const leagueSections = [own, section(everyLeague, 'Lig bazlı ana kategoriler — Tüm öneriler'), section(everyLeague, 'Lig bazlı ana kategoriler — Paylaşılanlar')]
+    expect(leagueSections[1]).toContain('England · EFL Trophy')
     const rest = leagueSections.reduce((text, part) => text.replace(part, ''), everyLeague)
     expect(rest.length).toBe(everyLeague.length - leagueSections.reduce((sum, part) => sum + part.length, 0))
     expect(rest).not.toMatch(/England|Premier League|EFL/)
@@ -767,7 +795,7 @@ describe('özet: lig bazlı başarı', () => {
 
   it('kapsam uygulanır; maç kaydı olmayan öneri "bilinmiyor" satırındadır; sonuçlanmış öneri yokken bölüm yazılmaz', () => {
     const week = section(buildStatsSummary(input({ kind: 'last7' }, { matches: leagueMatches })), NAME)
-    expect(row(week, 'Tüm ligler')[1]).toBe(String(buildStats(picks.filter((p) => p.date >= '2026-10-04')).overall.decided))
+    expect(row(week, 'Tüm ligler')[1]).toBe(String(buildStats(onlyMainCategories(picks.filter((p) => p.date >= '2026-10-04'))).overall.decided))
     const none = section(buildStatsSummary(input({ kind: 'all' }, { matches: [] })), NAME)
     expect(row(none, 'Bilinmiyor (maç kaydı yok)')[1]).toBe(row(none, 'Tüm ligler')[1])
     expect(buildStatsSummary(input({ kind: 'all' }, { picks: [pick('pending', 'over25', '2026-10-09')] }))).not.toContain(NAME)

@@ -1,13 +1,13 @@
 import Papa from 'papaparse'
-import { AI_CATEGORY_IDS, AI_DECISIONS, AI_PROVIDERS, decisionLabel } from '../../config/ai'
-import { CATEGORIES, categoriesInGroup, getCategory, type CategoryId } from '../../config/categories'
+import { AI_DECISIONS, AI_PROVIDERS, decisionLabel } from '../../config/ai'
+import { CATEGORIES, getCategory, type CategoryId } from '../../config/categories'
 import { BASELINE_COMPUTED_AT, BASELINE_SOURCE, formatBaseline, LEAGUE_BASELINES } from '../../config/leagueBaselines'
-import { MAIN_CATEGORY_IDS } from '../../config/mainCategories'
+import { MAIN_CATEGORY_IDS, MAIN_SCOPE_NOTE, onlyMainCategories } from '../../config/mainCategories'
 import type { AiVerdict, Match, MatchResult, Pick, ScoreLine, SharedPick, Thresholds, Upload } from '../../types'
 import { toAppDateTime } from '../../utils/date'
 import { formatDay, formatNumber, formatPoints, formatRate, shiftDate } from '../../utils/format'
-import { AI_SOURCES, buildLegacyAiStats, buildPreMatchAiStats, type AiSource, type AiStats } from '../ai/aiStats'
-import { MODEL_CONFLICT_LIMIT } from '../analysis/goalModel'
+import { AI_SOURCES, buildLegacyAiStats, buildPreMatchAiStats, MAIN_AI_CATEGORY_IDS, type AiSource, type AiStats } from '../ai/aiStats'
+import { hasGoalModel, MODEL_CONFLICT_LIMIT } from '../analysis/goalModel'
 import { RELIABILITY_LABELS, SAMPLE_HINT } from '../analysis/reliability'
 import { stat } from '../analysis/stat'
 import { findActiveShared, sharedPicksOnly } from '../story/shared'
@@ -16,17 +16,19 @@ import { buildLeagueCategoryStats, LEAGUE_CATEGORY_MIN_N, type CategoryCell, typ
 import { buildLeagueStats, LEAGUE_MAX_ROWS, LEAGUE_MIN_DECIDED, type LeagueRow } from './leagueStats'
 import { buildMarginStats, MARGIN_BANDS } from './marginStats'
 import { backfillMarket, buildMarketStats } from './marketStats'
-import { buildGoalModelSourceStats, buildScoreSourceStats, buildSideGoalsSourceStats, deriveUnknownSources, MODEL_SOURCE_LABELS, SIDE_GOALS_SOURCE_LABELS } from './modelSourceStats'
+import { buildGoalModelSourceStats, buildScoreSourceStats, deriveUnknownSources, MODEL_SOURCE_LABELS } from './modelSourceStats'
 import { pickRanks, RANK_BANDS, rankStatsOf } from './rankStats'
 import { actualScore, buildScoreStats } from './scoreStats'
 import { buildStarStats, frozenStars, recomputedNote, STAR_LEVELS } from './starStats'
-import { buildStats, LOW_SAMPLE_LIMIT, tally, type Tally } from './statsEngine'
+import { buildStats, decidedBuckets, LOW_SAMPLE_LIMIT, tally, type Tally } from './statsEngine'
 
 // İstatistik sayfasındaki tabloların düz metin (markdown) özeti ve ayrıntılı CSV.
 // Yeni bir hesap içermez: sayılar statsEngine, marketStats ve aiStats çıktılarıdır ve
 // sayfadaki biçimle (formatRate) yazılır. Metne kişisel veri, takım adı, maç kimliği, ham CSV
 // içeriği ya da ayar anahtarı girmez. Tek istisna lig adıdır (ülke · lig): yalnızca
 // "Lig bazlı başarı" ve "Lig bazlı ana kategoriler" bölümlerinde yazılır, başka hiçbir bölümde geçmez.
+// "Kategori başarısı" ve "Güncel eşikler" dışındaki bütün bölümler yalnızca ana kategorileri
+// (config/mainCategories) sayar; diğer kategorilerin kayıtları silinmez, yalnızca bu bölümlere girmez.
 
 export type SummaryScope = { kind: 'all' } | { kind: 'last7' } | { kind: 'last30' } | { kind: 'range'; from: string; to: string }
 
@@ -103,6 +105,11 @@ const lowMark = (t: Tally): string => (t.decided > 0 && t.lowSample ? 'az veri' 
 export const bandCell = (t: Tally): string => (t.decided === 0 ? '—' : `${rateCell(t)}${t.lowSample ? '*' : ''}`)
 const LOW_SAMPLE_LEGEND = `* az veri: n < ${LOW_SAMPLE_LIMIT}.`
 const ALL_CATEGORIES = 'Tüm kategoriler'
+/** Gol modeli kalibrasyonunun kapsamı: ana kategorilerden modeli olanlar (2.5 ÜST, KG VAR) */
+const GOAL_MODEL_LABELS = MAIN_CATEGORY_IDS.filter(hasGoalModel)
+  .map((id) => getCategory(id).label)
+  .join(' ve ')
+const GOAL_MODEL_ALL = 'Hepsi birlikte'
 const signed = (value: number | null): string => (value === null ? '—' : `${value > 0 ? '+' : ''}${formatNumber(value)} puan`)
 
 const unique = <T,>(values: T[]): T[] => [...new Set(values)]
@@ -209,13 +216,16 @@ function rankSectionBody(picks: Pick[], ranks: ReadonlyMap<string, number | null
  * (kapsam burada uygulanır, özetteki gibi).
  */
 export function fillRankSection(pendingText: string, input: Pick_<SummaryInput, 'picks' | 'scope' | 'today'>, ranks: ReadonlyMap<string, number | null>): string {
-  const scoped = scopeData({ ...input, verdicts: [], shared: [] }).picks
+  const scoped = onlyMainCategories(scopeData({ ...input, verdicts: [], shared: [] }).picks)
   return pendingText.replace(`## ${RANK_SECTION_TITLE}\n\n${RANK_PENDING_TEXT}\n`, () => `## ${RANK_SECTION_TITLE}\n\n${rankSectionBody(scoped, ranks).join('\n')}\n`)
 }
 
 /** Analiz için düz metin (markdown) özet. */
 export function buildStatsSummary(input: SummaryInput): string {
-  const { bounds, picks, verdicts, shared } = scopeData(input)
+  const { bounds, picks: allPicks, verdicts, shared } = scopeData(input)
+  // Kategori başarısı tüm kategorileri, diğer bütün bölümler yalnızca ana kategorileri sayar.
+  const categoryStats = buildStats(allPicks)
+  const picks = onlyMainCategories(allPicks)
   const stats = buildStats(picks)
   const { overall } = stats
   const scopeLabel = SCOPE_OPTIONS.find((o) => o.kind === input.scope.kind)!.label
@@ -227,7 +237,7 @@ export function buildStatsSummary(input: SummaryInput): string {
   out.push('# GOL LAZIM istatistik özeti', '')
   out.push(
     `- Oluşturulma: ${formatDay(created.date)} ${created.time} (Europe/Istanbul)`,
-    `- Kapsam: ${scopeLabel}${bounds.from && bounds.to ? ` (${formatDay(bounds.from)} – ${formatDay(bounds.to)})` : ''}`,
+    `- Kapsam: ${scopeLabel}${bounds.from && bounds.to ? ` (${formatDay(bounds.from)} – ${formatDay(bounds.to)})` : ''}. ${MAIN_SCOPE_NOTE}`,
   )
   if (overall.decided === 0) {
     out.push(`- Dondurulmuş öneri: ${overall.total}`, '', `${NO_DATA_TEXT}.`)
@@ -254,7 +264,7 @@ export function buildStatsSummary(input: SummaryInput): string {
   out.push(
     table(
       ['Kategori', 'Sonuçlanan', 'Tutan', 'Başarı', 'Az veri', 'Değerlendirilemedi', 'Bekliyor'],
-      stats.byCategory.map((b) => [getCategory(b.key).label, b.tally.decided, b.tally.won, formatRate(b.tally.rate), lowMark(b.tally), b.tally.void, b.tally.pending]),
+      categoryStats.byCategory.map((b) => [getCategory(b.key).label, b.tally.decided, b.tally.won, formatRate(b.tally.rate), lowMark(b.tally), b.tally.void, b.tally.pending]),
     ),
     '',
   )
@@ -280,7 +290,7 @@ export function buildStatsSummary(input: SummaryInput): string {
     '',
     `${LOW_SAMPLE_LEGEND} Ana kategori hücreleri: başarı · n. Tür öneride saklanmaz; maçın ülke / lig adından ve takım adlarından türetilir (öncelik: gençlik > rezerv > milli takım > kupa > lig) ve yanlış sınıflanmış lig olabilir. Türe düşen benzersiz lig ve önerili maç: ${competitions
       .flatMap((r) => (r.key === 'all' ? [] : [`${COMPETITION_LABELS[r.key]} ${r.leagues} lig, ${r.matches} maç`]))
-      .join('; ')}. Hazır ort.: sonuçlanmış önerilerin dondurma anındaki yüzdesinin ortalaması (Taraf & Gol'de model tahmini). Beklenen: türün her sonuçlanmış önerisine kendi kategorisinin bu kapsamdaki genel başarısı verilerek bulunan ortalama; düzeltilmiş fark = gerçekleşen − beklenen, türün kategori karışımından arındırılmış farkıdır. Yaklaşıktır: kategori başarısı türün kendi önerilerini de içerir; büyük tür sıfıra yaklaşır. Aynı maçın önerileri bağımsız değildir.`,
+      .join('; ')}. Hazır ort.: sonuçlanmış önerilerin dondurma anındaki yüzdesinin ortalaması. Beklenen: türün her sonuçlanmış önerisine kendi kategorisinin bu kapsamdaki genel başarısı verilerek bulunan ortalama; düzeltilmiş fark = gerçekleşen − beklenen, türün kategori karışımından arındırılmış farkıdır. Yaklaşıktır: kategori başarısı türün kendi önerilerini de içerir; büyük tür sıfıra yaklaşır. Aynı maçın önerileri bağımsız değildir.`,
     '',
   )
 
@@ -313,10 +323,10 @@ export function buildStatsSummary(input: SummaryInput): string {
   out.push(
     table(
       ['Güvenilirlik', 'Sonuçlanan', 'Tutan', 'Başarı', 'Az veri'],
-      stats.byReliability.map((b) => [RELIABILITY_LABELS[b.key], b.tally.decided, b.tally.won, formatRate(b.tally.rate), lowMark(b.tally)]),
+      decidedBuckets(stats.byReliability).map((b) => [RELIABILITY_LABELS[b.key], b.tally.decided, b.tally.won, formatRate(b.tally.rate), lowMark(b.tally)]),
     ),
     '',
-    `Güvenilirlik, önerinin dondurulduğu andaki rozettir. Seviye, kartta "en az N saha maçı (tahmini)" olarak yazan örnekleme göre belirlenir (Düşük: 8'den az, Orta: 8–15, Yüksek: 16+). ${SAMPLE_HINT}`,
+    `Güvenilirlik, önerinin dondurulduğu andaki rozettir; kartta "en az N saha maçı (tahmini)" olarak yazan örnekleme göre belirlenir (Düşük: 8'den az, Orta: 8–15, Yüksek: 16+). Sonuçlanmış önerisi olmayan seviye yazılmaz. ${SAMPLE_HINT}`,
     '',
   )
 
@@ -340,7 +350,7 @@ export function buildStatsSummary(input: SummaryInput): string {
     [
       'Yıldız, önerinin dondurulduğu anda kartta görünen değerdir.',
       recomputedNote(stars) && `${recomputedNote(stars)}: yıldız kaydı eklenmeden önce dondurulmuş önerilerde yıldız, kayıtlı yüzde, güvenilirlik ve model çelişkisinden analizdeki kuralla yeniden bulundu.`,
-      stars.missing > 0 && `${stars.missing} eski öneride (Taraf & Gol ya da güvenilirliği kayıtlı olmayan) yıldız bulunamadığı için bu tablolara girmez.`,
+      stars.missing > 0 && `${stars.missing} eski öneride (güvenilirliği kayıtlı olmayan) yıldız bulunamadığı için bu tablolara girmez.`,
     ]
       .filter(Boolean)
       .join(' '),
@@ -379,12 +389,12 @@ export function buildStatsSummary(input: SummaryInput): string {
     out.push(
       table(
         ['Kategori', 'Hazır ort.', 'Model ort.', 'Gerçekleşen', 'Ort. fark (hazır − model)'],
-        stats.goalModel.calibration.map((r) => [r.key === 'all' ? 'Dört kategori birlikte' : getCategory(r.key).label, formatRate(r.ready), formatRate(r.model), rateCell(r.tally), signed(r.gap)]),
+        stats.goalModel.calibration.map((r) => [r.key === 'all' ? GOAL_MODEL_ALL : getCategory(r.key).label, formatRate(r.ready), formatRate(r.model), rateCell(r.tally), signed(r.gap)]),
       ),
       '',
       table(['Model çelişkisi', 'Başarı'], stats.goalModel.byConflict.map((b) => [b.key === 'conflict' ? 'Çelişkili' : 'Çelişkisiz', rateCell(b.tally)])),
       '',
-      `2.5 / 3.5 / 4.5 Üst ve KG Var önerilerinden model yüzdesi dondurulmuş olanlar. Model çelişkisi: hazır yüzde ile model arasında ${MODEL_CONFLICT_LIMIT} puandan fazla fark. Ortalamalar sonuçlanmış öneriler üzerindendir.${
+      `${GOAL_MODEL_LABELS} önerilerinden model yüzdesi dondurulmuş olanlar. Model çelişkisi: hazır yüzde ile model arasında ${MODEL_CONFLICT_LIMIT} puandan fazla fark. Ortalamalar sonuçlanmış öneriler üzerindendir.${
         stats.goalModel.withoutModel > 0 ? ` ${stats.goalModel.withoutModel} önerinin model yüzdesi kayıtlı değil; tabloya girmez.` : ''
       }`,
       '',
@@ -395,7 +405,7 @@ export function buildStatsSummary(input: SummaryInput): string {
   if (modelSources) {
     const derived = deriveUnknownSources(picks, input.matches, input.uploads)
     out.push(
-      'Model kaynağına göre (dört kategori birlikte; son üç sütun: başarı · n):',
+      `Model kaynağına göre (${GOAL_MODEL_LABELS} birlikte; son üç sütun: başarı · n):`,
       '',
       table(
         ['Model kaynağı', 'Hazır ort.', 'Model ort.', 'Gerçekleşen', 'Çelişkisiz', 'Çelişkili'],
@@ -432,33 +442,8 @@ export function buildStatsSummary(input: SummaryInput): string {
     )
   }
 
-  out.push('## Kalibrasyon: Taraf & Gol', '')
-  if (!stats.sideGoals) out.push('Taraf & Gol önerisi yok.', '')
-  else {
-    out.push(
-      table(
-        ['Liste', 'Ort. tahmin', 'Gerçekleşen', 'Fark (gerçekleşen − tahmin)'],
-        stats.sideGoals.calibration.map((r) => [
-          r.key === 'all' ? 'Tüm Taraf & Gol' : getCategory(r.key).label,
-          formatRate(r.predicted),
-          rateCell(r.tally),
-          r.predicted === null || r.tally.rate === null ? '—' : signed(Math.round((r.tally.rate - r.predicted) * 10) / 10),
-        ]),
-      ),
-      '',
-      table(['xG çelişkisi', 'Başarı'], stats.sideGoals.byConflict.map((b) => [b.key === 'conflict' ? 'Çelişkili' : 'Çelişkisiz', rateCell(b.tally)])),
-      '',
-      'Ana hesabın kaynağına göre (Gerçekleşen: başarı · n):',
-      '',
-      table(
-        ['Ana hesap', 'Ort. tahmin', 'xG modeli ort.', 'Gerçekleşen'],
-        buildSideGoalsSourceStats(picks).map((r) => [SIDE_GOALS_SOURCE_LABELS[r.key], formatRate(r.predicted), formatRate(r.second), bandCell(r.tally)]),
-      ),
-      '',
-      `${LOW_SAMPLE_LEGEND} Ana hesabın kaynağı, önerinin dondurulduğu andaki kayıtlı güvenilirliğinden okunur. Kısmi piyasada toplam gol xG ve gol ortalamasından tahmin edilir; hangisinin kullanıldığı kayıtlı değildir. xG modeli (ikinci hesap) yalnızca xG'dendir; ortalaması, kayıtlı olduğu öneriler üzerindendir.`,
-      '',
-    )
-  }
+  // "Kalibrasyon: Taraf & Gol" yazılmaz: Taraf & Gol ana kategori değildir, bölüm her zaman boş kalırdı
+  // (hesap statsEngine.sideGoals ve modelSourceStats'ta durur).
 
   // Kategori bazlı kararlar ile eski maç geneli kararlar ayrı tablolardadır; aynı orana karışmaz.
   const aiTables = (stats: AiStats, unit: string): string[] => [
@@ -468,13 +453,13 @@ export function buildStatsSummary(input: SummaryInput): string {
     '',
   ]
   // İstatistik sayfasındaki kartla aynı hesap: yalnızca maç başlamadan önce kaydedilmiş kararlar.
-  const aiCategory = buildPreMatchAiStats(picks, verdicts, input.matches)
+  const aiCategory = buildPreMatchAiStats(picks, verdicts, input.matches, MAIN_AI_CATEGORY_IDS)
   out.push('## Yapay zekâ kararlarının başarısı: kategori bazlı kararlar', '')
   if (!aiCategory) out.push('Kayıtlı kategori bazlı yapay zekâ kararı yok.', '')
   else {
     out.push(
       ...aiTables(aiCategory, 'öneri (maç + kategori)'),
-      `Karar yalnızca şu kategoriler için alınır: ${AI_CATEGORY_IDS.map((id) => getCategory(id).label).join(', ')}. Her karar yalnızca o maçın o kategorideki dondurulmuş önerisinin sonucuyla ölçülür. Çoğunluk kararı: o kategoride karar veren yapay zekâların yarısından fazlasının aynı seviyede verdiği karar (ortalama alınmaz). Yalnızca maç başlamadan önce kaydedilmiş kararlar ölçülür; bu yüzden hariç kalan karar (yapay zekâ + maç + kategori): ${aiCategory.excluded.late + aiCategory.excluded.noKickoff}.`,
+      `Burada yalnızca şu kategorilerin kararları ölçülür: ${MAIN_AI_CATEGORY_IDS.map((id) => getCategory(id).label).join(', ')}. Her karar yalnızca o maçın o kategorideki dondurulmuş önerisinin sonucuyla ölçülür. Çoğunluk kararı: o kategoride karar veren yapay zekâların yarısından fazlasının aynı seviyede verdiği karar (ortalama alınmaz). Yalnızca maç başlamadan önce kaydedilmiş kararlar ölçülür; bu yüzden hariç kalan karar (yapay zekâ + maç + kategori): ${aiCategory.excluded.late + aiCategory.excluded.noKickoff}.`,
       '',
     )
   }
@@ -484,7 +469,7 @@ export function buildStatsSummary(input: SummaryInput): string {
   else {
     out.push(
       ...aiTables(aiLegacy, 'maç'),
-      'Kategori bazlı karara geçilmeden önceki kayıtlar: karar maçın tümüne aittir ve o maçın bütün dondurulmuş önerilerinin sonucuyla ölçülür. Bu tablo kategori bazlı kararlarla karıştırılmaz. Çoğunluk kararı: karar veren yapay zekâların (o günlerde çoğunlukla iki) yarısından fazlasının aynı seviyede verdiği karar.',
+      'Kategori bazlı karara geçilmeden önceki kayıtlar: karar maçın tümüne aittir ve o maçın ana kategorilerdeki dondurulmuş önerilerinin sonucuyla ölçülür. Bu tablo kategori bazlı kararlarla karıştırılmaz. Çoğunluk kararı: karar veren yapay zekâların (o günlerde çoğunlukla iki) yarısından fazlasının aynı seviyede verdiği karar.',
       '',
     )
   }
@@ -533,18 +518,13 @@ export function buildStatsSummary(input: SummaryInput): string {
     )
   }
 
-  const cornerIds = categoriesInGroup('corners').map((c) => c.id)
-  const cardIds = categoriesInGroup('cards').map((c) => c.id)
-  const voidIn = (ids: CategoryId[]) => picks.filter((p) => p.outcome === 'void' && ids.includes(p.categoryId)).length
   const matchIds = unique(picks.map((p) => p.matchId))
   const records = input.matches.filter((m) => matchIds.includes(m.id))
   const lacks = (test: (m: Match) => boolean) => records.filter(test).length
   const positive = (m: Match, field: Parameters<typeof stat>[1]) => (stat(m, field) ?? 0) > 0
   out.push('## Veri kısıtları', '')
   out.push(
-    `- Korner sayısı girilmediği için değerlendirilemeyen korner önerisi: ${voidIn(cornerIds)}`,
-    `- Kart sayısı girilmediği için değerlendirilemeyen kart önerisi: ${voidIn(cardIds)}`,
-    `- Diğer kategorilerde değerlendirilemeyen öneri: ${overall.void - voidIn(cornerIds) - voidIn(cardIds)}`,
+    `- Değerlendirilemeyen öneri: ${overall.void}`,
     `- Sonuçlanmış önerisi ${LOW_SAMPLE_LIMIT}'den az olan kategori: ${stats.byCategory.filter((b) => b.tally.lowSample).length} / ${stats.byCategory.length}`,
     `- Maç kaydı duran maç: ${records.length} / ${matchIds.length}`,
     `- Bunlardan 1X2 oranı eksik: ${lacks((m) => !(positive(m, 'oddsHome') && positive(m, 'oddsDraw') && positive(m, 'oddsAway')))}`,

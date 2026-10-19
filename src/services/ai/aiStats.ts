@@ -1,5 +1,6 @@
 import { AI_CATEGORY_IDS, AI_DECISIONS, AI_PROVIDERS, isApproved, type AiDecision, type AiProvider } from '../../config/ai'
 import type { CategoryId } from '../../config/categories'
+import { isMainCategory } from '../../config/mainCategories'
 import type { AiVerdict, Match, Pick } from '../../types'
 import { kickoffOf } from '../highlights/highlights'
 import { tally, type Tally } from '../stats/statsEngine'
@@ -46,13 +47,23 @@ const byMatch = (verdicts: readonly AiVerdict[]): Map<string, AiVerdict[]> => {
   return groups
 }
 
+/** İstatistik sayfasında ölçülen kategori bazlı kararlar: karar alınan kategorilerden ana kategoriler */
+export const MAIN_AI_CATEGORY_IDS: readonly CategoryId[] = AI_CATEGORY_IDS.filter(isMainCategory)
+
 const pairKey = (matchId: string, categoryId: CategoryId): string => `${matchId}|${categoryId}`
 
-/** Kategori bazlı kararları kaynak kaynak toplar; keep verilirse yalnızca onun kabul ettiği kararlar sayılır */
-function categoryDecisions(verdicts: AiVerdict[], keep?: (matchId: string, vote: ProviderVote) => boolean): Record<AiSource, Map<string, AiDecision>> {
+/**
+ * Kategori bazlı kararları kaynak kaynak toplar; keep verilirse yalnızca onun kabul ettiği kararlar sayılır.
+ * categories: hangi kategorilerin kararları toplanır (varsayılan: karar alınan tüm kategoriler).
+ */
+function categoryDecisions(
+  verdicts: AiVerdict[],
+  keep?: (matchId: string, vote: ProviderVote) => boolean,
+  categories: readonly CategoryId[] = AI_CATEGORY_IDS,
+): Record<AiSource, Map<string, AiDecision>> {
   const decisions = emptyMaps()
   for (const [matchId, own] of byMatch(verdicts)) {
-    for (const categoryId of AI_CATEGORY_IDS) {
+    for (const categoryId of categories) {
       const votes = categoryVotes(own, categoryId).filter((vote) => !keep || keep(matchId, vote))
       for (const vote of votes) decisions[vote.provider].set(pairKey(matchId, categoryId), vote.decision)
       const majority = majorityDecision(votes)
@@ -102,9 +113,15 @@ export interface PreMatchAiStats extends AiStats {
  * buildCategoryAiStats ile aynı hesap; tek fark: karar maç başlamadan ÖNCE kaydedilmiş olmalıdır.
  * Maç kaydı ya da başlama saati yoksa, kayıt anı okunamıyorsa karar ölçüme girmez (sayısı excluded'da).
  * Çoğunluk yalnızca ölçüme giren kararlardan hesaplanır. Hiç kategori kararı yoksa null.
+ * categories verilirse yalnızca o kategorilerin kararları ölçülür ve sayılır (istatistik sayfası: MAIN_AI_CATEGORY_IDS).
  */
-export function buildPreMatchAiStats(picks: Pick[], verdicts: AiVerdict[], matches: readonly Match[]): PreMatchAiStats | null {
-  if (!hasAny(categoryDecisions(verdicts))) return null
+export function buildPreMatchAiStats(
+  picks: Pick[],
+  verdicts: AiVerdict[],
+  matches: readonly Match[],
+  categories: readonly CategoryId[] = AI_CATEGORY_IDS,
+): PreMatchAiStats | null {
+  if (!hasAny(categoryDecisions(verdicts, undefined, categories))) return null
   const kickoffs = new Map(matches.map((m) => [m.id, kickoffOf(m)]))
   const excluded = { late: 0, noKickoff: 0 }
   const decisions = categoryDecisions(verdicts, (matchId, vote) => {
@@ -119,7 +136,7 @@ export function buildPreMatchAiStats(picks: Pick[], verdicts: AiVerdict[], match
       return false
     }
     return true
-  })
+  }, categories)
   const keyOf = (p: Pick) => pairKey(p.matchId, p.categoryId)
   const where = (source: AiSource, keep: (decision: AiDecision) => boolean): Pick[] =>
     picks.filter((p) => {

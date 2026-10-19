@@ -215,12 +215,14 @@ describe('özet: kaynağa göre tablolar', () => {
     expect(part).toContain('| Model çelişkisi | Başarı |')
     expect(part).toContain('| Model kaynağı | Hazır ort. | Model ort. | Gerçekleşen | Çelişkisiz | Çelişkili |')
     expect(row(part, 'xG')).toEqual(['xG', '%87,6', '%69,2', '%60 · n=20', '%0 · n=8*', '%100 · n=12*'])
-    expect(row(part, 'ort. gol (xG yok)')).toEqual(['ort. gol (xG yok)', '%90', '%70,3', '%33,3 · n=3*', '%100 · n=1*', '%0 · n=2*'])
-    expect(row(part, 'model yok')).toEqual(['model yok', '%100', '—', '%100 · n=2*', '—', '—'])
+    // Özet yalnızca ana kategorileri sayar: 3.5 / 4.5 Üst önerileri (ort. gol, model yok, eski kayıt) girmez.
+    expect(part).not.toMatch(/3\.5 ÜST|4\.5 ÜST/)
+    expect(row(part, 'ort. gol (xG yok)')).toEqual(['ort. gol (xG yok)', '%78', '%71', '%100 · n=1*', '%100 · n=1*', '—'])
+    expect(row(part, 'model yok')).toEqual(['model yok', '—', '—', '—', '—', '—'])
     expect(row(part, 'bilinmiyor (eski kayıt)')).toEqual(['bilinmiyor (eski kayıt)', '%90', '%50', '%100 · n=3*', '—', '%100 · n=3*'])
     expect(part).toContain('* az veri: n < 20.')
     expect(part).toContain('hiçbir kaynağa karıştırılmaz')
-    expect(part).toContain('Ne kaynağı ne model yüzdesi kayıtlı olan 3 eski öneri bu tabloya girmez.')
+    expect(part).toContain('Ne kaynağı ne model yüzdesi kayıtlı olan 2 eski öneri bu tabloya girmez.')
   })
 
   it('türetme satırı yalnızca yükleme zamanı okunabiliyorsa ve bilinmeyen öneri varsa yazılır', () => {
@@ -236,19 +238,24 @@ describe('özet: kaynağa göre tablolar', () => {
   })
 
   it('yalnızca "model yok" önerisi olsa da kaynak tablosu yazılır', () => {
-    const part = section(buildStatsSummary(input({ picks: picks.filter((p) => p.modelSource === 'none') })), 'Kalibrasyon: hazır yüzde ve gol modeli')
+    const none = [...picks.filter((p) => p.modelSource === 'none'), ...many(2, 'btts', 'won', { modelSource: 'none', secondPercent: null, conflict: undefined, percent: 100 })]
+    const part = section(buildStatsSummary(input({ picks: none })), 'Kalibrasyon: hazır yüzde ve gol modeli')
     expect(part).toContain('Model yüzdesi kayıtlı öneri yok.')
     expect(row(part, 'model yok')).toEqual(['model yok', '%100', '—', '%100 · n=2*', '—', '—'])
   })
 
-  it('Taraf & Gol ve skor bölümlerine kaynak tablosu eklenir; kapsam dışı ya da veri yokken eklenmez', () => {
+  it('Taraf & Gol kalibrasyonu (kaynak tablosu dahil) özete yazılmaz; hesabı durur. Skor bölümüne veri yokken kaynak tablosu eklenmez', () => {
     const side = [...many(21, 'homeWin15', 'won', { reliability: 'market', percent: 60, secondPercent: 40 }), ...many(1, 'awayWin15', 'lost', { reliability: 'low', percent: 58, secondPercent: null })]
-    const text = buildStatsSummary(input({ picks: side }))
-    const part = section(text, 'Kalibrasyon: Taraf & Gol')
-    expect(row(part, 'Piyasa (1X2 + 2.5 Alt/Üst)')).toEqual(['Piyasa (1X2 + 2.5 Alt/Üst)', '%60', '%40', '%100 · n=21'])
-    expect(row(part, 'Yalnızca xG')).toEqual(['Yalnızca xG', '%58', '—', '%0 · n=1*'])
-    expect(section(text, 'Skor tahminleri (deney)')).not.toContain('Modelin kaynağına göre')
-    expect(section(buildStatsSummary(input()), 'Kalibrasyon: Taraf & Gol')).not.toContain('Ana hesabın kaynağına göre')
+    const withMain = buildStatsSummary(input({ picks: [...side, ...picks] }))
+    expect(withMain).not.toContain('Kalibrasyon: Taraf & Gol')
+    expect(withMain).not.toContain('Ana hesabın kaynağına göre')
+    expect(section(withMain, 'Skor tahminleri (deney)')).not.toContain('Modelin kaynağına göre')
+    // Hesap kodu silinmedi: aynı satırları üretir.
+    const rows = buildSideGoalsSourceStats(side)
+    expect(rows.map((r) => [r.key, r.predicted, r.second, r.tally.decided, r.tally.won])).toEqual([
+      ['market', 60, 40, 21, 21],
+      ['xg', 58, null, 1, 0],
+    ])
   })
 })
 

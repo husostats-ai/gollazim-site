@@ -110,6 +110,9 @@ function groupBy<K extends string>(picks: Pick[], keyOf: (pick: Pick) => K, orde
   return keys.map((key) => ({ key, tally: tally(groups.get(key)!) }))
 }
 
+/** Sonuçlanmış önerisi olan kovalar; boş satır gösterilmeyen tablolar için (ör. geçmiş veri / güvenilirlik) */
+export const decidedBuckets = <K extends string>(buckets: Bucket<K>[]): Bucket<K>[] => buckets.filter((b) => b.tally.decided > 0)
+
 const RELIABILITY_ORDER: readonly ReliabilityLevel[] = [
   'high',
   'medium',

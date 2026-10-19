@@ -1,4 +1,5 @@
 import { CATEGORIES, getCategory, MAX_MATCHES_PER_CATEGORY, type CategoryId } from '../../config/categories'
+import { onlyMainCategories } from '../../config/mainCategories'
 import type { MemberTexts } from '../../config/memberTexts'
 import type { LeagueTable, LeagueTableSnapshot, Match, MatchResult, MatchStatus, Pick, PickOutcome, SharedPick, TeamAlias, Thresholds } from '../../types'
 import { formatScore } from '../../utils/score'
@@ -10,7 +11,7 @@ import { resultDetail } from '../stats/categoryResult'
 import { buildHtScorelessStats } from '../stats/htScoreless'
 import { buildMainStats } from '../stats/mainStats'
 import { buildStarStats } from '../stats/starStats'
-import { buildStats, type Bucket, type Tally } from '../stats/statsEngine'
+import { buildStats, decidedBuckets, type Bucket, type Tally } from '../stats/statsEngine'
 import { sharedPicksOnly } from '../story/shared'
 import { assertMemberPayload, MEMBER_HT_SCORELESS, MEMBER_STREAK_LIMITS } from './schema'
 
@@ -83,10 +84,15 @@ export interface MemberStats {
    * Sürüm 1 ve 2 paketlerde bu alan yoktur.
    */
   main?: MemberMainStats
-  /** Tüm kategoriler */
+  /**
+   * Ana kategoriler (main ile aynı sayılar). Önceki paketlerde tüm kategorilerdi; biçim aynıdır,
+   * yalnızca kapsam değişti. Tüm kategorileri yalnızca byCategory taşır.
+   */
   overall: MemberTally
   matches: { total: number; decided: number }
+  /** Tüm kategoriler: "Kategori bazlı başarı" */
   byCategory: MemberBucket[]
+  /** Ana kategoriler; sonuçlanmış önerisi olmayan seviye yok */
   byReliability: MemberBucket[]
   /** Eskiden yeniye, en fazla MEMBER_DAILY_LIMIT gün */
   daily: MemberBucket[]
@@ -423,10 +429,14 @@ const tallyOf = (t: Tally): MemberTally => ({
 
 const bucketsOf = (buckets: Bucket[]): MemberBucket[] => buckets.map((b) => ({ key: b.key, tally: tallyOf(b.tally) }))
 
-/** Kapsamdaki önerilerden istatistik sayfasının değerleri; kalibrasyon dökümleri alınmaz. */
+/**
+ * Kapsamdaki önerilerden istatistik sayfasının değerleri; kalibrasyon dökümleri alınmaz. "Kategori bazlı
+ * başarı" tüm kategorileri, diğer bütün değerler yalnızca ana kategorileri (config/mainCategories) sayar.
+ */
 function statsOf(picks: Pick[], results: MatchResult[]): MemberStats {
-  const stats = buildStats(picks)
-  const stars = buildStarStats(picks)
+  const byCategory = buildStats(picks).byCategory
+  const stats = buildStats(onlyMainCategories(picks))
+  const stars = buildStarStats(onlyMainCategories(picks))
   const main = buildMainStats(picks)
   const ht = buildHtScorelessStats(picks, results)
   return {
@@ -437,8 +447,8 @@ function statsOf(picks: Pick[], results: MatchResult[]): MemberStats {
     },
     overall: tallyOf(stats.overall),
     matches: { total: stats.matches.total, decided: stats.matches.decided },
-    byCategory: bucketsOf(stats.byCategory),
-    byReliability: bucketsOf(stats.byReliability),
+    byCategory: bucketsOf(byCategory),
+    byReliability: bucketsOf(decidedBuckets(stats.byReliability)),
     daily: bucketsOf(stats.daily.slice(-MEMBER_DAILY_LIMIT)),
     weekly: bucketsOf(stats.weekly),
     monthly: bucketsOf(stats.monthly),

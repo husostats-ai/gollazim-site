@@ -11,13 +11,13 @@ import LeagueCategoryCard from '../components/stats/LeagueCategoryCard'
 import MarketStatsCard from '../components/stats/MarketStatsCard'
 import LowSampleBadge from '../components/stats/LowSampleBadge'
 import RateBars from '../components/stats/RateBars'
-import SideGoalsStatsCard from '../components/stats/SideGoalsStatsCard'
 import StatsTable from '../components/stats/StatsTable'
 import TrendChart from '../components/stats/TrendChart'
-import { getCategory, GROUPS } from '../config/categories'
+import { CATEGORIES, getCategory } from '../config/categories'
+import { MAIN_SCOPE_NOTE, onlyMainCategories } from '../config/mainCategories'
 import { DATA_LABELS } from '../services/analysis/reliability'
-import { AI_CATEGORY_IDS } from '../config/ai'
-import { buildLegacyAiStats, buildPreMatchAiStats, statsMatchIds } from '../services/ai/aiStats'
+import { buildLegacyAiStats, buildPreMatchAiStats, MAIN_AI_CATEGORY_IDS, statsMatchIds } from '../services/ai/aiStats'
+import { hasGoalModel } from '../services/analysis/goalModel'
 import { aiRepo, matchesRepo, picksRepo, resultsRepo, sharedRepo, uploadsRepo } from '../services/data'
 import { buildStarStats, recomputedNote } from '../services/stats/starStats'
 import { SCOPE_LABELS, sharedPicksOnly, type StatsScope } from '../services/story/shared'
@@ -25,7 +25,7 @@ import { buildHtScorelessStats } from '../services/stats/htScoreless'
 import { buildLeagueCategoryStats } from '../services/stats/leagueCategoryStats'
 import { buildMainStats } from '../services/stats/mainStats'
 import { backfillMarket, buildMarketStats } from '../services/stats/marketStats'
-import { buildStats, LOW_SAMPLE_LIMIT, type Bucket } from '../services/stats/statsEngine'
+import { buildStats, decidedBuckets, LOW_SAMPLE_LIMIT, type Bucket } from '../services/stats/statsEngine'
 import { useApp } from '../state/AppContext'
 import type { AiVerdict, Match, MatchResult, Pick, SharedPick, Upload } from '../types'
 import { formatDateChip, formatDay, formatMonth, formatRate, formatWeek } from '../utils/format'
@@ -110,14 +110,16 @@ export default function StatsPage() {
     }
   }, [dataVersion])
 
-  // Kalibrasyon ve model/piyasa kartları her zaman tüm dondurulmuş önerileri kullanır.
-  const allStats = useMemo(() => buildStats(picks ?? []), [picks])
-  const stats = useMemo(
-    () => (scope === 'shared' ? buildStats(sharedPicksOnly(picks ?? [], shared)) : allStats),
-    [scope, picks, shared, allStats],
-  )
   const scopedPicks = useMemo(() => (scope === 'shared' ? sharedPicksOnly(picks ?? [], shared) : (picks ?? [])), [scope, picks, shared])
-  const starStats = useMemo(() => buildStarStats(scopedPicks), [scopedPicks])
+  /** Yalnızca "Kategori bazlı başarı": tüm kategoriler, seçili ölçüde */
+  const categoryStats = useMemo(() => buildStats(scopedPicks), [scopedPicks])
+  // Diğer bütün kartlar yalnızca ana kategorileri sayar (config/mainCategories); kayıtlar silinmez.
+  const mainPicks = useMemo(() => onlyMainCategories(picks ?? []), [picks])
+  const scopedMainPicks = useMemo(() => onlyMainCategories(scopedPicks), [scopedPicks])
+  // Kalibrasyon ve model/piyasa kartları her zaman (ana kategorilerdeki) tüm dondurulmuş önerileri kullanır.
+  const allStats = useMemo(() => buildStats(mainPicks), [mainPicks])
+  const stats = useMemo(() => buildStats(scopedMainPicks), [scopedMainPicks])
+  const starStats = useMemo(() => buildStarStats(scopedMainPicks), [scopedMainPicks])
   /** En üstteki kart: yalnızca sabit ana kategoriler (config/mainCategories), seçili ölçüde */
   const main = useMemo(() => buildMainStats(scopedPicks), [scopedPicks])
   /** İY 0.5 ÜST önerilip ilk yarısı 0-0 biten maçlarda 2. yarı; seçili ölçüde */
@@ -126,17 +128,18 @@ export default function StatsPage() {
   const leagueCategory = useMemo(() => buildLeagueCategoryStats(scopedPicks, legacyMatches), [scopedPicks, legacyMatches])
   // Kategori bazlı kararlar ile eski maç geneli kararlar ayrı ölçülür; aynı orana karışmaz.
   // Kategori bazlı kartta yalnızca maç başlamadan önce kaydedilmiş kararlar sayılır.
-  const aiCategoryStats = useMemo(() => buildPreMatchAiStats(picks ?? [], verdicts, legacyMatches), [picks, verdicts, legacyMatches])
-  const aiLegacyStats = useMemo(() => buildLegacyAiStats(picks ?? [], verdicts), [picks, verdicts])
+  const aiCategoryStats = useMemo(() => buildPreMatchAiStats(mainPicks, verdicts, legacyMatches, MAIN_AI_CATEGORY_IDS), [mainPicks, verdicts, legacyMatches])
+  const aiLegacyStats = useMemo(() => buildLegacyAiStats(mainPicks, verdicts), [mainPicks, verdicts])
   const marketStats = useMemo(
-    () => buildMarketStats(backfillMarket(picks ?? [], legacyMatches, marketConflictLimit)),
-    [picks, legacyMatches, marketConflictLimit],
+    () => buildMarketStats(backfillMarket(mainPicks, legacyMatches, marketConflictLimit)),
+    [mainPicks, legacyMatches, marketConflictLimit],
   )
   if (picks === null) return <PageTitle title="İSTATİSTİK" />
 
-  const { overall } = stats
-  const categoryRows = stats.byCategory.map((b) => ({ ...b, label: getCategory(b.key).label }))
-  const reliabilityRows = stats.byReliability.map((b) => ({ ...b, label: DATA_LABELS[b.key] }))
+  const categoryRows = categoryStats.byCategory.map((b) => ({ ...b, label: getCategory(b.key).label }))
+  // Sonuçlanmış önerisi olmayan seviye (ana kategorilerde ör. "Piyasa tabanlı", "Ölçülemedi") çizilmez.
+  const reliabilityRows = decidedBuckets(stats.byReliability).map((b) => ({ ...b, label: DATA_LABELS[b.key] }))
+  const goalModelLabels = CATEGORIES.filter((c) => hasGoalModel(c.id) && mainPicks.some((p) => p.categoryId === c.id)).map((c) => c.label)
 
   const labelFor: Record<Period, (b: Bucket) => { label: string; shortLabel: string }> = {
     daily: (b) => ({
@@ -163,7 +166,7 @@ export default function StatsPage() {
           <StatsSummaryPanel picks={picks} matches={legacyMatches} dayMatches={dayMatches} results={results} verdicts={verdicts} shared={shared} uploads={uploads} />
         </Card>
       </div>
-      {allStats.overall.total === 0 ? (
+      {picks.length === 0 ? (
         <EmptyState>
           Henüz sonuçlanmış öneri yok. Skor Girişi sayfasından maç sonuçlarını “Tamamlandı” olarak kaydedin.
         </EmptyState>
@@ -188,10 +191,13 @@ export default function StatsPage() {
             </div>
             <p className="min-w-0 text-xs text-muted" data-testid="stats-scope-note">
               {scope === 'shared'
-                ? `${SCOPE_LABELS.shared}: ana kategoriler, lig bazlı ana kategoriler, tüm kategoriler, kategori, geçmiş veri ve zaman tabloları yalnızca Story görselinde paylaşılan dondurulmuş önerileri sayar. Kalibrasyon, model/piyasa ve yapay zekâ kartları her zaman tüm önerileri kullanır.`
+                ? `${SCOPE_LABELS.shared}: ana kategoriler, lig bazlı ana kategoriler, kategori, geçmiş veri, yıldız ve zaman tabloları yalnızca Story görselinde paylaşılan dondurulmuş önerileri sayar. Kalibrasyon, model/piyasa ve yapay zekâ kartları her zaman tüm önerileri kullanır.`
                 : `${SCOPE_LABELS.all}: tüm dondurulmuş öneriler sayılır.`}
             </p>
           </div>
+          <p className="-mt-2 text-xs text-muted" data-testid="stats-main-scope-note">
+            {MAIN_SCOPE_NOTE}
+          </p>
 
           <Card title="ANA KATEGORİLER BAŞARISI" testId="main-card" note={main.categories.map((id) => getCategory(id).label).join(' · ')}>
             <div className="flex flex-wrap items-end gap-x-4 gap-y-1">
@@ -220,15 +226,10 @@ export default function StatsPage() {
               maç birden çok kategoride önerilebildiği için öneri sayısı maç sayısından büyüktür. “Değerlendirilemedi”
               ve “bekliyor” başarı oranına girmez.
             </p>
-            <p className="mt-3 border-t border-line pt-2 text-xs text-muted" data-testid="overall-line">
-              Tüm kategoriler: <span data-testid="overall-rate">{formatRate(overall.rate)}</span> ·{' '}
-              <span data-testid="overall-decided">{overall.decided}</span> öneri ·{' '}
-              <span data-testid="unique-matches">{stats.matches.decided}</span> benzersiz maç
-            </p>
           </Card>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <Card title="KATEGORİ BAZLI BAŞARI" note="Çizgili çubuk: az veri (20'den az sonuçlanmış öneri).">
+            <Card title="KATEGORİ BAZLI BAŞARI" testId="category-card" note="Tüm kategoriler. Çizgili çubuk: az veri (20'den az sonuçlanmış öneri).">
               <RateBars rows={categoryRows} />
               <TableToggle>
                 <StatsTable firstColumn="Kategori" rows={categoryRows} />
@@ -237,7 +238,8 @@ export default function StatsPage() {
 
             <Card
               title="GEÇMİŞ VERİ MİKTARINA GÖRE BAŞARI"
-              note="Önerinin dondurulduğu andaki “geçmiş veri” rozetine göre (yüzdenin kaç maçlık veriye dayandığı). “Çok” satırında oran belirgin biçimde daha iyiyse rozet işe yarıyor demektir."
+              testId="reliability-card"
+              note="Önerinin dondurulduğu andaki “geçmiş veri” rozetine göre (yüzdenin kaç maçlık veriye dayandığı). “Çok” satırında oran belirgin biçimde daha iyiyse rozet işe yarıyor demektir. Sonuçlanmış önerisi olmayan seviye gösterilmez."
             >
               <RateBars rows={reliabilityRows} />
               <TableToggle>
@@ -263,7 +265,7 @@ export default function StatsPage() {
           </Card>
 
           {starStats.byCategory.length > 0 && (
-            <Card title="YILDIZ SAYISINA GÖRE BAŞARI" note="Yıldız, önerinin dondurulduğu anda kartta görünen değerdir.">
+            <Card title="YILDIZ SAYISINA GÖRE BAŞARI" testId="stars-card" note="Yıldız, önerinin dondurulduğu anda kartta görünen değerdir.">
               <RateBars rows={starStats.byStars.map((b) => ({ ...b, label: `${b.key} yıldız` }))} />
               <TableToggle>
                 <StatsTable firstColumn="Yıldız" rows={starStats.byStars.map((b) => ({ ...b, label: `${b.key} yıldız` }))} />
@@ -276,7 +278,7 @@ export default function StatsPage() {
               )}
               {starStats.missing > 0 && (
                 <p className="mt-2 text-xs text-muted" data-testid="stars-missing">
-                  {starStats.missing} eski öneride (Taraf & Gol ya da geçmiş veri seviyesi kayıtlı olmayan) yıldız bulunamadığı için bu
+                  {starStats.missing} eski öneride (geçmiş veri seviyesi kayıtlı olmayan) yıldız bulunamadığı için bu
                   tabloya girmez.
                 </p>
               )}
@@ -286,7 +288,8 @@ export default function StatsPage() {
           {allStats.goalModel && (
             <Card
               title="GOL MODELİ: ÇELİŞKİ VE KALİBRASYON"
-              note="2.5 Üst, 3.5 Üst, 4.5 Üst ve KG Var önerilerinden, model yüzdesi dondurulmuş olanlar."
+              testId="goal-model-card"
+              note={`${goalModelLabels.join(' ve ')} önerilerinden, model yüzdesi dondurulmuş olanlar.`}
             >
               <GoalModelStatsCard stats={allStats.goalModel} />
             </Card>
@@ -295,26 +298,20 @@ export default function StatsPage() {
           {marketStats && (
             <Card
               title="PİYASA: ÇELİŞKİ VE KALİBRASYON"
-              note="2.5 / 3.5 / 4.5 Üst, KG Var, İlk Yarı 0.5 / 1.5 Üst, 2. Yarı 0.5 Üst ve Korner önerileri. Piyasa yüzdesi: CSV'deki iki yönlü oranın marjdan arındırılmış olasılığı."
+              testId="market-card"
+              note="2.5 ÜST, KG VAR ve İLK YARI 0.5 ÜST önerileri. Piyasa yüzdesi: CSV'deki iki yönlü oranın marjdan arındırılmış olasılığı."
             >
               <MarketStatsCard stats={marketStats} limit={marketConflictLimit} />
             </Card>
           )}
 
-          {allStats.sideGoals && (
-            <Card
-              title={`${GROUPS.find((g) => g.id === 'sidegoals')!.label}: ÇELİŞKİ VE KALİBRASYON`}
-              note="Yalnızca Taraf & Gol listelerindeki dondurulmuş öneriler."
-            >
-              <SideGoalsStatsCard stats={allStats.sideGoals} />
-            </Card>
-          )}
+          {/* Taraf & Gol kalibrasyon kartı gösterilmez: ana kategori değildir (hesap statsEngine.sideGoals'ta durur). */}
 
           {aiCategoryStats && (
             <Card
               title="YAPAY ZEKÂ KARARLARI: KATEGORİ BAZLI"
               testId="ai-category-card"
-              note={`Karar yalnızca ${AI_CATEGORY_IDS.map((id) => getCategory(id).label).join(', ')} için alınır ve yalnızca o maçın o kategorideki dondurulmuş önerisinin sonucuyla ölçülür. Skoru girilmemiş maçlar orana girmez.`}
+              note={`Burada yalnızca ${MAIN_AI_CATEGORY_IDS.map((id) => getCategory(id).label).join(', ')} kararları ölçülür; her karar yalnızca o maçın o kategorideki dondurulmuş önerisinin sonucuyla ölçülür. Skoru girilmemiş maçlar orana girmez.`}
             >
               <AiStatsCard stats={aiCategoryStats} kind="category" />
             </Card>
@@ -324,7 +321,7 @@ export default function StatsPage() {
             <Card
               title="YAPAY ZEKÂ KARARLARI: MAÇ GENELİ (ESKİ)"
               testId="ai-legacy-card"
-              note="Kategori bazlı karara geçilmeden önceki kayıtlar. Karar maçın tümüne aittir; başarı o maçın bütün dondurulmuş önerilerinin sonucuyla ölçülür. Kategori bazlı kararlarla aynı orana karışmaz."
+              note="Kategori bazlı karara geçilmeden önceki kayıtlar. Karar maçın tümüne aittir; başarı o maçın ana kategorilerdeki dondurulmuş önerilerinin sonucuyla ölçülür. Kategori bazlı kararlarla aynı orana karışmaz."
             >
               <AiStatsCard stats={aiLegacyStats} kind="legacy" />
             </Card>
@@ -344,7 +341,7 @@ export default function StatsPage() {
             <ScoreStatsCard matches={legacyMatches} results={results} verdicts={verdicts} />
           </Card>
 
-          <Card title="ZAMAN İÇİNDE BAŞARI" note="Tarihler Türkiye saatine göredir; haftalar pazartesi başlar.">
+          <Card title="ZAMAN İÇİNDE BAŞARI" testId="period-card" note="Tarihler Türkiye saatine göredir; haftalar pazartesi başlar.">
             <div className="mb-3 inline-flex rounded-xl border border-navy-600 bg-navy-800 p-0.5" role="group" aria-label="Dönem">
               {PERIODS.map((p) => (
                 <button
