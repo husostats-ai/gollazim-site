@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { isCategoryId } from '../../config/categories'
 import { DEFAULT_MEMBER_TEXTS } from '../../config/memberTexts'
-import type { Highlight, StreakStep } from '../../types'
+import type { Highlight, Match, Pick, StreakStep } from '../../types'
 import { normalizeStreakSteps, streakStepId } from '../streak/streak'
 import { toAppDateTime } from '../../utils/date'
 import { isBackupFile } from '../data/backupFormat'
@@ -20,7 +20,7 @@ import { assertMemberPayload } from './schema'
 //
 // Çıktı (samples/ repoya girmez): paket.json ve giris.json (test kullanıcısının adı,
 // şifresi ve site tuzu; sonraki çalıştırmalarda aynı kullanıcı kullanılır).
-// İsteğe bağlı: UYE_ONE_CIKAN (gün başına sentetik öne çıkan sayısı), UYE_SERI (sentetik seri adımı sayısı), UYE_SURUM=7 (eski biçimde paket), UYE_N (yayın no), UYE_AT (yayın anı, ISO), UYE_DOSYA (paket dosya adı),
+// İsteğe bağlı: UYE_ONE_CIKAN (gün başına sentetik öne çıkan sayısı), UYE_SERI (sentetik seri adımı sayısı; verilince yedekteki seri adımları yok sayılır), UYE_SURUM=7 (eski biçimde paket), UYE_N (yayın no), UYE_AT (yayın anı, ISO), UYE_DOSYA (paket dosya adı),
 // UYE_CIKAR=1 (test kullanıcısı pakete eklenmez: erişimi kaldırılmış üye denemesi).
 
 it.runIf(process.env.UYE_ORNEK && process.env.UYE_BACKUP)(
@@ -52,19 +52,7 @@ it.runIf(process.env.UYE_ORNEK && process.env.UYE_BACKUP)(
         }),
     )
     const highlights = [...normalizeHighlights(backup.highlights, isCategoryId), ...synthetic]
-    // Yedekteki seri adımları; UYE_SERI=N verilirse ayrıca dondurulmuş önerilerden N sentetik adım eklenir.
-    const streakExtra = Number(process.env.UYE_SERI ?? 0)
-    const streakSteps: StreakStep[] = [
-      ...normalizeStreakSteps(backup.streakSteps, isCategoryId),
-      ...backup.picks
-        .filter((p) => p.outcome === 'won' || p.outcome === 'lost')
-        .flatMap((p): StreakStep[] => {
-          const match = backup.matches.find((m) => m.id === p.matchId)
-          return match?.time ? [{ id: streakStepId(p.matchId, p.categoryId), matchId: p.matchId, categoryId: p.categoryId, seq: 0, addedAt: `${p.date}T03:00:00.000Z`, date: p.date, home: match.home, away: match.away, time: match.time, ...(match.league !== undefined && { league: match.league }) }] : []
-        })
-        .slice(0, streakExtra)
-        .map((step, i) => ({ ...step, seq: 1000 + i })),
-    ]
+    const streakSteps = sampleStreakSteps(backup, process.env.UYE_SERI === undefined ? null : Number(process.env.UYE_SERI))
     // Admin'deki "Yayınla" ile aynı kurucu: seçilen gün + önerisi ya da öne çıkanı olan önceki 6 gün.
     const { payload } = await draftPublication(
       {
@@ -116,3 +104,41 @@ it.runIf(process.env.UYE_ORNEK && process.env.UYE_BACKUP)(
   },
   120_000,
 )
+
+/**
+ * Örnek paketin seri adımları. extra = null (UYE_SERI verilmedi): yedekteki gerçek adımlar aynen.
+ * extra = N (UYE_SERI=N): yedekteki adımlar YOK SAYILIR, yalnızca sonuçlanmış önerilerden N sentetik
+ * adım kullanılır; böylece denemedeki toplam, yedekte seri olsa da olmasa da tam N olur.
+ */
+function sampleStreakSteps(backup: { picks: Pick[]; matches: Match[]; streakSteps?: unknown }, extra: number | null): StreakStep[] {
+  if (extra === null) return normalizeStreakSteps(backup.streakSteps, isCategoryId)
+  return backup.picks
+    .filter((p) => p.outcome === 'won' || p.outcome === 'lost')
+    .flatMap((p): StreakStep[] => {
+      const match = backup.matches.find((m) => m.id === p.matchId)
+      return match?.time ? [{ id: streakStepId(p.matchId, p.categoryId), matchId: p.matchId, categoryId: p.categoryId, seq: 0, addedAt: `${p.date}T03:00:00.000Z`, date: p.date, home: match.home, away: match.away, time: match.time, ...(match.league !== undefined && { league: match.league }) }] : []
+    })
+    .slice(0, extra)
+    .map((step, i) => ({ ...step, seq: 1000 + i }))
+}
+
+describe('örnek paketin seri adımları', () => {
+  // 10 sonuçlanmış öneri (5 tuttu, 5 tutmadı) ve aynı maçlardan 6 gerçek seri adımı olan küçük bir yedek
+  const matches = Array.from({ length: 10 }, (_, i) => ({ id: `m${i}`, date: '2026-10-16', time: `1${i}:00`, home: `Ev ${i}`, away: `Dep ${i}`, league: 'Testland · Lig' }) as Match)
+  const picks = matches.map((m, i) => ({ id: `${m.id}|over25`, matchId: m.id, categoryId: 'over25', date: m.date, percent: 80, threshold: 75, outcome: i % 2 ? 'lost' : 'won', frozenAt: '2026-10-16T20:00:00.000Z' }) as Pick)
+  const real: StreakStep[] = matches.slice(0, 6).map((m, i) => ({ id: streakStepId(m.id, 'over25'), matchId: m.id, categoryId: 'over25', seq: i + 1, addedAt: '2026-10-16T08:00:00.000Z', date: m.date, home: m.home, away: m.away, time: m.time! }))
+  const backup = { picks, matches, streakSteps: real }
+
+  it('UYE_SERI verilince yedekteki gerçek adımlar yok sayılır; toplam tam N (8) olur', () => {
+    const steps = sampleStreakSteps(backup, 8)
+    expect(steps).toHaveLength(8)
+    expect(steps.every((s) => s.seq >= 1000)).toBe(true)
+    expect(steps.map((s) => s.seq)).toEqual([1000, 1001, 1002, 1003, 1004, 1005, 1006, 1007])
+  })
+
+  it('UYE_SERI verilmeyince yedekteki gerçek adımlar aynen korunur, sentetik adım eklenmez', () => {
+    const steps = sampleStreakSteps(backup, null)
+    expect(steps).toHaveLength(6)
+    expect(steps.map((s) => s.seq).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6])
+  })
+})

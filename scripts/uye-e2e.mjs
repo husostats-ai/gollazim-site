@@ -33,7 +33,7 @@ const sampleDir = mkdtempSync(join(tmpdir(), 'gollazim-uye-ornek-'))
 /** Geçici klasörde şifreli örnek paket (ve ilk çağrıda sentetik test kullanıcısı) üretir */
 function generate(dir, env = {}) {
   // Yedekte öne çıkan seçim yoktur; sonuçlanmış her gün için 3 sentetik seçim eklenir.
-  // Yedekte seri adımı da yoktur; sonuçlanmış önerilerden 8 sentetik adım eklenir.
+  // Yedekteki seri adımları yok sayılır; 8 sentetik adım eklenir.
   execFileSync('npx', ['vitest', 'run', 'src/services/member/sample'], { env: { ...process.env, UYE_ORNEK: dir, UYE_ONE_CIKAN: '3', UYE_SERI: '8', ...env }, stdio: ['ignore', 'pipe', 'pipe'] })
 }
 generate(sampleDir, { UYE_N: '1' })
