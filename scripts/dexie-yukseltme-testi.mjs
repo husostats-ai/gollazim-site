@@ -65,6 +65,8 @@ async function withBrowser(work) {
   const page = await browser.newPage()
   await page.setViewport({ width: 1280, height: 900 })
   const errors = []
+  // Dosya kaydetme penceresi otomatik denemede açılamaz: yedek "indir + kaydettin mi?" yoluyla alınır (onay kendiliğinden kabul edilir).
+  await page.evaluateOnNewDocument(() => Object.defineProperty(window, 'showSaveFilePicker', { value: undefined, configurable: true }))
   page.on('dialog', (d) => void d.accept())
   page.on('pageerror', (e) => errors.push(e.message))
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()))

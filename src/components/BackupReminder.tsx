@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { BackupLevel } from '../services/daily/checklist'
-import { downloadBackup } from '../services/data/backupFile'
+import { saveBackup, SAVE_OUTCOME_TEXT } from '../services/data/backupFile'
 import { useApp } from '../state/AppContext'
 import type { DailyStatus } from '../state/useDailyStatus'
 
@@ -16,6 +16,7 @@ export default function BackupReminder({ status }: { status: DailyStatus | null 
   const { refresh } = useApp()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [note, setNote] = useState<string | null>(null)
   if (!status) return null
   const { backup, since } = status
   const level = backup.level
@@ -25,8 +26,10 @@ export default function BackupReminder({ status }: { status: DailyStatus | null 
   const onBackup = async () => {
     setBusy(true)
     setError(null)
+    setNote(null)
     try {
-      await downloadBackup()
+      const outcome = await saveBackup()
+      if (outcome === 'cancelled') setNote(SAVE_OUTCOME_TEXT.cancelled)
       await refresh()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Yedek alınamadı.')
@@ -57,7 +60,8 @@ export default function BackupReminder({ status }: { status: DailyStatus | null 
           Yedekten sonra {since.scores} skor girişi / {since.uploads} CSV
         </p>
       )}
-      <p className="mt-1 text-xs text-muted">Dosya indirilenler klasörüne iner; güvenli bir yere (bulut / harici disk) kopyala.</p>
+      <p className="mt-1 text-xs text-muted">Yedeği güvenli bir yere (bulut / harici disk) kaydet ya da sonra oraya kopyala.</p>
+      {note && <p className="mt-1 text-xs text-white" data-testid="backup-note">{note}</p>}
       {error && <p className="mt-1 text-xs text-loss-text">{error}</p>}
     </div>
   )

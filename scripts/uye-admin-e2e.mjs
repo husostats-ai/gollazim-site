@@ -75,6 +75,8 @@ async function openBrowser() {
   await page.setViewport({ width: 1280, height: 900 })
   const cdp = await page.target().createCDPSession()
   await cdp.send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: downloads })
+  // Dosya kaydetme penceresi otomatik denemede açılamaz: yedek "indir + kaydettin mi?" yoluyla alınır (onay kendiliğinden kabul edilir).
+  await page.evaluateOnNewDocument(() => Object.defineProperty(window, 'showSaveFilePicker', { value: undefined, configurable: true }))
   page.on('dialog', (dialog) => void dialog.accept())
   page.on('pageerror', (error) => report.konsolHatalari.push(`${page.url().split('#')[1] ?? ''}: ${error.message}`))
   page.on('console', (message) => message.type() === 'error' && report.konsolHatalari.push(`${page.url().split('#')[1] ?? ''}: ${message.text()}`))
@@ -122,12 +124,16 @@ const openTab = async (page, id) => {
   await tap(page, `admin-tab-${id}`)
   await page.waitForSelector(`${sel(`admin-panel-${id}`)}:not([hidden])`)
 }
-/** Normal yedeği VERİ-YEDEK sekmesinden geri yükler */
-async function restoreMainBackup(page) {
+/**
+ * Normal yedeği VERİ-YEDEK sekmesinden geri yükler. Tarayıcıda veri varsa önce güvenlik yedeği iner;
+ * sonraki indirmelerle karışmasın diye indirme klasöründen alınır.
+ */
+async function restoreMainBackup(page, takeDownload) {
   await openTab(page, 'veri')
   const input = await page.$('input[type=file][accept="application/json,.json"]:not([data-testid])')
   await input.uploadFile(backupFile)
   await page.waitForFunction(() => document.body.innerText.includes('Yedek yüklendi'), { timeout: 20000 })
+  if (await page.evaluate(() => document.body.innerText.includes('güvenlik yedeği kaydedildi'))) await takeDownload(join(outDir, 'guvenlik-yedegi.json'))
 }
 async function shot(page, id, name) {
   const element = await page.$(sel(id))
@@ -246,7 +252,7 @@ try {
   step('yedek indirildi ve geçerli', exportedBackup.app === 'gollazim' && exportedBackup.version === 1 && exportedBackup.matches.length > 0, `${exportedName}: ${exportedBackup.matches.length} maç`)
   step('normal yedekte üye alanı yok', !/member|uye|publication|kek/i.test(Object.keys(exportedBackup).join(',')), Object.keys(exportedBackup).length + ' alan')
   rmSync(exported)
-  await restoreMainBackup(page)
+  await restoreMainBackup(page, takeDownload)
   step('yedek geri yüklendi', true)
   await go(page, '/istatistik')
   await page.waitForSelector(sel('main-rate'), { timeout: 15000 })
@@ -464,7 +470,7 @@ try {
 
   // G) NORMAL YEDEK ÜYE TABLOSUNU ETKİLEMEZ (gerçek IndexedDB)
   const membersBefore = JSON.parse(await dumpDatabase(page))
-  await restoreMainBackup(page)
+  await restoreMainBackup(page, takeDownload)
   await sleep(400)
   const membersAfter = JSON.parse(await dumpDatabase(page))
   step('normal yedeği geri yüklemek üye tablolarını silmedi/ezmedi', JSON.stringify(membersAfter.members) === JSON.stringify(membersBefore.members) && JSON.stringify(membersAfter.memberMeta) === JSON.stringify(membersBefore.memberMeta) && JSON.stringify(membersAfter.publications) === JSON.stringify(membersBefore.publications) && membersAfter.members.length === 3, `${membersAfter.members.length} üye, ${membersAfter.publications.length} yayın`)
@@ -483,7 +489,7 @@ try {
   second = await openBrowser()
   const fresh = second.page
   await go(fresh, '/admin')
-  await restoreMainBackup(fresh)
+  await restoreMainBackup(fresh, second.takeDownload)
   await openTab(fresh, 'uyeler')
   await fresh.waitForSelector(sel('member-admin-members'))
   step('yeni profilde üye yok', (await fresh.$(sel('member-list-empty'))) !== null)
