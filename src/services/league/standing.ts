@@ -18,7 +18,7 @@ export interface StandingInfo {
   ageDays: number
   /** Tablo LEAGUE_TABLE_STALE_DAYS günden eski */
   stale: boolean
-  /** Yalnızca admin kartındaki "tablo eski olabilir" işareti ve lig turu; matchStandings doldurur */
+  /** Yalnızca admin kartındaki "tablo eski olabilir" / "CSV turu tabloyla uyuşmuyor" işareti ve lig turu; matchStandings doldurur */
   detail?: StandingDetail
 }
 
@@ -26,8 +26,11 @@ export interface StandingInfo {
 export const PPG_TOLERANCE = 0.01
 
 export interface StandingDetail {
-  /** Tablodaki PPG, CSV'deki maç öncesi genel PPG'den farklı (yalnızca başlamamış maçlarda) */
-  maybeOld: boolean
+  /**
+   * Tablodaki PPG CSV'deki maç öncesi genel PPG'den farklı ve tablo MP'si CSV turuyla tutarlı değilse
+   * nedeni (yalnızca başlamamış maçlarda); yoksa null. Kartta STANDING_BLOCK_TEXT ile gösterilir.
+   */
+  block: PpgBlock | null
   /** CSV'deki lig turu; yoksa null. Yalnızca bilgi içindir, uyarı üretmez */
   gameWeek: number | null
 }
@@ -35,6 +38,29 @@ export interface StandingDetail {
 /** Tablo PPG'si CSV'deki genel PPG'den toleranstan fazla mı ayrışıyor; biri yoksa ayrışmıyor sayılır */
 export const ppgDiffers = (tablePpg: number | null, csvPpg: number | null): boolean =>
   tablePpg !== null && csvPpg !== null && Math.abs(tablePpg - csvPpg) > PPG_TOLERANCE + 1e-9
+
+/**
+ * Tablodaki maç sayısı CSV'deki lig turuyla tutarlı mı (bu turdan önce tam bir önceki tur kadar maç).
+ * Tutarlıysa tablo güncel sayılır; PPG farkı CSV'nin başka maçları da saymasındandır (ör. Avrupa
+ * kupalarında eleme maçları), tablonun eskiliğinden değil.
+ */
+export const roundConsistent = (played: number, gameWeek: number | null): boolean => gameWeek !== null && gameWeek > 0 && played === gameWeek - 1
+
+/** PPG farkının nedeni. ppg-differs: tablo MP'si CSV turu − 1'den az ya da tur yok (tablo eski olabilir); round-mismatch: tablo MP'si fazla (CSV turu tutarsız) */
+export type PpgBlock = 'ppg-differs' | 'round-mismatch'
+
+/** Admin kartında sıra satırının yanına yazılan neden; form satırının notu da bununla başlar */
+export const STANDING_BLOCK_TEXT: Record<PpgBlock, string> = {
+  'ppg-differs': '⚠ tablo eski olabilir',
+  'round-mismatch': 'CSV turu tabloyla uyuşmuyor',
+}
+
+/** PPG farkı tur tutarlılığıyla açıklanamıyorsa nedeni; açıklanıyorsa ya da fark yoksa null */
+export function ppgBlock(tablePpg: number | null, played: number, csvPpg: number | null, gameWeek: number | null): PpgBlock | null {
+  if (!ppgDiffers(tablePpg, csvPpg) || roundConsistent(played, gameWeek)) return null
+  // Tablo turdan ileride (ya da CSV turu 1): CSV turu tutarsız, tablo eski değil.
+  return gameWeek !== null && gameWeek > 0 && played > gameWeek - 1 ? 'round-mismatch' : 'ppg-differs'
+}
 
 export const tableAgeText = (days: number): string => (days <= 0 ? 'tablo bugün' : `tablo ${days} gün önce`)
 
@@ -63,7 +89,7 @@ export function matchStandings(match: Match, dayMatches: Match[], tables: League
     const standing = findStanding(match.league, team, leagueTeams, tables, aliases)
     if (!standing) return null
     const detail: StandingDetail = {
-      maybeOld: upcoming && ppgDiffers(standing.row.ppg, stat(match, ppgField)),
+      block: upcoming ? ppgBlock(standing.row.ppg, standing.row.played, stat(match, ppgField), gameWeek) : null,
       gameWeek: gameWeek !== null && gameWeek > 0 ? gameWeek : null,
     }
     return { ...standingInfo(standing, now), detail }
@@ -85,11 +111,12 @@ export function playedHint({ home, away }: MatchStandings): string | null {
 // Yalnızca gösterimdir; analize, yıldıza, sıralamaya, dondurmaya ve AI prompt'una girmez.
 
 /**
- * Satırın üyeye GİTMEME nedeni. ppg-differs: tablo PPG'si CSV'deki maç öncesi genel PPG'den farklı
- * (tablo eski olabilir). unverifiable: iki PPG'den biri yok, karşılaştırılamıyor.
+ * Satırın üyeye GİTMEME nedeni. ppg-differs: tablo PPG'si CSV'deki maç öncesi genel PPG'den farklı ve
+ * tablo MP'si CSV turu − 1'den az ya da tur yok (tablo eski olabilir). round-mismatch: PPG farklı ve
+ * tablo MP'si CSV turu − 1'den fazla (CSV turu tutarsız). unverifiable: iki PPG'den biri yok, karşılaştırılamıyor.
  * old-snapshot: görüntü maç saatinden LEAGUE_TABLE_STALE_DAYS günden eski.
  */
-export type FormBlock = 'ppg-differs' | 'unverifiable' | 'old-snapshot'
+export type FormBlock = PpgBlock | 'unverifiable' | 'old-snapshot'
 
 export interface TeamForm {
   /** "Last 5", yapıştırıldığı gibi: soldan sağa eskiden yeniye; yoksa null */
@@ -109,7 +136,8 @@ export interface MatchForms {
 
 /** Admin kartında, üyeye gitmeyen satırın yanına yazılan not */
 export const FORM_BLOCK_TEXT: Record<FormBlock, string> = {
-  'ppg-differs': '⚠ tablo eski olabilir · üyeye gitmez',
+  'ppg-differs': `${STANDING_BLOCK_TEXT['ppg-differs']} · üyeye gitmez`,
+  'round-mismatch': `${STANDING_BLOCK_TEXT['round-mismatch']} · üyeye gitmez`,
   unverifiable: 'doğrulanamadı · üyeye gitmez',
   'old-snapshot': `tablo maçtan ${LEAGUE_TABLE_STALE_DAYS} günden eski · üyeye gitmez`,
 }
@@ -128,11 +156,12 @@ export function matchForms(match: Match, dayMatches: Match[], snapshots: LeagueT
   // Aynı içerik maçtan önce yeniden yapıştırıldıysa tablo o an da günceldi.
   const seenAt = snapshot.lastSeenAt && Date.parse(snapshot.lastSeenAt) < kickoff.getTime() ? snapshot.lastSeenAt : snapshot.pastedAt
   const old = daysBetween(new Date(seenAt), kickoff) > LEAGUE_TABLE_STALE_DAYS
+  const gameWeek = stat(match, 'gameWeek')
   const form = (team: string, ppgField: 'homeOverallPpg' | 'awayOverallPpg'): TeamForm | null => {
     const row = matched.find((m) => m.csvTeam === team)?.row
     if (!row || row.goalsFor === undefined || row.goalsAgainst === undefined) return null
     const csvPpg = stat(match, ppgField)
-    const blocked: FormBlock | null = ppgDiffers(row.ppg, csvPpg) ? 'ppg-differs' : row.ppg === null || csvPpg === null ? 'unverifiable' : old ? 'old-snapshot' : null
+    const blocked: FormBlock | null = ppgBlock(row.ppg, row.played, csvPpg, gameWeek) ?? (row.ppg === null || csvPpg === null ? 'unverifiable' : old ? 'old-snapshot' : null)
     return { last5: row.last5 ?? null, goalsFor: row.goalsFor, goalsAgainst: row.goalsAgainst, cs: row.cs !== undefined && Number.isInteger(row.cs) ? row.cs : null, blocked }
   }
   return { home: form(match.home, 'homeOverallPpg'), away: form(match.away, 'awayOverallPpg') }

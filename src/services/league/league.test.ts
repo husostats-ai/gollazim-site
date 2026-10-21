@@ -9,7 +9,7 @@ import { assembleBackup, isBackupFile } from '../data/backupFormat'
 import { ageGroup, aliasId, findStanding, matchTeams, normalizeAliases, normalizeLeagueTables, normalizeTeam, NOT_IN_TABLE } from './matching'
 import { fitsAverage, checkRow, NO_PPG_WARNING, parseLeagueTable } from './parser'
 import { SCOTLAND_PREMIERSHIP_SPLIT } from './__fixtures__/scotlandPremiership'
-import { FORM_BLOCK_TEXT, matchForms, matchStandings, playedHint, ppgDiffers, standingInfo, tableAgeText } from './standing'
+import { FORM_BLOCK_TEXT, matchForms, matchStandings, playedHint, ppgDiffers, roundConsistent, STANDING_BLOCK_TEXT, standingInfo, tableAgeText } from './standing'
 import { nextSnapshot, normalizeSnapshots, sameRows, seedSnapshots, snapshotAt, snapshotId } from './history'
 import { buildMemberPayload } from '../member/payload'
 import { memberInput } from '../member/__fixtures__/rawData'
@@ -507,7 +507,7 @@ describe('admin kartı: "tablo eski olabilir" işareti ve lig turu', () => {
     makeMatch({ over25Pct: 90, ...stats }, { home: 'Kuzey Yıldızı', away: 'Güney Spor', league: LEAGUE, date: '2026-10-07', time: time ?? undefined })
   const flags = (match: Match, now: Date, tables = [fullTable]) => {
     const s = matchStandings(match, [match], tables, [], now)
-    return [s.home?.detail?.maybeOld, s.away?.detail?.maybeOld]
+    return [s.home?.detail?.block !== null, s.away?.detail?.block !== null]
   }
 
   it('tablo PPG ile CSV genel PPG farklıysa işaretlenir; 0,01 tolerans', () => {
@@ -527,9 +527,37 @@ describe('admin kartı: "tablo eski olabilir" işareti ve lig turu', () => {
   })
 
   it('eski yüklemede değer CSV başlığıyla saklıdır; yine okunur', () => {
-    const match = game({ 'Home Team Overall Points Per Game (Pre-Match)': 2.5, 'Game Week': 6 })
+    // Tabloda 5 maç; tur 7 ile tutarlı değil (beklenen 6 maç)
+    const match = game({ 'Home Team Overall Points Per Game (Pre-Match)': 2.5, 'Game Week': 7 })
     const standings = matchStandings(match, [match], [fullTable], [], before)
-    expect(standings.home?.detail).toMatchObject({ maybeOld: true, gameWeek: 6 })
+    expect(standings.home?.detail).toMatchObject({ block: 'ppg-differs', gameWeek: 7 })
+  })
+
+  it('PPG farklı ama tablo MP = CSV turu − 1 ise tablo güncel sayılır; tur tutarsız ya da yoksa işaret kalır', () => {
+    // Tabloda iki takım da 5 maç
+    expect(roundConsistent(5, 6)).toBe(true)
+    expect(roundConsistent(5, 7)).toBe(false)
+    expect(roundConsistent(0, 0)).toBe(false)
+    expect(roundConsistent(5, null)).toBe(false)
+    const stale = { homeOverallPpg: 2.5, awayOverallPpg: 1 }
+    expect(flags(game({ ...stale, gameWeek: 6 }), before)).toEqual([false, false])
+    expect(flags(game({ ...stale, gameWeek: 7 }), before)).toEqual([true, true])
+    expect(flags(game({ ...stale, gameWeek: 3 }), before)).toEqual([true, true])
+    expect(flags(game({ ...stale, gameWeek: 0 }), before)).toEqual([true, true])
+  })
+
+  it('sıra satırı form satırıyla aynı nedeni gösterir: MP turdan azsa tablo eski olabilir, fazlaysa CSV turu uyuşmuyor', () => {
+    // Tabloda iki takım da 5 maç
+    const blocks = (stats: Record<string, number>) => {
+      const s = matchStandings(game(stats), [], [fullTable], [], before)
+      return [s.home?.detail?.block, s.away?.detail?.block]
+    }
+    expect(blocks({ homeOverallPpg: 2.5, awayOverallPpg: 1, gameWeek: 7 })).toEqual(['ppg-differs', 'ppg-differs'])
+    expect(blocks({ homeOverallPpg: 2.5, awayOverallPpg: 1, gameWeek: 0 })).toEqual(['ppg-differs', 'ppg-differs'])
+    expect(blocks({ homeOverallPpg: 2.5, awayOverallPpg: 1, gameWeek: 1 })).toEqual(['round-mismatch', 'round-mismatch'])
+    expect(blocks({ homeOverallPpg: 2.5, awayOverallPpg: 2, gameWeek: 4 })).toEqual(['round-mismatch', null])
+    expect(STANDING_BLOCK_TEXT).toEqual({ 'ppg-differs': '⚠ tablo eski olabilir', 'round-mismatch': 'CSV turu tabloyla uyuşmuyor' })
+    for (const block of ['ppg-differs', 'round-mismatch'] as const) expect(FORM_BLOCK_TEXT[block]).toBe(`${STANDING_BLOCK_TEXT[block]} · üyeye gitmez`)
   })
 
   it('yalnızca henüz başlamamış maçta: başlamış maçta ve saati bilinmeyen maçta işaret çıkmaz', () => {
@@ -541,7 +569,7 @@ describe('admin kartı: "tablo eski olabilir" işareti ve lig turu', () => {
 
   it('lig turu yalnızca bilgidir: 0 ya da yoksa null, uyarı üretmez; 7 gün kuralı değişmez', () => {
     const info = (stats: Record<string, number>) => matchStandings(game(stats), [], [fullTable], [], before).home!
-    expect(info({ gameWeek: 8 }).detail).toMatchObject({ gameWeek: 8, maybeOld: false })
+    expect(info({ gameWeek: 8 }).detail).toMatchObject({ gameWeek: 8, block: null })
     expect(info({ gameWeek: 0 }).detail?.gameWeek).toBeNull()
     expect(info({}).detail?.gameWeek).toBeNull()
     expect(info({ homeOverallPpg: 1 })).toMatchObject({ stale: false, ageDays: 2, text: 'Ligde 1. sıra · 5 maç · tablo 2 gün önce' })
@@ -555,7 +583,7 @@ describe('koruma: ek sütunlar ve yeni CSV alanları analize, prompt\'a ve üye 
     expect(text).toContain('"homeForm":{"last":"WWDWW","gf":18,"ga":6,"cs":50}')
     // Fikstürdeki ayırt edici değerler: BTTS, xGF, kart, korner, 1.5+, 2.5+, AVG ve PPG
     for (const value of ['1.847', '4.617', '9.283', '1.393', '5.143', '8.857', '2.71', '1.57']) expect(text, value).not.toContain(value)
-    expect(text).not.toMatch(/last5|goalsFor|goalsAgainst|goalDiff|xgf|avgGoals|ppg|blocked|maybeOld|gameWeek/i)
+    expect(text).not.toMatch(/last5|goalsFor|goalsAgainst|goalDiff|xgf|avgGoals|ppg|blocked|block|maybeOld|gameWeek/i)
     // Güncel tablonun ek sütunları form satırının kaynağı değildir: geçmiş yoksa form da yoktur.
     const withoutHistory = JSON.stringify(buildMemberPayload({ ...input, leagueTableSnapshots: [] }))
     expect(withoutHistory).not.toMatch(/"(home|away)Form":\{/)
@@ -595,6 +623,23 @@ describe('form satırı: maçtan önceki son görüntü ve üyeye gitme kuralı'
     expect(result.home).toMatchObject({ last5: 'WWWWW', blocked: 'ppg-differs' })
     expect(result.away?.blocked).toBeNull()
     expect(FORM_BLOCK_TEXT['ppg-differs']).toBe('⚠ tablo eski olabilir · üyeye gitmez')
+  })
+
+  it('PPG farklı ama tablo MP = CSV turu − 1 ise satır doğrulanır ve üyeye gider; MP turdan azsa ya da tur yoksa tablo eski olabilir', () => {
+    // Tabloda iki takım da 5 maç: tur 6 tutarlı
+    expect(forms(game({ homeOverallPpg: 2.5, awayOverallPpg: 1, gameWeek: 6 }), history)).toMatchObject({ home: { blocked: null }, away: { blocked: null } })
+    expect(forms(game({ homeOverallPpg: 2.5, awayOverallPpg: 2, gameWeek: 8 }), history).home?.blocked).toBe('ppg-differs')
+    expect(forms(game({ homeOverallPpg: 2.5, awayOverallPpg: 2, gameWeek: 0 }), history).home?.blocked).toBe('ppg-differs')
+    // Tur tutarlıysa PPG farkı sayılmaz ama 7 gün kuralı yine geçerlidir.
+    expect(forms(game({ homeOverallPpg: 2.5, awayOverallPpg: 2, gameWeek: 6 }), [snap('2026-09-29T09:00:00.000Z')]).home?.blocked).toBe('old-snapshot')
+  })
+
+  it('PPG farklı ve tablo MP CSV turu − 1\'den fazlaysa (ör. tur 1) CSV turu tutarsızdır: satır yine üyeye gitmez', () => {
+    expect(forms(game({ homeOverallPpg: 2.5, awayOverallPpg: 2, gameWeek: 1 }), history).home?.blocked).toBe('round-mismatch')
+    expect(forms(game({ homeOverallPpg: 2.5, awayOverallPpg: 2, gameWeek: 4 }), history).home?.blocked).toBe('round-mismatch')
+    // PPG aynıysa tur tutarsızlığı tek başına satırı durdurmaz.
+    expect(forms(game({ ...OK, gameWeek: 1 }), history).home?.blocked).toBeNull()
+    expect(FORM_BLOCK_TEXT['round-mismatch']).toBe('CSV turu tabloyla uyuşmuyor · üyeye gitmez')
   })
 
   it('CSV\'de ya da tabloda PPG yoksa doğrulanamaz: üyeye gitmez', () => {

@@ -1,7 +1,7 @@
 import { getCategory, supportsCautious } from '../config/categories'
 import { marketNotes } from '../services/analysis/market'
 import { statSummary } from '../services/analysis/summary'
-import { FORM_BLOCK_TEXT, matchForms, matchStandings, playedHint, type TeamForm as TeamFormInfo } from '../services/league/standing'
+import { FORM_BLOCK_TEXT, matchForms, matchStandings, playedHint, STANDING_BLOCK_TEXT, type TeamForm as TeamFormInfo } from '../services/league/standing'
 import type { Prediction, SortMode } from '../services/analysis/types'
 import { useApp } from '../state/AppContext'
 import type { SharedPick } from '../types'
@@ -103,10 +103,10 @@ export default function MatchCard({ prediction, rank, sortMode, storySelection, 
                 <p key={side} className="break-words">
                   <span className="font-semibold text-white">{side}:</span> {info.text}
                   {info.stale && <span className="font-bold text-warn"> · ⚠ güncel değil</span>}
-                  {info.detail?.maybeOld && (
+                  {info.detail?.block && (
                     <span className="font-bold text-warn" data-testid="league-maybe-old">
                       {' '}
-                      · ⚠ tablo eski olabilir
+                      · {STANDING_BLOCK_TEXT[info.detail.block]}
                     </span>
                   )}
                 </p>

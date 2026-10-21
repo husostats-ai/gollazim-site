@@ -60,8 +60,8 @@ describe('form satırları', () => {
   it('not ve alt satır yalnızca verilirse çizilir (admin)', () => {
     const plain = render({ home: FULL, away: null })
     expect(plain).not.toContain('team-form-note')
-    const admin = visible(render({ home: FULL, away: null, notes: { home: '⚠ tablo eski olabilir · üyeye gitmez' }, footer: 'CSV turu 6 · tablo MP 4 / 5' }))
-    expect(admin).toContain('Gol: 6–4 Gol yemediği maç: %60 ⚠ tablo eski olabilir · üyeye gitmez')
+    const admin = visible(render({ home: FULL, away: null, notes: { home: 'CSV turu tabloyla uyuşmuyor · üyeye gitmez' }, footer: 'CSV turu 6 · tablo MP 4 / 5' }))
+    expect(admin).toContain('Gol: 6–4 Gol yemediği maç: %60 CSV turu tabloyla uyuşmuyor · üyeye gitmez')
     expect(admin.endsWith('CSV turu 6 · tablo MP 4 / 5')).toBe(true)
   })
 
