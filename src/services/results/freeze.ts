@@ -1,6 +1,7 @@
 import { CATEGORIES } from '../../config/categories'
 import type { Match, MatchResult, Pick, Thresholds } from '../../types'
 import { analyzeDay } from '../analysis/engine'
+import { estimateSampleSize } from '../analysis/reliability'
 import type { MarketInfo } from '../analysis/market'
 import { evaluatePick } from './evaluator'
 
@@ -15,6 +16,16 @@ interface FreezeInput {
   now: string
   /** Piyasa çelişkisi sınırı (puan); verilmezse varsayılan */
   marketConflictLimit?: number
+  /** Yalnızca ölçüm için öneriye yazılan kayıt bilgisi; verilmezse alanlar yazılmaz */
+  record?: FreezeRecord
+}
+
+/** Dondurulan öneriye eklenen, davranışı etkilemeyen kayıt bilgisi */
+export interface FreezeRecord {
+  /** Admin derlemesinin commit'i */
+  appCommit: string
+  /** Maçın verisini getiren CSV'nin yüklenme anı (ISO); bilinmiyorsa null */
+  statsUploadedAt: string | null
 }
 
 /** Öneriye yazılan piyasa alanları; oran yoksa null ya da 0 değil, açıkça 'none' */
@@ -41,6 +52,7 @@ export function buildPicksForResult({
   existing,
   now,
   marketConflictLimit,
+  record,
 }: FreezeInput): Pick[] {
   if (existing.length > 0) {
     return existing.map((pick) => ({ ...pick, outcome: evaluatePick(pick.categoryId, result) }))
@@ -48,6 +60,7 @@ export function buildPicksForResult({
   if (result.status !== 'completed') return []
 
   const analysis = analyzeDay(dayMatches, thresholds, 'percent', marketConflictLimit)
+  const sampleAtFreeze = record ? estimateSampleSize(match) : null
   const picks: Pick[] = []
   for (const category of CATEGORIES) {
     const { predictions, threshold } = analysis[category.id]
@@ -69,6 +82,13 @@ export function buildPicksForResult({
       ...(prediction.market && frozenMarket(prediction.market)),
       stars: prediction.stars,
       ...(prediction.modelDrift !== undefined && { modelDrift: prediction.modelDrift }),
+      // Ölçüm kaydı: liste yüzdeye göre sıralı olduğu için sıra, listedeki yeridir.
+      ...(record && {
+        sampleAtFreeze,
+        rankAtFreeze: predictions.indexOf(prediction) + 1,
+        appCommit: record.appCommit,
+        ...(record.statsUploadedAt !== null && { statsUploadedAt: record.statsUploadedAt }),
+      }),
     })
   }
   return picks

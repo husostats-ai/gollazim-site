@@ -119,6 +119,16 @@ export interface Pick {
    * piyasa oranı olmadığı için ölçülemediyse 'none'. Eski kayıtlarda bulunmaz.
    */
   modelDrift?: boolean | 'none'
+  // Aşağıdakiler yalnızca sonradan ölçüm içindir (admin verisi): analize, istatistiğe, üye paketine,
+  // görsellere ve AI prompt'una girmez. Bu özellikten önce dondurulmuş önerilerde yoktur; sonradan doldurulmaz.
+  /** Dondurma anında maçın tahmini örneklemi (estimateSampleSize: ev iç + deplasman dış saha maçı); çıkarılamadıysa null */
+  sampleAtFreeze?: number | null
+  /** Dondurma anında kategorinin yüzdeye göre sıralı listesindeki yeri (1 = en üst) */
+  rankAtFreeze?: number
+  /** Öneriyi donduran admin derlemesinin commit'i (kısa kod; yerel geliştirmede 'bilinmiyor') */
+  appCommit?: string
+  /** Maçın verisini (yüzdeler, oranlar) getiren CSV'nin yüklenme anı: ISO, UTC ("Z"); Europe/Istanbul'a gösterirken çevrilir */
+  statsUploadedAt?: string
 }
 
 /**

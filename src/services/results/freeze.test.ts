@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { defaultThresholds } from '../../config/categories'
-import type { MatchResult } from '../../types'
+import type { MatchResult, Pick } from '../../types'
+import { estimateSampleSize } from '../analysis/reliability'
 import { makeMatch } from '../analysis/testUtils'
 import { buildPicksForResult } from './freeze'
 
@@ -95,5 +96,47 @@ describe('buildPicksForResult', () => {
     const weak = makeMatch({ over25Pct: 80 })
     const picks = buildPicksForResult({ ...base, match: weak, dayMatches: [...stronger, weak], result: win, existing: [] })
     expect(picks).toEqual([])
+  })
+})
+
+describe('dondurmada ölçüm kaydı (davranışı değiştirmez)', () => {
+  const NOW = '2026-10-05T21:00:00Z'
+  const win: MatchResult = { matchId: 'x', status: 'completed', htHome: 1, htAway: 0, ftHome: 3, ftAway: 1, cornersHome: null, cornersAway: null, cardsHome: null, cardsAway: null, updatedAt: NOW }
+  const m = makeMatch({ over25Pct: 90, bttsPct: 85, ht05Pct: 95, homeXg: 1.8, awayXg: 1.2 })
+  const top = makeMatch({ over25Pct: 97 })
+  const base = { match: m, dayMatches: [top, m], thresholds: defaultThresholds(), now: NOW, result: win, existing: [] }
+  const record = { appCommit: 'abc1234', statsUploadedAt: '2026-10-05T04:15:00.000Z' }
+  const RECORD_KEYS = ['sampleAtFreeze', 'rankAtFreeze', 'appCommit', 'statsUploadedAt'] as const
+
+  it('örneklem, kategori içi sıra, admin commit\'i ve CSV yükleme anı yazılır', () => {
+    const picks = buildPicksForResult({ ...base, record })
+    const over25 = picks.find((p) => p.categoryId === 'over25')!
+    // 2.5 Üst listesinde %97'lik maç önde: bu maç 2. sırada
+    expect(over25).toMatchObject({ rankAtFreeze: 2, appCommit: 'abc1234', statsUploadedAt: '2026-10-05T04:15:00.000Z' })
+    expect(picks.find((p) => p.categoryId === 'btts')!.rankAtFreeze).toBe(1)
+    expect(over25.sampleAtFreeze).toBe(estimateSampleSize(m))
+    // Yükleme anı olduğu gibi (UTC "Z") saklanır; yerel saate çevrilmez.
+    expect(picks.every((p) => p.statsUploadedAt === record.statsUploadedAt)).toBe(true)
+  })
+
+  it('kayıt alanları dışında öneriler birebir aynıdır (seçim, yüzde, eşik, yıldız, sonuç)', () => {
+    const plain = buildPicksForResult(base)
+    const recorded = buildPicksForResult({ ...base, record })
+    const strip = (p: Pick) => Object.fromEntries(Object.entries(p).filter(([k]) => !(RECORD_KEYS as readonly string[]).includes(k)))
+    expect(recorded.map(strip)).toEqual(plain)
+    for (const p of plain) for (const key of RECORD_KEYS) expect(p[key], key).toBeUndefined()
+  })
+
+  it('yükleme anı bilinmiyorsa alan yazılmaz; örneklem çıkarılamıyorsa null', () => {
+    const bare = makeMatch({ over25Pct: 90 })
+    const [pick] = buildPicksForResult({ ...base, match: bare, dayMatches: [bare], record: { appCommit: 'bilinmiyor', statsUploadedAt: null } })
+    expect(pick).toMatchObject({ appCommit: 'bilinmiyor', sampleAtFreeze: null, rankAtFreeze: 1 })
+    expect('statsUploadedAt' in pick).toBe(false)
+  })
+
+  it('daha önce dondurulmuş öneriler geriye dönük güncellenmez', () => {
+    const old = buildPicksForResult(base)
+    const again = buildPicksForResult({ ...base, existing: old, record })
+    expect(again).toEqual(old)
   })
 })

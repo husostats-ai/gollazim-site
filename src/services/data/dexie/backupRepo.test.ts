@@ -29,7 +29,7 @@ function fullBackup(): BackupFile {
       uploads: [{ id: 'u1', fileName: 'gun.csv', uploadedAt: '2026-10-15T05:00:00.000Z', matchCount: 1 }],
       matches: [{ id: MATCH, uploadId: 'u1', date: DAY, time: '22:00', league: LEAGUE, home: 'Aston Villa', away: 'Viking', stats: { over25Pct: 100, homeXg: 2.26, awayXg: 1.14, link: 'x' } }],
       results: [{ matchId: MATCH, status: 'completed', htHome: 1, htAway: 0, ftHome: 3, ftAway: 1, cornersHome: 7, cornersAway: 2, cardsHome: 1, cardsAway: 3, updatedAt: '2026-10-15T21:00:00.000Z' }],
-      picks: [{ id: `${MATCH}|over25`, matchId: MATCH, categoryId: 'over25', date: DAY, percent: 100, threshold: 75, outcome: 'won', frozenAt: '2026-10-15T21:00:00.000Z', reliability: 'low', conflict: true, secondPercent: 66, modelSource: 'xg', marketPercent: 'none', marketConflict: 'none', stars: 3, modelDrift: 'none' }],
+      picks: [{ id: `${MATCH}|over25`, matchId: MATCH, categoryId: 'over25', date: DAY, percent: 100, threshold: 75, outcome: 'won', frozenAt: '2026-10-15T21:00:00.000Z', reliability: 'low', conflict: true, secondPercent: 66, modelSource: 'xg', marketPercent: 'none', marketConflict: 'none', stars: 3, modelDrift: 'none', sampleAtFreeze: 5, rankAtFreeze: 2, appCommit: 'abc1234', statsUploadedAt: '2026-10-15T05:00:00.000Z' }],
       thresholds,
       aiVerdicts: [{ id: `${MATCH}|chatgpt`, matchId: MATCH, date: DAY, provider: 'chatgpt', byCategory: { over25: 'strong' }, asked: ['over25'], reason: 'gerekçe', risk: 'risk', savedAt: '2026-10-15T08:00:00.000Z' }],
       aiPrompts: [{ id: `${DAY}|chatgpt|1`, date: DAY, provider: 'chatgpt', createdAt: '2026-10-15T07:00:00.000Z', matchIds: [MATCH], categories: [['over25']] }],
@@ -91,10 +91,13 @@ describe('yedek gidiş-dönüş (gerçek Dexie şeması, bellekte IndexedDB)', (
 
   it('isteğe bağlı alanları olmayan eski bir yedek de açılır; eksik tablolar boş gelir', async () => {
     const { aiVerdicts: _a, aiPrompts: _p, storySelections: _s, sharedPicks: _sh, leagueTables: _l, teamAliases: _t, leagueTableSnapshots: _ls, highlights: _h, aiShares: _as, streakSteps: _st, storyTexts: _tx, marketConflictLimit: _m, ...old } = fullBackup()
-    await backupRepo.importAll(old as BackupFile)
+    // Ölçüm kayıt alanlarından önce dondurulmuş öneri
+    const oldPicks = old.picks.map(({ sampleAtFreeze: _sa, rankAtFreeze: _r, appCommit: _c, statsUploadedAt: _u, ...pick }) => pick)
+    await backupRepo.importAll({ ...old, picks: oldPicks } as BackupFile)
     const exported = await backupRepo.exportAll()
     expect(exported.matches).toHaveLength(1)
-    expect(exported.picks).toHaveLength(1)
+    expect(exported.picks).toEqual(oldPicks)
+    for (const key of ['sampleAtFreeze', 'rankAtFreeze', 'appCommit', 'statsUploadedAt']) expect(key in exported.picks[0], key).toBe(false)
     for (const key of ['aiVerdicts', 'aiPrompts', 'storySelections', 'sharedPicks', 'leagueTables', 'teamAliases'] as const) expect(exported[key], key).toEqual([])
     for (const key of ['leagueTableSnapshots', 'highlights', 'aiShares', 'streakSteps'] as const) expect(exported[key], key).toBeUndefined()
   })

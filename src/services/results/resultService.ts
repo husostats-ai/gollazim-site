@@ -1,5 +1,5 @@
 import type { MatchResult, MatchStatus, Pick } from '../../types'
-import { aiRepo, matchesRepo, picksRepo, resultsRepo, settingsRepo } from '../data'
+import { aiRepo, matchesRepo, picksRepo, resultsRepo, settingsRepo, uploadsRepo } from '../data'
 import { snapshotToSave } from '../analysis/scoreForecast'
 import { buildPicksForResult } from './freeze'
 import { parseScores, type ScoreDraft } from './validation'
@@ -23,13 +23,17 @@ export async function saveResult(matchId: string, draft: ScoreDraft, status: Mat
 
   const now = new Date().toISOString()
   const result: MatchResult = { matchId, status, ...parsed.scores, updatedAt: now }
-  const [dayMatches, thresholds, existing, marketConflictLimit] = await Promise.all([
+  const [dayMatches, thresholds, existing, marketConflictLimit, uploads] = await Promise.all([
     matchesRepo.listByDate(match.date),
     settingsRepo.getThresholds(),
     picksRepo.listByMatch(matchId),
     settingsRepo.getMarketConflictLimit(),
+    uploadsRepo.list(),
   ])
-  const picks = buildPicksForResult({ match, dayMatches, thresholds, result, existing, now, marketConflictLimit })
+  // Ölçüm kaydı (davranışı etkilemez). Elle düzenlenmiş maçın değerleri CSV'den gelmediği için yükleme anı yazılmaz.
+  const statsUploadedAt = match.edited ? null : (uploads.find((u) => u.id === match.uploadId)?.uploadedAt ?? null)
+  const record = { appCommit: __APP_COMMIT__, statsUploadedAt }
+  const picks = buildPicksForResult({ match, dayMatches, thresholds, result, existing, now, marketConflictLimit, record })
 
   await resultsRepo.save(result)
   await picksRepo.replaceForMatch(matchId, picks)
