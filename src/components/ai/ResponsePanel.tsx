@@ -91,6 +91,8 @@ export default function ResponsePanel({ date, provider, providerLabel, numbers, 
         savedAt,
         // Skor tahmini, kaydedildiği anla saklanır; maç başladıktan sonra kaydedilen tahmin ölçüme girmez.
         ...(v.score && { score: v.score, scoreLate: lateFor(matchesById.get(v.matchId), savedAt) }),
+        // Ölçüm kaydı: bu sayfanın cevapları CSV verisiyle kurulan prompttan gelir.
+        promptKind: 'csv',
       }
     })
     await aiRepo.saveVerdicts(verdicts)

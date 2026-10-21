@@ -22,6 +22,20 @@ export interface Match {
   edited?: boolean
   /** Maç ilk "tamamlandı" kaydedilirken alınan skor olasılıkları; sonradan değişmez */
   scoreSnapshot?: ScoreSnapshot
+  /**
+   * Aynı maç CSV ile yeniden yüklenip oranları değiştiğinde önceki oranlar (eskiden yeniye, en çok 3).
+   * Yalnızca sonradan ölçüm içindir (admin verisi): analize, üye paketine, görsellere ve AI prompt'una girmez.
+   */
+  oddsHistory?: OddsHistoryEntry[]
+}
+
+/** Geçmişi tutulan oranlar (ondalık oran; CSV'de yoksa null) */
+export type OddsKey = 'home' | 'draw' | 'away' | 'over25' | 'under25' | 'bttsYes' | 'bttsNo' | 'ht05Over' | 'ht05Under'
+
+export interface OddsHistoryEntry {
+  /** Bu oranları getiren CSV'nin yüklenme anı (ISO, UTC); bilinmiyorsa null */
+  at: string | null
+  odds: Record<OddsKey, number | null>
 }
 
 export interface ScoreLine {
@@ -159,7 +173,14 @@ export interface AiVerdict {
   score?: ScoreLine
   /** Tahmin maç başladıktan sonra kaydedildi: gösterilir ama ölçüme girmez */
   scoreLate?: boolean
+  /**
+   * Cevabın geldiği prompt türü: 'csv' (AI ANALİZİ, CSV verisiyle), 'bagimsiz' (CSV'siz ham veri promptu).
+   * Yalnızca sonradan ölçüm içindir. Alan yoksa bilinmiyor: bu özellikten önce kaydedilmiştir, sonradan doldurulmaz.
+   */
+  promptKind?: AiPromptKind
 }
+
+export type AiPromptKind = 'csv' | 'bagimsiz'
 
 /**
  * "AI öneri güveni" satırı üye paketiyle gönderilen önerinin kaydı (maç + kategori başına bir tane). Yalnızca

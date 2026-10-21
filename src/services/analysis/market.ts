@@ -37,7 +37,7 @@ export const hasMarket = (categoryId: CategoryId): boolean => categoryId in MARK
 export const MARKET_CATEGORY_IDS = Object.keys(MARKET_ODDS) as CategoryId[]
 
 /** Eşlenmemiş kolonlar maç kaydında CSV'deki adıyla saklanır; ad küçük farklarla gelirse de bulunur. */
-const rawStat = (match: Match, header: string): number | null => {
+export const rawStat = (match: Match, header: string): number | null => {
   let value = match.stats[header]
   if (value === undefined) {
     const wanted = normalizeHeader(header)

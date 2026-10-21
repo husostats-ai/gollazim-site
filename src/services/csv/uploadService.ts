@@ -2,6 +2,7 @@ import type { FieldKey } from '../../config/columnAliases'
 import type { Upload } from '../../types'
 import { matchesRepo, uploadsRepo } from '../data'
 import { importCsv } from './importer'
+import { nextOddsHistory } from './oddsHistory'
 
 export interface UploadSummary {
   upload: Upload
@@ -24,12 +25,23 @@ export async function uploadCsvFile(file: File): Promise<UploadSummary> {
   const uploadId = crypto.randomUUID()
   const { matches, warnings, missingFields } = importCsv(await file.text(), uploadId)
 
-  const existing = await matchesRepo.getMany(matches.map((m) => m.id))
+  const [existing, uploads] = await Promise.all([matchesRepo.getMany(matches.map((m) => m.id)), uploadsRepo.list()])
   const editedIds = new Set(existing.filter((m) => m.edited).map((m) => m.id))
   // CSV yeniden yüklense de maçın kayıtlı skor anlık görüntüsü korunur.
   const snapshots = new Map(existing.filter((m) => m.scoreSnapshot).map((m) => [m.id, m.scoreSnapshot!]))
+  // Ölçüm kaydı (davranışı etkilemez): oranlar değiştiyse öncekiler, önceki yüklemenin anıyla saklanır.
+  const previousById = new Map(existing.map((m) => [m.id, m]))
+  const uploadedAt = new Map(uploads.map((u) => [u.id, u.uploadedAt]))
+  const withHistory = (m: (typeof matches)[number]) => {
+    const previous = previousById.get(m.id)
+    const history = previous && nextOddsHistory(previous, m, uploadedAt.get(previous.uploadId) ?? null)
+    return history ? { ...m, oddsHistory: history } : m
+  }
   await matchesRepo.upsertMany(
-    matches.filter((m) => !editedIds.has(m.id)).map((m) => (snapshots.has(m.id) ? { ...m, scoreSnapshot: snapshots.get(m.id) } : m)),
+    matches
+      .filter((m) => !editedIds.has(m.id))
+      .map(withHistory)
+      .map((m) => (snapshots.has(m.id) ? { ...m, scoreSnapshot: snapshots.get(m.id) } : m)),
   )
   await Promise.all([...editedIds].map((id) => matchesRepo.update(id, { uploadId })))
   const upload: Upload = {

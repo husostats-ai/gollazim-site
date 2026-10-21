@@ -30,7 +30,7 @@ const FORBIDDEN = [
   ['ham veri alanı', new RegExp('Odds' + '_|odds' + 'Home|Pre-Match' + ' xG|Footy' + 'Stats|home' + 'Xg|avg' + 'Goals')],
   ['admin kaydı alanı', new RegExp('ai' + 'Verdicts|score' + 'Snapshot|shared' + 'Picks|team' + 'Aliases')],
   // Yalnızca ölçüm için tutulan admin kayıt alanları (dondurulan öneri)
-  ['admin ölçüm kaydı alanı', new RegExp('sampleAt' + 'Freeze|rankAt' + 'Freeze|statsUploaded' + 'At|app' + 'Commit')],
+  ['admin ölçüm kaydı alanı', new RegExp('sampleAt' + 'Freeze|rankAt' + 'Freeze|statsUploaded' + 'At|app' + 'Commit|odds' + 'History|prompt' + 'Kind')],
   ['admin sayfası metni', new RegExp('SKOR Gİ' + 'RİŞİ|AI ANA' + 'LİZİ|Veriyi dışa' + ' aktar|CSV yük' + 'le|ÜYE SAYFASI: ÜYE' + 'LER|Dağıtım list' + 'esi|Şifreyi yen' + 'ile|Üye anahtar yed' + 'eği')],
   ['admin sayfası öğesi', new RegExp('csv-in' + 'put|publish-con' + 'firm|member-add-user' + 'name|keybackup-' + 'pass|score-fo' + 'rm')],
   ['admin sitesinin adresi', new RegExp('gollazim-si' + 'te')],

@@ -106,7 +106,7 @@ describe('üye sitesi çıktı denetimi', () => {
     expect(problems(inScript('"Odds' + '_BTTS_Yes"'))).toContain('ham veri alanı')
     expect(problems(inScript('stat(m,"home' + 'Xg")'))).toContain('ham veri alanı')
     expect(problems(inScript('db.ai' + 'Verdicts.toArray()'))).toContain('admin kaydı alanı')
-    for (const key of ['sampleAt' + 'Freeze', 'rankAt' + 'Freeze', 'statsUploaded' + 'At', 'app' + 'Commit']) expect(problems(inScript(`p.${key}`)), key).toContain('admin ölçüm kaydı alanı')
+    for (const key of ['sampleAt' + 'Freeze', 'rankAt' + 'Freeze', 'statsUploaded' + 'At', 'app' + 'Commit', 'odds' + 'History', 'prompt' + 'Kind']) expect(problems(inScript(`p.${key}`)), key).toContain('admin ölçüm kaydı alanı')
   })
 
   it('gizli anahtar, yedek, paket ve ham CSV izi reddedilir', () => {
