@@ -24,6 +24,14 @@ jobs:
     # Sürüm sabit: "ubuntu-latest" etiketinin başka bir sürüme geçmesi bu iş akışını etkilemez.
     runs-on: ubuntu-26.04
     steps:
+      # Admin yalnızca main dalından yayınlanır: başka dal ya da etiketten başlatılırsa hiçbir şey derlenmeden durur.
+      - name: Yalnızca main dalından yayın
+        if: github.ref != 'refs/heads/main'
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          echo "::error::Admin yalnızca main dalından yayınlanır; bu çalıştırma $REF için başlatıldı. Actions'ta 'Use workflow from: main' seçin ya da: gh workflow run deploy.yml --ref main"
+          exit 1
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:

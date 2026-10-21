@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import AdminBehindMain from '../components/AdminBehindMain'
 import AdminPublishStatus from '../components/AdminPublishStatus'
 import AdminTabBar, { adminPanelId, adminTabId } from '../components/AdminTabBar'
 import BackupPanel from '../components/BackupPanel'
@@ -86,6 +87,7 @@ export default function AdminPage() {
       <PageTitle title="ADMİN" />
       <AdminTabBar active={active} badges={badges} onSelect={select} />
       <BackupReminder status={daily} />
+      <AdminBehindMain />
       <MemberKeyReminder onOpen={() => openCard('uyeler', 'member-admin-keybackup')} />
       {memberData && <AdminPublishStatus publications={memberData.publications} siteStatus={siteStatus} onOpen={() => openCard('uyeler', 'member-admin-publish')} />}
       {/* Dört sekmenin içeriği de açık kalır, aktif olmayan gizlenir: sekme değiştirince
