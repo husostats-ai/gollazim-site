@@ -1,4 +1,5 @@
 import { leagueFlag } from './countryFlag'
+import LeagueEmblem from '../components/LeagueEmblem'
 
 /** Kıta, uluslararası ve tanınmayan bölgeler için nötr küre; rengi kartın soluk metin rengidir */
 const GLOBE_SVG =
@@ -6,10 +7,11 @@ const GLOBE_SVG =
 
 const dataUri = (svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`
 
-/** Lig satırının başındaki küçük bayrak (ya da nötr küre) */
+/** Lig satırının başındaki küçük bayrak (ya da Avrupa kupası rozeti, ya da nötr küre); hepsi 20 px genişliğinde kutuda */
 export default function CountryFlag({ league }: { league: string }) {
   const flag = leagueFlag(league)
   if (!flag) return null
+  if (flag.kind === 'emblem') return <LeagueEmblem league={league} testId="member-flag" />
   const isFlag = flag.kind === 'flag'
   return (
     <img

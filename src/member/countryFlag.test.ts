@@ -1,4 +1,7 @@
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import CountryFlag from './CountryFlag'
 import { countryOf, leagueFlag } from './countryFlag'
 import { FLAG_SVGS } from './flags'
 
@@ -21,6 +24,24 @@ describe('lig satırı bayrağı', () => {
     expect(leagueFlag('International · Friendlies')).toEqual({ kind: 'globe', name: 'Uluslararası' })
     expect(leagueFlag('Atlantis · Lig')).toEqual({ kind: 'globe', name: 'Atlantis' })
     expect(leagueFlag('Eredivisie')).toBeNull()
+  })
+
+  it('Avrupa kupaları küre yerine rozet gösterir; logosu olmayan kıta turnuvaları küreye düşer', () => {
+    expect(leagueFlag('Europe · UEFA Champions League')).toMatchObject({ kind: 'emblem', code: 'ucl' })
+    expect(leagueFlag('Europe · UEFA Europa League')).toMatchObject({ kind: 'emblem', code: 'uel' })
+    expect(leagueFlag('Europe · UEFA Europa Conference League')).toMatchObject({ kind: 'emblem', code: 'uecl' })
+    expect(leagueFlag('International · UEFA Nations League')).toEqual({ kind: 'globe', name: 'Uluslararası' })
+    expect(leagueFlag('Asia · AFC Cup')).toEqual({ kind: 'globe', name: 'Asya' })
+    expect(leagueFlag('Europe · UEFA Champions League Qualification')).toEqual({ kind: 'globe', name: 'Avrupa' })
+  })
+
+  it('üye kartı: rozet, bayrak ve küre aynı test kimliğiyle ve 20 px genişliğinde kutuda çizilir', () => {
+    const html = (league: string) => renderToStaticMarkup(createElement(CountryFlag, { league }))
+    expect(html('Europe · UEFA Europa League')).toMatch(/data-testid="member-flag" data-flag="uel"/)
+    expect(html('Europe · UEFA Europa League')).toContain('src="data:image/png;base64,')
+    expect(html('Europe · UEFA Youth League')).toContain('data-flag="globe"')
+    expect(html('Germany · Bundesliga')).toContain('data-flag="de"')
+    for (const league of ['Europe · UEFA Europa League', 'Europe · UEFA Youth League', 'Germany · Bundesliga']) expect(html(league), league).toContain('width="20"')
   })
 
   it('her bayrak geçerli bir SVG ve kimlik çakışması yaratacak id içermez', () => {

@@ -123,6 +123,15 @@ describe('üye sitesi çıktı denetimi', () => {
     expect(checkMemberBuild(site(inScript('var axgb=1'))).ok).toBe(true)
   })
 
+  it('pakete gömülü Avrupa kupası rozetlerinin base64 metni yasak terim içermez (scripts/turnuva-amblem.py)', () => {
+    for (const name of ['ucl', 'uel', 'uecl']) {
+      const uri = `data:image/png;base64,${readFileSync(`src/components/emblems/${name}.png`).toString('base64')}`
+      expect(checkMemberBuild(site(inScript(`var e=${JSON.stringify(uri)}`))).problems, name).toEqual([])
+    }
+    // Denetim base64 içinde de arar: yasak bir parça gömülü metinde geçerse reddedilir.
+    expect(problems(inScript('var e="data:image/png;base64,iVBORw0KGgoCsVabc"'))).toContain('yasak terim "csv"')
+  })
+
   it('piyasa yüzdesi: yalnızca onaylı etiket ve not, tırnak içinde birebir aynı hâlleriyle geçebilir', () => {
     // İzinli metinler üye kartındaki sabitlerle birebir aynı (biri değişirse bu test kırılır).
     expect(allowedPhrases).toEqual([MEMBER_MARKET_LABEL, MEMBER_MARKET_NOTE])

@@ -20,3 +20,6 @@ gollazim-uye-*.json
 paket.json
 gollazim-uye-*
 dagitim*
+
+# Avrupa kupası logolarının orijinalleri (UEFA markaları) repoya girmez; rozetler scripts/turnuva-amblem.py ile üretilir
+logo-yeni/

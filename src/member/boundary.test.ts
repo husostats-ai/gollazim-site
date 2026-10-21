@@ -24,6 +24,13 @@ function runtimeImports(file: string): string[] {
 
 function resolve(from: string, specifier: string): string | null {
   if (!specifier.startsWith('.')) return null // paketler (react vb.)
+  // Pakete gömülen görsel (data: adresi): dosyanın kendisi izinli listede yer alır.
+  const asset = /^(.+\.png)\?inline$/.exec(specifier)
+  if (asset) {
+    const file = normalize(join(dirname(from), asset[1]))
+    if (existsSync(file)) return file
+    throw new Error(`Çözülemeyen içe aktarma: ${specifier} (${from})`)
+  }
   const base = normalize(join(dirname(from), specifier))
   for (const candidate of [base, `${base}.ts`, `${base}.tsx`, join(base, 'index.ts')]) if (existsSync(candidate) && /\.(tsx?|css)$/.test(candidate)) return candidate
   throw new Error(`Çözülemeyen içe aktarma: ${specifier} (${from})`)
@@ -37,6 +44,7 @@ function reachable(entries: string[]): string[] {
     const file = queue.pop()!
     if (seen.has(file) || file.endsWith('.css')) continue
     seen.add(file)
+    if (file.endsWith('.png')) continue
     for (const specifier of runtimeImports(file)) {
       const target = resolve(file, specifier)
       if (target) queue.push(target)
@@ -85,6 +93,11 @@ const ALLOWED = [
   'src/utils/format.ts',
   // Uygulamayla ortak, yalnızca çizim yapan bileşenler
   'src/components/EmptyState.tsx',
+  'src/components/LeagueEmblem.tsx',
+  'src/components/leagueEmblem.ts',
+  'src/components/emblems/ucl.png',
+  'src/components/emblems/uecl.png',
+  'src/components/emblems/uel.png',
   'src/components/PageTitle.tsx',
   'src/components/TeamForm.tsx',
   'src/components/stats/chartTheme.ts',

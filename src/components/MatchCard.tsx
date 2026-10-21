@@ -9,6 +9,8 @@ import { formatScore } from '../utils/score'
 import AiVerdictBadges from './ai/AiVerdictBadges'
 import CautiousBadge from './CautiousBadge'
 import HighlightButton from './HighlightButton'
+import LeagueEmblem from './LeagueEmblem'
+import { leagueEmblem } from './leagueEmblem'
 import ModelSourceLine from './ModelSourceLine'
 import NoteBadges from './NoteBadges'
 import OutcomeBadge from './OutcomeBadge'
@@ -51,7 +53,16 @@ export default function MatchCard({ prediction, rank, sortMode, storySelection, 
           {rank}
         </span>
         {match.time && <span className="font-semibold text-white">{match.time}</span>}
-        {match.league && <span className="min-w-0 truncate">{match.league}</span>}
+        {/* Yalnızca Avrupa kupalarında rozet; bayrak ve küre admin kartında yoktur. */}
+        {match.league &&
+          (leagueEmblem(match.league) ? (
+            <span className="flex min-w-0 items-center gap-1.5">
+              <LeagueEmblem league={match.league} testId="league-emblem" />
+              <span className="min-w-0 truncate">{match.league}</span>
+            </span>
+          ) : (
+            <span className="min-w-0 truncate">{match.league}</span>
+          ))}
         {storySelection && (
           // Negatif kenar boşluğu dokunma alanını kartın yüksekliğini değiştirmeden büyütür.
           <label className="-my-2.5 ml-auto flex shrink-0 cursor-pointer items-center gap-1.5 py-2.5 pl-2 font-semibold whitespace-nowrap text-white">
