@@ -133,4 +133,5 @@ it.runIf(process.env.REF_BACKUP)('referans dökümü', () => {
   const manifest =
     [`${sha256(raw)}  (girdi) ${process.env.REF_BACKUP!.split('/').pop()}`, ...Object.entries(files).map(([name, text]) => `${sha256(text)}  ${name}`)].join('\n') + '\n'
   writeFileSync(join(outDir, 'ozetler.sha256'), manifest)
-})
+  // Gerçek yedeğin tüm analizi ve dökümü; varsayılan 5 sn yetmez.
+}, 300_000)

@@ -367,6 +367,9 @@ try {
             const record = { id: `${day}|${match.id}|over25`, date: day, matchId: match.id, categoryId: 'over25', addedAt: new Date().toISOString(), home: match.home, away: match.away, time: match.time, percent: 87, reliability: 'low' }
             // Seri takibi adımı da aynı yolla yazılır (aynı maç, sıra 1).
             const tx = db.transaction(['highlights', 'streakSteps'], 'readwrite')
+            // Gerçek yedekteki öne çıkanlar ve seri adımları silinir: deneme tam olarak bu tek kaydı bekler.
+            tx.objectStore('highlights').clear()
+            tx.objectStore('streakSteps').clear()
             tx.objectStore('highlights').put(record)
             tx.objectStore('streakSteps').put({ id: `${match.id}|over25`, matchId: match.id, categoryId: 'over25', seq: 1, addedAt: new Date().toISOString(), date: day, home: match.home, away: match.away, time: match.time })
             tx.oncomplete = () => {

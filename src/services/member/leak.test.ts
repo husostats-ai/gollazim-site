@@ -756,7 +756,8 @@ describe.runIf(process.env.UYE_BACKUP)('yayın paketi: gerçek yedekle', () => {
       writeFileSync(process.env.UYE_OUT, JSON.stringify(real, null, 1) + '\n')
       writeFileSync(`${process.env.UYE_OUT}.boyut.txt`, `düz JSON: ${Buffer.byteLength(realText)} bayt\ngünler: ${dates.join(', ')}\nlistelenen öneri: ${real.days.map((x) => x.lists.reduce((s, l) => s + l.items.length, 0)).join(' + ')}\nmaç: ${real.days.map((x) => x.matches.length).join(' + ')}\n`)
     }
-  })
+    // Gerçek yedekte binlerce ham değer taranır; varsayılan 5 sn yetmez.
+  }, 300_000)
 })
 
 // PREVIOUS_DAY yalnızca girdide ikinci günün bulunduğunu belgelemek için kullanılır.
