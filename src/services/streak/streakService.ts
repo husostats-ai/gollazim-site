@@ -1,6 +1,6 @@
 import type { StreakStep } from '../../types'
 import { matchesRepo, picksRepo, resultsRepo, streakRepo } from '../data'
-import { addStreakStep, buildStreak, deleteStreakStep, observeOutcomes, removePendingStep, undoRemoval, type StreakCandidate, type StreakRefusal, type StreakView } from './streak'
+import { addStreakStep, buildStreak, deleteStreakStep, observeOutcomes, removePendingStep, undoRemoval, withdrawPendingStep, type StreakCandidate, type StreakRefusal, type StreakView } from './streak'
 import { factsFrom } from './streakFacts'
 
 // Seri takibinin veri deposuyla çalışan kısmı: adımları ve sonuçlarının okunduğu kayıtları
@@ -46,8 +46,14 @@ export async function removePendingFromStreak(id: string): Promise<StreakRefusal
   return result.ok ? null : result.reason
 }
 
+export async function withdrawFromStreak(id: string): Promise<StreakRefusal | null> {
+  const result = withdrawPendingStep(await loadStreak(), id, new Date())
+  if (result.ok) await streakRepo.putMany([result.record])
+  return result.ok ? null : result.reason
+}
+
 export async function undoStreakRemoval(id: string): Promise<StreakRefusal | null> {
-  const result = undoRemoval(await loadStreak(), id)
+  const result = undoRemoval(await loadStreak(), id, new Date())
   if (result.ok) await streakRepo.putMany([result.record])
   return result.ok ? null : result.reason
 }

@@ -13,6 +13,7 @@ export const STREAK_STATE_LABELS: Record<StepState, string> = {
   pending: 'Bekliyor',
   unplayed: 'Oynanmadı',
   void: 'Değerlendirilemedi',
+  withdrawn: 'Geri çekildi',
 }
 
 export const STREAK_REFUSAL_TEXTS: Record<StreakRefusal, string> = {
@@ -27,6 +28,7 @@ export const STREAK_REFUSAL_TEXTS: Record<StreakRefusal, string> = {
   'not-removed': 'Bu adım kaldırılmamış.',
   'not-last': 'Yalnızca son adımın kaldırılması geri alınabilir.',
   'removal-published': 'Kaldırma üyelere yayınlandı; geri alınamaz.',
+  'not-published': 'Bu adım yayınlanmadı; “Geri al” ile silinebilir.',
 }
 
 export const STREAK_BUTTON_TEXTS = {
@@ -64,6 +66,9 @@ export const STREAK_PANEL_TEXTS = {
   removeVoidConfirm: 'Bu adım seriden kaldırılacak. Seri bozulmaz; adım kayıtta “Değerlendirilemedi” olarak kalır. Emin misiniz?',
   removeHint: 'Maç oynanmayacaksa: Skor Girişi’nde “Ertelendi” ya da “İptal” olarak işaretleyin; ardından adım buradan kaldırılabilir.',
   voidHint: 'Maç tamamlandı ama bu kategori için gereken veri girilmedi. Veriyi Skor Girişi’nde girin ya da adımı kaldırın.',
+  withdraw: 'Seriden çıkar',
+  withdrawConfirm:
+    'Bu adım üyelere yayınlandı; silinmez. Seriden çıkarılıp kayıtta ve üye sayfasında “Geri çekildi” olarak kalacak. Seri bozulmaz, adım sayılmaz. Emin misiniz?',
   delete: 'Geri al',
   undo: 'Kaldırmayı geri al',
   revised: 'düzeltildi',

@@ -103,6 +103,8 @@ export const MEMBER_STREAK_LIMITS = { steps: 100, past: 30 } as const
 export const MEMBER_STREAK_LOW_SAMPLE = 20
 /** Aktif serideki adımın durumları: tutmayan adım seriyi bitirdiği için aktif seride bulunmaz */
 const STREAK_STEP_STATES = ['won', 'pending', 'unplayed', 'void']
+/** Sürüm 12: geri çekilen adım */
+const STREAK_STEP_STATES_V12 = [...STREAK_STEP_STATES, 'withdrawn']
 /** Bir günde pakete girebilecek en fazla öne çıkan seçim */
 const MAX_HIGHLIGHTS = 60
 const MAX_NAME = 120
@@ -350,7 +352,7 @@ function day(value: unknown, path: string, version: number): void {
  * numarası yoktur; sayılar birbiriyle ve listelenen adımlarla tutarlıdır (her biten seri tek bir
  * "tutmadı" ile biter, bu yüzden tutmayan sayısı biten seri sayısına eşittir).
  */
-function streak(value: unknown, path: string): void {
+function streak(value: unknown, path: string, version: number): void {
   const s = object(value, path, MEMBER_KEYS.streak)
   const status = oneOf(s.status, `${path}.status`, ['active', 'idle'])
   let previous: number | null = null
@@ -365,7 +367,7 @@ function streak(value: unknown, path: string): void {
     nullable(step.league, (v) => text(v, `${p}.league`, MAX_NAME))
     text(step.time, `${p}.time`, 5, TIME)
     categoryKey(step.categoryId, `${p}.categoryId`)
-    const state = oneOf(step.state, `${p}.state`, STREAK_STEP_STATES)
+    const state = oneOf(step.state, `${p}.state`, version >= 12 ? STREAK_STEP_STATES_V12 : STREAK_STEP_STATES)
     const counted = state === 'won' || state === 'pending'
     if (!counted) {
       if (step.step !== null) fail(`${p}.step`, 'seriden kaldırılan adımın numarası olamaz')
@@ -409,7 +411,7 @@ function streak(value: unknown, path: string): void {
 /** Paketi şemaya karşı denetler; uymuyorsa MemberPayloadError fırlatır. */
 export function assertMemberPayload(value: unknown): asserts value is MemberPayload {
   const version = typeof value === 'object' && value !== null ? (value as Obj).v : undefined
-  if (version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8 && version !== 9 && version !== 10 && version !== 11) fail('paket.v', 'desteklenmeyen paket sürümü')
+  if (version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8 && version !== 9 && version !== 10 && version !== 11 && version !== 12) fail('paket.v', 'desteklenmeyen paket sürümü')
   const p = object(value, 'paket', (version as number) >= 8 ? MEMBER_KEYS.payload : MEMBER_KEYS.payloadV7)
   integer(p.n, 'paket.n', 1, COUNT_MAX)
   text(p.publishedAt, 'paket.publishedAt', 24, ISO)
@@ -421,5 +423,5 @@ export function assertMemberPayload(value: unknown): asserts value is MemberPayl
   const root = object(p.statistics, 'paket.statistics', MEMBER_KEYS.statsRoot)
   stats(root.all, 'paket.statistics.all', p.v as number)
   stats(root.shared, 'paket.statistics.shared', p.v as number)
-  if ((p.v as number) >= 8) streak(p.streak, 'paket.streak')
+  if ((p.v as number) >= 8) streak(p.streak, 'paket.streak', p.v as number)
 }

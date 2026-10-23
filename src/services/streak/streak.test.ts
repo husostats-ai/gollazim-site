@@ -20,6 +20,8 @@ import {
   syncStepSchedule,
   undoBlock,
   undoRemoval,
+  withdrawalBlock,
+  withdrawPendingStep,
   type StreakCandidate,
   type StreakView,
 } from './streak'
@@ -431,18 +433,18 @@ describe('bekleyen adımı kaldır (oynanmadı)', () => {
   it('geri alma: yalnızca son adımsa ve kaldırma yayınlanmadıysa', () => {
     const world = pending('cancelled')
     const id = idOfStep(world)
-    expect(undoRemoval(world.view(), id)).toEqual({ ok: false, reason: 'not-removed' })
+    expect(undoRemoval(world.view(), id, AFTER)).toEqual({ ok: false, reason: 'not-removed' })
     const removed = removePendingStep(world.view(), id, AFTER)
     if (!removed.ok) throw new Error(removed.reason)
     world.put([removed.record])
-    expect(undoBlock(world.view(), world.steps.find((s) => s.id === id)!)).toBeNull()
-    const undone = undoRemoval(world.view(), id)
+    expect(undoBlock(world.view(), world.steps.find((s) => s.id === id)!, AFTER)).toBeNull()
+    const undone = undoRemoval(world.view(), id, AFTER)
     expect(undone).toMatchObject({ ok: true })
     expect(undone.ok && 'removed' in undone.record).toBe(false)
     // Kaldırma yayınlandıysa geri alınamaz.
     const published = markStreakPublished(world.steps, [id], '2026-10-08T22:00:00.000Z')
     world.put(published)
-    expect(undoRemoval(world.view(), id)).toEqual({ ok: false, reason: 'removal-published' })
+    expect(undoRemoval(world.view(), id, AFTER)).toEqual({ ok: false, reason: 'removal-published' })
     // Ardından başka adım geldiyse geri alınamaz.
     const other = pending('cancelled')
     const otherId = idOfStep(other)
@@ -450,7 +452,98 @@ describe('bekleyen adımı kaldır (oynanmadı)', () => {
     if (!gone.ok) throw new Error(gone.reason)
     other.put([gone.record])
     other.add('Sonraki')
-    expect(undoRemoval(other.view(), otherId)).toEqual({ ok: false, reason: 'not-last' })
+    expect(undoRemoval(other.view(), otherId, AFTER)).toEqual({ ok: false, reason: 'not-last' })
+  })
+})
+
+describe('yayınlanmış bekleyen adımı seriden çıkar (geri çekildi)', () => {
+  /** Serinin `won` tutan adımından sonra bekleyen ve yayınlanmış bir adım */
+  const published = (won = 'WW') => {
+    const world = new World()
+    if (won) world.play(won)
+    world.add('Yayinda')
+    const id = world.steps.find((s) => s.home === 'Yayinda')!.id
+    world.put(markStreakPublished(world.steps, [id], '2026-10-08T10:00:00.000Z'))
+    return { world, id }
+  }
+  const stepOf = (world: World, id: string) => world.view().steps.find((s) => s.record.id === id)!
+
+  it('yalnızca yayınlanmış, bekleyen ve başlamamış adım; yayınlanmamış adım için "Geri al" vardır', () => {
+    const { world, id } = published()
+    expect(withdrawalBlock(stepOf(world, id), BEFORE)).toBeNull()
+    expect(withdrawPendingStep(world.view(), id, AT)).toEqual({ ok: false, reason: 'locked' })
+    expect(withdrawPendingStep(world.view(), 'yok', BEFORE)).toEqual({ ok: false, reason: 'missing' })
+    const fresh = new World()
+    fresh.add('Taslak')
+    expect(withdrawPendingStep(fresh.view(), fresh.steps[0].id, BEFORE)).toEqual({ ok: false, reason: 'not-published' })
+    // Sonuçlanmış adım geri çekilemez.
+    world.score('Yayinda', true)
+    expect(withdrawPendingStep(world.view(), id, BEFORE)).toEqual({ ok: false, reason: 'not-pending' })
+  })
+
+  it('ara adım: kayıtta "geri çekildi" kalır; seri bozulmaz, sayılar değişmez, numara almaz, tıkanma çözülür', () => {
+    const { world, id } = published('WWW')
+    const before = world.view().totals
+    expect(world.view().blocker?.record.id).toBe(id)
+    const result = withdrawPendingStep(world.view(), id, BEFORE)
+    if (!result.ok) throw new Error(result.reason)
+    expect(result.record.removed).toEqual({ at: BEFORE.toISOString(), reason: 'withdrawn' })
+    expect(result.record.publishedAt).toBe('2026-10-08T10:00:00.000Z')
+    world.put([result.record])
+    const view = world.view()
+    expect(states(view)).toEqual(['won', 'won', 'won', 'withdrawn'])
+    expect(view.steps.map((s) => s.step)).toEqual([1, 2, 3, null])
+    expect(view.totals).toEqual(before)
+    expect(view.blocker).toBeNull()
+    // Sonraki gönderim 4. adım olur; skor girilse de geri çekilen adım geri çekilmiş kalır.
+    expect(world.add('Sonraki').ok).toBe(true)
+    world.score('Yayinda', false)
+    expect(world.view().steps.map((s) => [s.state, s.step])).toEqual([['won', 1], ['won', 2], ['won', 3], ['withdrawn', null], ['pending', 4]])
+    expect(world.view().past).toEqual([])
+  })
+
+  it('serinin ilk adımı: seri silinmez, başlamış da sayılmaz; sonraki gönderim adım 1 olur', () => {
+    const { world, id } = published('WL')
+    const before = world.view().totals
+    const result = withdrawPendingStep(world.view(), id, BEFORE)
+    if (!result.ok) throw new Error(result.reason)
+    world.put([result.record])
+    const view = world.view()
+    expect(view.steps).toHaveLength(3)
+    expect(view.current?.steps.map((s) => [s.state, s.step])).toEqual([['withdrawn', null]])
+    expect(view.totals).toEqual(before)
+    expect(view.totals.current).toBe(0)
+    world.add('Yeni')
+    expect(world.view().current?.steps.map((s) => s.step)).toEqual([null, 1])
+  })
+
+  it('geri alma yalnızca maç başlamadan: sonuç belli olduktan sonra adım seriye dönemez', () => {
+    const { world, id } = published()
+    const result = withdrawPendingStep(world.view(), id, BEFORE)
+    if (!result.ok) throw new Error(result.reason)
+    world.put([result.record])
+    const record = world.steps.find((s) => s.id === id)!
+    expect(undoBlock(world.view(), record, AT)).toBe('locked')
+    expect(undoRemoval(world.view(), id, AFTER)).toEqual({ ok: false, reason: 'locked' })
+    const undone = undoRemoval(world.view(), id, BEFORE)
+    if (!undone.ok) throw new Error(undone.reason)
+    expect(undone.record.removed).toBeUndefined()
+    expect(undone.record.publishedAt).toBe('2026-10-08T10:00:00.000Z')
+    // Geri çekilme yayınlandıysa geri alınamaz.
+    world.put(markStreakPublished(world.steps, [id], '2026-10-08T12:00:00.000Z'))
+    expect(undoRemoval(world.view(), id, BEFORE)).toEqual({ ok: false, reason: 'removal-published' })
+  })
+
+  it('yedek: geri çekilen adım dışa → içe aktarımda korunur', () => {
+    const { world, id } = published()
+    const result = withdrawPendingStep(world.view(), id, BEFORE)
+    if (!result.ok) throw new Error(result.reason)
+    world.put([result.record])
+    const content = { uploads: [], matches: [], results: [], picks: [], thresholds: {} as never }
+    const backup = JSON.parse(JSON.stringify(assembleBackup({ ...content, streakSteps: world.steps }, new Date('2026-10-08T18:00:00.000Z'))))
+    const back = normalizeStreakSteps(backup.streakSteps, isCategoryId)
+    expect(back).toEqual(world.steps)
+    expect(back.find((s) => s.id === id)!.removed).toEqual({ at: BEFORE.toISOString(), reason: 'withdrawn' })
   })
 })
 
@@ -511,8 +604,8 @@ describe('dil', () => {
   const stringsOf = (value: unknown): string[] =>
     typeof value === 'string' ? [value] : typeof value === 'function' ? [String((value as (n: number) => string)(3))] : typeof value === 'object' && value !== null ? Object.values(value).flatMap(stringsOf) : []
 
-  it('etiketler: Tuttu / Tutmadı / Bekliyor / Oynanmadı (+ Değerlendirilemedi); admin ve üye aynı', () => {
-    expect(STREAK_STATE_LABELS).toEqual({ won: 'Tuttu', lost: 'Tutmadı', pending: 'Bekliyor', unplayed: 'Oynanmadı', void: 'Değerlendirilemedi' })
+  it('etiketler: Tuttu / Tutmadı / Bekliyor / Oynanmadı (+ Değerlendirilemedi, Geri çekildi); admin ve üye aynı', () => {
+    expect(STREAK_STATE_LABELS).toEqual({ won: 'Tuttu', lost: 'Tutmadı', pending: 'Bekliyor', unplayed: 'Oynanmadı', void: 'Değerlendirilemedi', withdrawn: 'Geri çekildi' })
     expect(Object.fromEntries(Object.entries(MEMBER_STREAK_STATES).map(([state, { label }]) => [state, label]))).toEqual(STREAK_STATE_LABELS)
     expect(STREAK_TITLE).toBe('SERİ TAKİBİ')
     expect(MEMBER_STREAK_TEXTS).toMatchObject({ tab: 'SERİ TAKİBİ', title: 'Seri Takibi', trial: 'deneme', mean: 'Seri başına tutan (ort.)' })

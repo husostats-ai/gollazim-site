@@ -125,6 +125,7 @@ export const MEMBER_STREAK_STATES: Record<MemberStreakState, { mark: string; lab
   pending: { mark: '···', label: 'Bekliyor' },
   unplayed: { mark: '—', label: 'Oynanmadı' },
   void: { mark: '—', label: 'Değerlendirilemedi' },
+  withdrawn: { mark: '—', label: 'Geri çekildi' },
 }
 
 /** Skoru olmayan maç durumlarının etiketi; tamamlanan maçta skor gösterilir */

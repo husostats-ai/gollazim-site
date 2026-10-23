@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { getCategory } from '../config/categories'
-import { deletionBlock, removalReasonOf, STREAK_LOW_SAMPLE_LIMIT, undoBlock, type ResolvedStep, type StepState, type StreakRun } from '../services/streak/streak'
+import { deletionBlock, removalReasonOf, STREAK_LOW_SAMPLE_LIMIT, undoBlock, withdrawalBlock, type ResolvedStep, type StepState, type StreakRun } from '../services/streak/streak'
 import { STREAK_NOTE, STREAK_PANEL_TEXTS as T, STREAK_REFUSAL_TEXTS, STREAK_STATE_LABELS, STREAK_TITLE } from '../services/streak/texts'
 import { useApp } from '../state/AppContext'
 import { useNow } from '../state/useNow'
@@ -13,6 +13,7 @@ const STATE_TONE: Record<StepState, string> = {
   pending: 'border-navy-500 bg-navy-600 text-muted',
   unplayed: 'border-navy-500 bg-navy-600 text-muted',
   void: 'border-navy-500 bg-navy-600 text-muted',
+  withdrawn: 'border-navy-500 bg-navy-600 text-muted',
 }
 const PILL = 'rounded-full border px-2 py-0.5 text-[11px] font-bold whitespace-nowrap'
 const ACTION = `${PILL} border-navy-500 hover:bg-navy-600`
@@ -32,10 +33,10 @@ const meanText = (mean: number | null): string => (mean === null ? '—' : mean.
 
 /**
  * "Seri takibi": aktif seri, sayılar ve geçmiş seriler. Sonuç, dondurulmuş önerinin sonucudur;
- * burada yeni hesap yapılmaz. Bekleyen adımın kaldırılması (oynanmadı) yalnızca buradan yapılır.
+ * burada yeni hesap yapılmaz. Bekleyen adımın kaldırılması (oynanmadı) ve geri çekilmesi yalnızca buradan yapılır.
  */
 export default function StreakPanel() {
-  const { streak, takeBackFromStreak, removePendingFromStreak, undoStreakRemoval } = useApp()
+  const { streak, takeBackFromStreak, removePendingFromStreak, withdrawFromStreak, undoStreakRemoval } = useApp()
   const now = useNow()
   const [refusal, setRefusal] = useState<string | null>(null)
   if (!streak) return null
@@ -46,7 +47,9 @@ export default function StreakPanel() {
     const { record } = step
     const removal = removalReasonOf(step)
     const canDelete = step.state === 'pending' && deletionBlock(record, now) === null
-    const canUndo = undoBlock(streak, record) === null
+    // Yayınlanmış adım silinemez; maç başlamadan "geri çekildi" olarak seriden çıkarılır.
+    const canWithdraw = withdrawalBlock(step, now) === null
+    const canUndo = undoBlock(streak, record, now) === null
     return (
       <li key={record.id} className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5 py-2.5" data-testid="streak-row" data-state={step.state} data-step={step.step ?? ''}>
         <div className="min-w-0">
@@ -79,6 +82,18 @@ export default function StreakPanel() {
           {actions && canDelete && (
             <button type="button" onClick={() => void takeBackFromStreak(record.id).then(report)} className={ACTION} data-testid="streak-delete">
               {T.delete}
+            </button>
+          )}
+          {actions && canWithdraw && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm(T.withdrawConfirm)) void withdrawFromStreak(record.id).then(report)
+              }}
+              className={ACTION}
+              data-testid="streak-withdraw"
+            >
+              {T.withdraw}
             </button>
           )}
           {actions && !canDelete && removal && (

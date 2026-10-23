@@ -12,6 +12,7 @@ const STATE_TONE: Record<MemberStreakState, string> = {
   pending: 'border-navy-500 bg-navy-600 text-muted',
   unplayed: 'border-navy-500 bg-navy-600 text-muted',
   void: 'border-navy-500 bg-navy-600 text-muted',
+  withdrawn: 'border-navy-500 bg-navy-600 text-muted',
 }
 
 function Figure({ label, value, testId }: { label: string; value: string | number; testId: string }) {

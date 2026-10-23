@@ -281,8 +281,11 @@ export interface Highlight {
   publishedAt?: string
 }
 
-/** Kaldırılan adımın nedeni. unplayed: maç oynanmadı (ertelendi / iptal). void: maç oynandı ama değerlendirilemedi. */
-export type StreakRemovalReason = 'unplayed' | 'void'
+/**
+ * Kaldırılan adımın nedeni. unplayed: maç oynanmadı (ertelendi / iptal). void: maç oynandı ama değerlendirilemedi.
+ * withdrawn: yayınlanmış adım maç başlamadan geri çekildi.
+ */
+export type StreakRemovalReason = 'unplayed' | 'void' | 'withdrawn'
 
 /**
  * "Seri takibi" adımı: admin'in maç başlamadan önce seriye gönderdiği bir öneri (maç + kategori).

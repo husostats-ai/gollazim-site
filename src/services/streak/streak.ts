@@ -11,6 +11,7 @@ import { highlightOutcome, lockState } from '../highlights/highlights'
 // Sonuç için yeni hesap yoktur: dondurulmuş önerinin sonucu, o yoksa aynı değerlendirme fonksiyonu.
 //
 // Aynı anda yalnızca bir bekleyen adım olabilir: bekleyen adım sonuçlanmadan yenisi eklenemez.
+// Yayınlanmış bekleyen adım silinemez; maç başlamadan "geri çekildi" olarak kayıtta kalır.
 
 export const streakStepId = (matchId: string, categoryId: CategoryId): string => `${matchId}|${categoryId}`
 
@@ -31,9 +32,10 @@ export interface StepFacts {
 
 /**
  * won / lost: sonuçlandı. pending: bekliyor (skor girilmedi, maç ertelendi ya da maç tamamlandı ama
- * kategori için gereken veri eksik). unplayed / void: seriden kaldırıldı; seriyi ne ilerletir ne bozar.
+ * kategori için gereken veri eksik). unplayed / void / withdrawn: seriden kaldırıldı; seriyi ne
+ * ilerletir ne bozar.
  */
-export type StepState = 'won' | 'lost' | 'pending' | 'unplayed' | 'void'
+export type StepState = 'won' | 'lost' | 'pending' | 'unplayed' | 'void' | 'withdrawn'
 
 export interface ResolvedStep {
   record: StreakStep
@@ -143,7 +145,7 @@ export interface StreakCandidate {
 
 type Pick_<T, K extends keyof T> = { [P in K]: T[P] }
 
-export type StreakRefusal = 'blocked' | 'locked' | 'published' | 'no-time' | 'exists' | 'missing' | 'not-pending' | 'played' | 'not-removed' | 'not-last' | 'removal-published'
+export type StreakRefusal = 'blocked' | 'locked' | 'published' | 'no-time' | 'exists' | 'missing' | 'not-pending' | 'played' | 'not-removed' | 'not-last' | 'removal-published' | 'not-published'
 
 export type StepResult = { ok: true; record: StreakStep } | { ok: false; reason: StreakRefusal }
 
@@ -211,18 +213,41 @@ export function removePendingStep(view: StreakView, id: string, now: Date): Step
   return { ok: true, record: { ...step.record, removed: { at: now.toISOString(), reason } } }
 }
 
-/** Kaldırma geri alınabilir mi: yalnızca son adımsa ve kaldırma henüz yayınlanmadıysa */
-export function undoBlock(view: StreakView, record: StreakStep): 'not-removed' | 'not-last' | 'removal-published' | null {
+/** Yayınlanmış bekleyen adımın geri çekilemeyeceği neden; geri çekilebiliyorsa null */
+export function withdrawalBlock(step: ResolvedStep, now: Date): 'not-pending' | 'not-published' | 'locked' | null {
+  if (step.state !== 'pending') return 'not-pending'
+  if (step.record.publishedAt === undefined) return 'not-published'
+  return lockState(step.record, now) !== 'open' ? 'locked' : null
+}
+
+/**
+ * Yayınlanmış bekleyen adımı maç başlamadan geri çeker (kayıt durur, "geri çekildi"). Yayınlanmamış
+ * adım için silme (deleteStreakStep) kullanılır; maç başladıysa reddeder.
+ */
+export function withdrawPendingStep(view: StreakView, id: string, now: Date): StepResult {
+  const step = view.steps.find((s) => s.record.id === id)
+  if (!step) return { ok: false, reason: 'missing' }
+  const block = withdrawalBlock(step, now)
+  if (block) return { ok: false, reason: block }
+  return { ok: true, record: { ...step.record, removed: { at: now.toISOString(), reason: 'withdrawn' } } }
+}
+
+/**
+ * Kaldırma geri alınabilir mi: yalnızca son adımsa ve kaldırma henüz yayınlanmadıysa. Geri çekilen
+ * adım ayrıca yalnızca maç başlamadan geri alınır (sonuç belli olduktan sonra seriye dönemez).
+ */
+export function undoBlock(view: StreakView, record: StreakStep, now: Date): 'not-removed' | 'not-last' | 'removal-published' | 'locked' | null {
   if (!record.removed) return 'not-removed'
   if (record.removed.publishedAt !== undefined) return 'removal-published'
-  return view.steps[view.steps.length - 1]?.record.id === record.id ? null : 'not-last'
+  if (view.steps[view.steps.length - 1]?.record.id !== record.id) return 'not-last'
+  return record.removed.reason === 'withdrawn' && lockState(record, now) !== 'open' ? 'locked' : null
 }
 
 /** Kaldırmayı geri alır: adım yeniden bekleyen adım olur. */
-export function undoRemoval(view: StreakView, id: string): StepResult {
+export function undoRemoval(view: StreakView, id: string, now: Date): StepResult {
   const step = view.steps.find((s) => s.record.id === id)
   if (!step) return { ok: false, reason: 'missing' }
-  const block = undoBlock(view, step.record)
+  const block = undoBlock(view, step.record, now)
   if (block) return { ok: false, reason: block }
   const { removed: _removed, ...record } = step.record
   return { ok: true, record }
@@ -277,7 +302,7 @@ export function normalizeStreakSteps(value: unknown, isCategory: (id: string) =>
     if (typeof date !== 'string' || !DATE.test(date) || typeof time !== 'string' || !TIME.test(time)) continue
     if (typeof home !== 'string' || typeof away !== 'string') continue
     const removal =
-      typeof removed === 'object' && removed !== null && isoOrNull(removed.at) !== null && (removed.reason === 'unplayed' || removed.reason === 'void')
+      typeof removed === 'object' && removed !== null && isoOrNull(removed.at) !== null && (removed.reason === 'unplayed' || removed.reason === 'void' || removed.reason === 'withdrawn')
         ? { at: removed.at, reason: removed.reason, ...(isoOrNull(removed.publishedAt) !== null && { publishedAt: removed.publishedAt }) }
         : null
     const id = streakStepId(matchId, categoryId)

@@ -41,14 +41,16 @@ import { assertMemberPayload, MEMBER_HT_SCORELESS, MEMBER_STREAK_LIMITS } from '
  * 10: istatistiklerde "İY 0.5 ÜST tutmadığında 2. yarı" sayımı (htScoreless) var: yalnızca iki sayı.
  * 11: oranı olan listelerdeki önerilerde marjı çıkarılmış piyasa yüzdesi (mkt) bulunabilir; yalnızca
  *    değer varken yazılır.
+ * 12: seri adımı "withdrawn" (geri çekildi) durumunda olabilir: yayınlanmış adım maç başlamadan
+ *    seriden çıkarıldı.
  * Sürüm 1 (others alanı olmayan), sürüm 2 (main alanı olmayan), sürüm 3 (highlights alanı olmayan),
  * sürüm 4 (sample alanı olmayan), sürüm 5 (ai alanı olmayan), sürüm 6 (ai alanı maçta olan) ve
  * sürüm 7 (streak alanı olmayan), sürüm 8 (form alanları olmayan), sürüm 9 (htScoreless alanı olmayan) ve
- * sürüm 10 (mkt alanı olmayan)
+ * sürüm 10 (mkt alanı olmayan), sürüm 11 (withdrawn durumu olmayan)
  * paketler üye sayfasında hâlâ açılır;
  * sürüm 6'daki maç geneli satır gösterilmez.
  */
-export const MEMBER_PAYLOAD_VERSION = 11
+export const MEMBER_PAYLOAD_VERSION = 12
 
 /** Günlük dökümde pakete giren en fazla gün sayısı (en yeniler) */
 export const MEMBER_DAILY_LIMIT = 90
@@ -274,10 +276,11 @@ export interface MemberDay {
 }
 
 /**
- * Seri takibindeki adımın durumu. unplayed: maç oynanmadı; void: değerlendirilemedi (ikisi de
- * seriden kaldırılmış adımdır: seriyi ne ilerletir ne bozar).
+ * Seri takibindeki adımın durumu. unplayed: maç oynanmadı; void: değerlendirilemedi; withdrawn: maç
+ * başlamadan geri çekildi (sürüm 12). Üçü de seriden kaldırılmış adımdır: seriyi ne ilerletir ne
+ * bozar, numara almaz ve bekleyen adım sayılmaz.
  */
-export type MemberStreakState = 'won' | 'lost' | 'pending' | 'unplayed' | 'void'
+export type MemberStreakState = 'won' | 'lost' | 'pending' | 'unplayed' | 'void' | 'withdrawn'
 
 /**
  * "Seri takibi" adımı. Yalnızca maçın adı, ligi, günü ve saati, kategori, durum ve adım numarası:
@@ -330,7 +333,7 @@ export interface MemberStreak {
 }
 
 export interface MemberPayload {
-  v: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | typeof MEMBER_PAYLOAD_VERSION
+  v: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | typeof MEMBER_PAYLOAD_VERSION
   /** Yayın numarası */
   n: number
   /** Yayın anı (ISO) */

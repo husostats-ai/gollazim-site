@@ -7,7 +7,7 @@ import { leagueRepo, aiRepo, aiSharesRepo, highlightsRepo, matchesRepo, picksRep
 import { addHighlight, removeHighlight, type HighlightCandidate, type HighlightRefusal } from '../services/highlights/highlights'
 import { findActiveShared, recordShare } from '../services/story/shared'
 import type { StreakCandidate, StreakRefusal, StreakView } from '../services/streak/streak'
-import { loadStreak, removePendingFromStreak, sendToStreak, takeBackFromStreak, undoStreakRemoval } from '../services/streak/streakService'
+import { loadStreak, removePendingFromStreak, sendToStreak, takeBackFromStreak, undoStreakRemoval, withdrawFromStreak } from '../services/streak/streakService'
 import { selectionsForDate, type DaySelections } from '../services/story/selection'
 import type { AiShare, AiVerdict, Highlight, LeagueTable, LeagueTableSnapshot, Match, MatchResult, Pick, SharedPick, TeamAlias, Thresholds } from '../types'
 import { todayInAppZone } from '../utils/date'
@@ -59,6 +59,8 @@ interface AppState {
   takeBackFromStreak: (id: string) => Promise<StreakRefusal | null>
   /** Bekleyen adımı seriden kaldırır (oynanmadı); kayıt durur */
   removePendingFromStreak: (id: string) => Promise<StreakRefusal | null>
+  /** Yayınlanmış bekleyen adımı maç başlamadan geri çeker (geri çekildi); kayıt durur */
+  withdrawFromStreak: (id: string) => Promise<StreakRefusal | null>
   undoStreakRemoval: (id: string) => Promise<StreakRefusal | null>
   /** Yapıştırılan lig tabloları ve takım adı eşleştirmeleri; yalnızca kartta gösterim içindir */
   leagueTables: LeagueTable[]
@@ -181,6 +183,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const sendToStreakAction = useCallback((candidate: StreakCandidate) => streakAction(sendToStreak, candidate), [streakAction])
   const takeBackFromStreakAction = useCallback((id: string) => streakAction(takeBackFromStreak, id), [streakAction])
   const removePendingFromStreakAction = useCallback((id: string) => streakAction(removePendingFromStreak, id), [streakAction])
+  const withdrawFromStreakAction = useCallback((id: string) => streakAction(withdrawFromStreak, id), [streakAction])
   const undoStreakRemovalAction = useCallback((id: string) => streakAction(undoStreakRemoval, id), [streakAction])
 
   const saveThresholds = useCallback(async (next: Thresholds) => {
@@ -298,6 +301,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sendToStreak: sendToStreakAction,
     takeBackFromStreak: takeBackFromStreakAction,
     removePendingFromStreak: removePendingFromStreakAction,
+    withdrawFromStreak: withdrawFromStreakAction,
     undoStreakRemoval: undoStreakRemovalAction,
     leagueTables,
     teamAliases,

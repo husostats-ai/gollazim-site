@@ -267,7 +267,7 @@ describe('yayın paketi: şema denetimi fazladan ya da eksik alanı reddeder', (
     expect(broken((p) => void ((firstItem(p) as { conflict: unknown }).conflict = 'piyasa'))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days[0].lists[0].items[0].conflict = 'hesap'))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days[0].lists.find((l) => l.categoryId === 'homeWin15')!.items[0].conflict = 'model'))).toThrow(MemberPayloadError)
-    expect(broken((p) => void ((p as { v: number }).v = 12))).toThrow(MemberPayloadError)
+    expect(broken((p) => void ((p as { v: number }).v = 13))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days = []))).toThrow(MemberPayloadError)
     expect(broken((p) => void p.days[0].lists.reverse())).toThrow(MemberPayloadError)
   })
@@ -299,7 +299,7 @@ describe('yayın paketi: "aynı maçın diğer önerileri" yalnızca paketteki �
           entries += item.others!.length
         }
     expect(entries).toBeGreaterThan(100)
-    expect(payload.v).toBe(11)
+    expect(payload.v).toBe(12)
   })
 
   it('pakete girmeyen (ilk 15 dışında kalan) öneri bu satıra da girmez', () => {
@@ -915,9 +915,9 @@ describe('yayın paketi: seri takibi (sürüm 8)', () => {
   }
   const streak = payload.streak!
 
-  it('aktif serinin adımları, geçmiş seriler ve sayılar; paket sürümü 11', () => {
-    expect(MEMBER_PAYLOAD_VERSION).toBe(11)
-    expect(payload.v).toBe(11)
+  it('aktif serinin adımları, geçmiş seriler ve sayılar; paket sürümü 12', () => {
+    expect(MEMBER_PAYLOAD_VERSION).toBe(12)
+    expect(payload.v).toBe(12)
     expect(streak).toEqual({
       status: 'active',
       steps: [
@@ -1028,6 +1028,57 @@ describe('yayın paketi: seri takibi (sürüm 8)', () => {
   })
 })
 
+describe('yayın paketi: geri çekilen seri adımı (sürüm 12)', () => {
+  const WITHDRAWN_AT = '2026-10-05T06:41:09.000Z'
+  // Bekleyen son adım (İç Anadolu FK) yayınlandı, sonra maç başlamadan geri çekildi.
+  const withdrawn = STREAK_STEPS.map((s) => (s.seq === 5 ? { ...s, publishedAt: '2026-10-05T06:00:00.000Z', removed: { at: WITHDRAWN_AT, reason: 'withdrawn' as const } } : s))
+  const build = (steps: typeof STREAK_STEPS) => buildMemberPayload(memberInput({ streak: streakInputOf(streakView(steps), MATCHES) }))
+  const withdrawnPayload = build(withdrawn)
+  const withdrawnText = JSON.stringify(withdrawnPayload)
+
+  it('adım "geri çekildi" olarak kalır: numara almaz, bekleyen sayılmaz, sayılar değişmez', () => {
+    const streak = withdrawnPayload.streak!
+    expect(streak.steps.map((s) => [s.home, s.state, s.step])).toEqual([
+      ['Kuzey Yıldızı', 'won', 1],
+      ['Ova Belediyespor', 'unplayed', null],
+      ['İç Anadolu FK', 'withdrawn', null],
+    ])
+    expect(streak.steps.some((s) => s.state === 'pending')).toBe(false)
+    expect(streak.status).toBe('active')
+    expect(streak.totals).toEqual(payload.streak!.totals)
+    expect(() => assertMemberPayload(JSON.parse(withdrawnText))).not.toThrow()
+  })
+
+  it('serinin tek adımı geri çekilirse seri başlamış sayılmaz; adım listede kalır', () => {
+    const only = build(withdrawn.filter((s) => s.seq !== 3 && s.seq !== 4)).streak!
+    expect(only.status).toBe('idle')
+    expect(only.steps).toEqual([expect.objectContaining({ home: 'İç Anadolu FK', state: 'withdrawn', step: null })])
+    expect(only.totals).toMatchObject({ current: 0, count: 1 })
+  })
+
+  it('sızıntı yok: geri çekilme ve yayın anı, kayıt alanları pakete girmez', () => {
+    for (const word of ['removed', 'publishedAt', 'withdrawnAt', 'at']) expect(JSON.stringify(withdrawnPayload.streak)).not.toContain(`"${word}"`)
+    expect(withdrawnText).not.toContain(WITHDRAWN_AT)
+    expect(withdrawnText).not.toContain(WITHDRAWN_AT.slice(0, 19))
+    expect(withdrawnText).not.toContain('2026-10-05T06:00:00')
+    expect(Object.keys(withdrawnPayload.streak!.steps[2])).toEqual([...MEMBER_KEYS.streakStep])
+  })
+
+  it('şema: "withdrawn" yalnızca sürüm 12 pakette geçerlidir ve numarası olamaz', () => {
+    const copy = (): MemberPayload => JSON.parse(withdrawnText) as MemberPayload
+    const v11 = copy()
+    ;(v11 as { v: number }).v = 11
+    expect(() => assertMemberPayload(v11)).toThrow(MemberPayloadError)
+    const numbered = copy()
+    numbered.streak!.steps[2].step = 2
+    expect(() => assertMemberPayload(numbered)).toThrow('seriden kaldırılan adımın numarası olamaz')
+    // Geri çekilen adımı içermeyen sürüm 11 paket hâlâ açılır.
+    const old = JSON.parse(text) as MemberPayload
+    ;(old as { v: number }).v = 11
+    expect(() => assertMemberPayload(old)).not.toThrow()
+  })
+})
+
 describe('yayın paketi: lig tablosundan form, gol ve gol yemediği maç (sürüm 9)', () => {
   const copy = (): MemberPayload => JSON.parse(text) as MemberPayload
   const today = payload.days[0]
@@ -1127,7 +1178,7 @@ describe('yayın paketi: lig tablosundan form, gol ve gol yemediği maç (sürü
     for (const d of v8.days) for (const m of d.matches) expect(Object.keys(m)).toEqual(MEMBER_KEYS.match)
     // Sürüm 8 pakette alan bulunamaz; sürüm 9 pakette isteğe bağlıdır.
     expect(rejects((p) => void ((p as { v: number }).v = 8))).toThrow('izinli olmayan alan: homeForm, awayForm')
-    expect(rejects((p) => void ((p as { v: number }).v = 12))).toThrow('desteklenmeyen paket sürümü')
+    expect(rejects((p) => void ((p as { v: number }).v = 13))).toThrow('desteklenmeyen paket sürümü')
   })
 })
 

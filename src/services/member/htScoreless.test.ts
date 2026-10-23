@@ -35,8 +35,8 @@ const withHt = (p: MemberPayload, value: unknown): MemberPayload => {
 }
 
 describe('üye paketi: İY 0.5 ÜST tutmadığında 2. yarı (sürüm 10)', () => {
-  it('paket sürümü 11; eşikler tek sabittir', () => {
-    expect(MEMBER_PAYLOAD_VERSION).toBe(11)
+  it('paket sürümü 12; eşikler tek sabittir', () => {
+    expect(MEMBER_PAYLOAD_VERSION).toBe(12)
     expect(MEMBER_HT_SCORELESS).toEqual({ min: 20, low: 50 })
     expect(MEMBER_KEYS.htScoreless).toEqual(['n', 'over'])
   })
@@ -118,7 +118,7 @@ describe('üye paketi: İY 0.5 ÜST tutmadığında 2. yarı (sürüm 10)', () =
     withoutMkt(mixed)
     expect(() => assertMemberPayload(mixed)).toThrow('izinli olmayan alan: htScoreless')
     const future = copy(build(40, 24, 14))
-    ;(future as { v: number }).v = 12
+    ;(future as { v: number }).v = 13
     expect(() => assertMemberPayload(future)).toThrow('desteklenmeyen paket sürümü')
   })
 })
