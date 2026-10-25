@@ -9,12 +9,13 @@ export const uploadsRepo: UploadsRepo = {
   },
 
   async remove(id) {
-    const tables = [db.uploads, db.matches, db.results, db.picks, db.aiVerdicts, db.aiPrompts]
+    const tables = [db.uploads, db.matches, db.results, db.picks, db.aiVerdicts, db.aiPrompts, db.matchNotes]
     await db.transaction('rw', tables, async () => {
       const removed = await db.matches.where('uploadId').equals(id).toArray()
       const matchIds = removed.map((m) => m.id)
       await db.picks.where('matchId').anyOf(matchIds).delete()
       await db.aiVerdicts.where('matchId').anyOf(matchIds).delete()
+      await db.matchNotes.bulkDelete(matchIds)
       await db.results.bulkDelete(matchIds)
       await db.matches.bulkDelete(matchIds)
       await db.uploads.delete(id)

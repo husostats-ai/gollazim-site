@@ -391,6 +391,31 @@ export interface TeamAlias {
 
 export type Thresholds = Record<CategoryId, number>
 
+/** Maç notunun görseli: tarayıcıda küçültülmüş hâli (data: adresi) ve boyutları (piksel) */
+export interface MatchNoteImage {
+  /** data:image/jpeg|png|webp;base64,… */
+  dataUrl: string
+  w: number
+  h: number
+}
+
+/**
+ * Maç kartındaki "Özel not": admin'in elle yazdığı metin ve/veya tek görsel. Yalnızca gösterimdir:
+ * analize, istatistiğe, yıldıza, AI prompt'una, Story/Telegram metinlerine ve CSV/istatistik dışa
+ * aktarımına girmez. publish açıksa (varsayılan) maç pakete girdiği yayında üye kartına gider.
+ * Maç başlamış ya da bitmiş olsa da değiştirilebilir. Maç silinince not da silinir.
+ */
+export interface MatchNote {
+  matchId: string
+  /** Düz metin (en fazla MATCH_NOTE_LIMITS.text karakter); yoksa alan bulunmaz */
+  text?: string
+  image?: MatchNoteImage
+  /** Üyelere göster; kapalıysa not yalnızca admin'de görünür, pakete girmez */
+  publish: boolean
+  /** Son değişiklik anı (ISO); pakete girmez */
+  updatedAt: string
+}
+
 export interface BackupFile {
   app: 'gollazim'
   version: 1
@@ -422,4 +447,6 @@ export interface BackupFile {
   aiShares?: AiShare[]
   /** "Seri takibi" adımları; eski yedeklerde ve hiç adım yokken bulunmaz */
   streakSteps?: StreakStep[]
+  /** Maç kartlarındaki özel notlar (görseller dahil); eski yedeklerde ve hiç not yokken bulunmaz */
+  matchNotes?: MatchNote[]
 }

@@ -3,7 +3,7 @@ import { MEMBER_SITE_URL } from '../../config/member'
 import { memberAdminRepo } from '../../services/data'
 import { addMembers, backupMemberKeys, previewPublication, publish, removeMemberByName, renewMemberPassword, restoreMemberKeys } from '../../services/memberAdmin/actions'
 import { checkPassphrase, PASSPHRASE_MIN_LENGTH } from '../../services/memberAdmin/keyBackup'
-import { PUBLICATION_FILE_NAME, summarizePayload, type Publication, type PublishSummary } from '../../services/memberAdmin/publish'
+import { PACKAGE_SIZE_LIMITS, PUBLICATION_FILE_NAME, summarizePayload, type Publication, type PublishSummary } from '../../services/memberAdmin/publish'
 import { accountMessage, activeMembers, checkNewUsername, distributionCsv, distributionFileName, parseBulkUsernames, USERNAME_PROBLEM_TEXTS, type IssuedLogin } from '../../services/memberAdmin/registry'
 import { KEY_BACKUP_LOSS_TEXT, keyBackupStatus } from '../../services/memberAdmin/reminder'
 import { MEMBER_SITE_UPDATE_HINT, type SiteVersionStatus } from '../../services/memberAdmin/siteVersion'
@@ -117,7 +117,7 @@ export function IssuedBox({ issued, data, onClose, onDownloaded, onRepublish, bu
  */
 export default function MemberAdminSection({ siteStatus, onAttention }: { siteStatus: SiteVersionStatus | null; onAttention?: (on: boolean) => void }) {
   const data = useMemberAdminData()
-  const { dates, today, selectedDate, dataVersion, highlights, aiVerdicts, streak, refresh } = useApp()
+  const { dates, today, selectedDate, dataVersion, highlights, aiVerdicts, streak, matchNotes, refresh } = useApp()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [issued, setIssued] = useState<Issued | null>(null)
@@ -160,8 +160,8 @@ export default function MemberAdminSection({ siteStatus, onAttention }: { siteSt
     return () => {
       cancelled = true
     }
-    // Öne çıkan seçimler değişince de özet yenilenir.
-  }, [publishDay, version, dataVersion, highlights, aiVerdicts, streak])
+    // Öne çıkan seçimler ve maç notları değişince de özet yenilenir.
+  }, [publishDay, version, dataVersion, highlights, aiVerdicts, streak, matchNotes])
 
   if (!data) return null
   const existing = data.members.map((m) => m.username)
@@ -172,6 +172,8 @@ export default function MemberAdminSection({ siteStatus, onAttention }: { siteSt
 
   const highlightCount = summary ? summary.days.reduce((sum, d) => sum + d.highlights, 0) : 0
   const aiCount = summary ? summary.days.reduce((sum, d) => sum + d.ai, 0) : 0
+  const noteCount = summary ? summary.days.reduce((sum, d) => sum + d.notes, 0) : 0
+  const imageCount = summary ? summary.days.reduce((sum, d) => sum + d.images, 0) : 0
   const incompatible = siteStatus?.level === 'incompatible'
 
   /** İşlemi çalıştırır; hata olursa gösterir. Aynı anda tek işlem yürür. */
@@ -330,8 +332,17 @@ export default function MemberAdminSection({ siteStatus, onAttention }: { siteSt
             <li data-testid="publish-summary-streak">
               <span className="font-semibold text-white">Seri takibi:</span> aktif seride {summary.streak.steps} adım ({summary.streak.pending} bekleyen) · {summary.streak.past} geçmiş seri
             </li>
-            <li>Paketin düz boyutu yaklaşık {kilobytes(summary.plainBytes)} (şifreli hâli bunun üçte biri kadar daha büyük olur)</li>
+            <li data-testid="publish-summary-notes">
+              <span className="font-semibold text-white">Not:</span> {noteCount} maçta üyelere gösterilecek not ({imageCount} görselli)
+            </li>
+            <li>Paketin düz boyutu yaklaşık {kilobytes(summary.plainBytes)} (şifreli hâli bunun üçte biri kadar daha büyük olur) · indirilecek dosya yaklaşık {kilobytes(summary.fileBytes)}</li>
           </ul>
+        )}
+        {summary && summary.fileBytes > PACKAGE_SIZE_LIMITS.warn && (
+          <p className="mt-3 rounded-xl border border-warn-line bg-warn-soft p-3 text-sm font-semibold text-warn" data-testid="publish-size-warning" data-over-max={summary.fileBytes > PACKAGE_SIZE_LIMITS.max}>
+            ⚠ Paket büyük: indirilecek dosya yaklaşık {kilobytes(summary.fileBytes)} (uyarı eşiği {kilobytes(PACKAGE_SIZE_LIMITS.warn)}). Görselli notlar paketi büyütür; üyelerin sayfası yavaş açılabilir.
+            {summary.fileBytes > PACKAGE_SIZE_LIMITS.max && ` Dosya ${kilobytes(PACKAGE_SIZE_LIMITS.max)} sınırını aşıyor: npm run yayinla bu dosyayı kabul etmez. Bazı notların görselini silin ya da "Üyelere göster"i kapatın.`}
+          </p>
         )}
 
         {activeCount === 0 ? (

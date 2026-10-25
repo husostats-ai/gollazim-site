@@ -5,6 +5,7 @@ import type { CategoryId } from '../config/categories'
 import type { MemberItem, MemberMatch } from '../services/member/payload'
 import type { PickOutcome } from '../types'
 import CountryFlag from './CountryFlag'
+import MemberNote from './MemberNote'
 import MemberOthers from './MemberOthers'
 import MemberSpread from './MemberSpread'
 import MemberStars from './MemberStars'
@@ -180,6 +181,9 @@ export default function MemberCard({ rank, match, item, categoryId, categoryLabe
       )}
 
       <MemberOthers others={others} />
+
+      {/* Sürüm 13: admin'in notu (yalnızca üyelere gösterilen not pakete girer); yoksa satır hiç çizilmez. */}
+      {match.note && <MemberNote note={match.note} />}
 
       {/* Sıra ve (sürüm 9) lig tablosundan form, gol, gol yemediği maç: tek blok; alanlar yalnızca doluyken çizilir. */}
       <MemberTeams homeStanding={match.homeStanding} awayStanding={match.awayStanding} homeForm={match.homeForm ?? null} awayForm={match.awayForm ?? null} />

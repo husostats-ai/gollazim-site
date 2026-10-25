@@ -1,7 +1,8 @@
 import type { MemberTexts } from '../../config/memberTexts'
-import type { AiVerdict, Highlight, LeagueTable, LeagueTableSnapshot, Match, MatchResult, Pick, SharedPick, StreakStep, TeamAlias, Thresholds } from '../../types'
+import type { AiVerdict, Highlight, LeagueTable, LeagueTableSnapshot, Match, MatchNote, MatchResult, Pick, SharedPick, StreakStep, TeamAlias, Thresholds } from '../../types'
 import { shiftDate } from '../../utils/format'
-import { fromBase64, sealPayload, type MemberEnvelope } from '../member/crypto'
+import { DEFAULT_SLOT_COUNT, fromBase64, sealPayload, type MemberEnvelope } from '../member/crypto'
+import { memberNoteInputs } from '../notes/matchNote'
 import { AI_CATEGORY_IDS } from '../../config/ai'
 import type { CategoryId } from '../../config/categories'
 import { aiShareId, memberShareRow, type MemberShareRow } from '../ai/memberShare'
@@ -41,6 +42,8 @@ export interface PublishSources {
   listAliases(): Promise<TeamAlias[]>
   getThresholds(): Promise<Thresholds>
   getMarketConflictLimit(): Promise<number>
+  /** Verilen maçların notları ("Üyelere göster" kapalı olanlar dahil; süzme burada yapılır) */
+  listMatchNotes(matchIds: string[]): Promise<MatchNote[]>
 }
 
 /** no-members: aktif üye yok. leak: sızıntı denetimi başarısız (ayrıntı problems içinde). */
@@ -149,9 +152,11 @@ export async function draftPublication(sources: PublishSources, options: { day: 
       dates.map(async (date) => {
         const [matches, records, verdicts] = await Promise.all([sources.listMatchesByDate(date), sources.listHighlightsByDate(date), sources.listAiVerdictsByDate(date)])
         const ai = aiInputsOf(matches, verdicts)
+        // Yalnızca "Üyelere göster" açık notlar kurucuya verilir; kurucu da yalnızca pakete giren maçın notunu yazar.
+        const notes = memberNoteInputs(await sources.listMatchNotes(matches.map((m) => m.id)))
         // Seçimin maçı silinmiş olabilir: skoru duruyorsa yine okunur.
         const resultIds = [...new Set([...matches.map((m) => m.id), ...records.map((r) => r.matchId)])]
-        return { date, matches, results: await sources.listResultsByMatchIds(resultIds), highlights: records.map(highlightInputOf), highlightIds: records.map((r) => r.id), ai }
+        return { date, matches, results: await sources.listResultsByMatchIds(resultIds), highlights: records.map(highlightInputOf), highlightIds: records.map((r) => r.id), ai, notes }
       }),
     ),
     sources.listPicks(),
@@ -170,7 +175,7 @@ export async function draftPublication(sources: PublishSources, options: { day: 
   const streak = streakInputOf(buildStreak(streakSteps, factsFrom({ matches: streakMatches, results: streakResults, picks: picks.filter((p) => streakWanted.has(p.id)) })), streakMatches)
   // "İY 0.5 ÜST tutmadığında 2. yarı" sayımı güne bağlı değildir: o önerilerin skorları, günü pakette olmasa da okunur.
   const htResults = await sources.listResultsByMatchIds([...new Set(picks.filter((p) => p.categoryId === 'ht05').map((p) => p.matchId))])
-  const input: MemberPayloadInput = { n: options.n, publishedAt: options.publishedAt, texts: options.texts, thresholds, marketConflictLimit, days: dayData.map((d) => ({ date: d.date, matches: d.matches, results: d.results, highlights: d.highlights, ai: d.ai.inputs })), leagueTables, leagueTableSnapshots, teamAliases, picks, results: htResults, shared, streak }
+  const input: MemberPayloadInput = { n: options.n, publishedAt: options.publishedAt, texts: options.texts, thresholds, marketConflictLimit, days: dayData.map((d) => ({ date: d.date, matches: d.matches, results: d.results, highlights: d.highlights, ai: d.ai.inputs, notes: d.notes })), leagueTables, leagueTableSnapshots, teamAliases, picks, results: htResults, shared, streak }
   const full = buildMemberPublication(input)
   // Listeler paket kurulurken hesaplandığı için boş günler ancak şimdi bilinir.
   const keep = dayData.map((d, i) => i === 0 || full.payload.days[i].lists.some((list) => list.items.length > 0) || d.highlights.length > 0)
@@ -188,21 +193,37 @@ export async function draftPublication(sources: PublishSources, options: { day: 
 }
 
 export interface PublishSummary {
-  days: { date: string; matches: number; items: number; lists: number; highlights: number; ai: number }[]
+  days: { date: string; matches: number; items: number; lists: number; highlights: number; ai: number; notes: number; images: number }[]
   /** Seri takibi: aktif serideki adım, bekleyen adım ve pakete giren geçmiş seri sayısı */
   streak: { steps: number; pending: number; past: number }
   /** Paketin düz hâlinin boyutu (bayt) */
   plainBytes: number
+  /** İndirilecek şifreli dosyanın tahmini boyutu (bayt; yuva listesi en az DEFAULT_SLOT_COUNT kabul edilir) */
+  fileBytes: number
 }
+
+/**
+ * Şifreli yayın dosyasının boyut sınırları (bayt). max: yayın komutunun (scripts/lib/paket-denetim.mjs,
+ * MAX_PACKAGE_BYTES) kabul ettiği en büyük dosya; eşitlik testle denetlenir. warn: bunu aşan pakette
+ * Admin uyarı gösterir (yayını engellemez). Görselli notlar paketin en büyük parçasıdır.
+ */
+export const PACKAGE_SIZE_LIMITS = { warn: 1.5 * 1024 * 1024, max: 2 * 1024 * 1024 } as const
 
 const byteLength = (text: string): number => new TextEncoder().encode(text).length
 
+/** Şifreli dosyanın tahmini boyutu: base64 gövde (düz paket + 16 bayt doğrulama etiketi), yuvalar ve başlık */
+export const estimateFileBytes = (plainBytes: number, slots: number = DEFAULT_SLOT_COUNT): number => 4 * Math.ceil((plainBytes + 16) / 3) + slots * 79 + 400
+
 /** Onay ekranındaki paket özeti */
-export const summarizePayload = (payload: MemberPayload): PublishSummary => ({
-  days: payload.days.map((d) => ({ date: d.date, matches: d.matches.length, items: d.lists.reduce((sum, l) => sum + l.items.length, 0), lists: d.lists.filter((l) => l.items.length > 0).length, highlights: d.highlights?.length ?? 0, ai: d.lists.reduce((sum, l) => sum + l.items.filter((item) => item.ai !== undefined).length, 0) })),
-  streak: { steps: payload.streak?.steps.length ?? 0, pending: payload.streak?.steps.filter((s) => s.state === 'pending').length ?? 0, past: payload.streak?.past.length ?? 0 },
-  plainBytes: byteLength(JSON.stringify(payload)),
-})
+export function summarizePayload(payload: MemberPayload): PublishSummary {
+  const plainBytes = byteLength(JSON.stringify(payload))
+  return {
+    days: payload.days.map((d) => ({ date: d.date, matches: d.matches.length, items: d.lists.reduce((sum, l) => sum + l.items.length, 0), lists: d.lists.filter((l) => l.items.length > 0).length, highlights: d.highlights?.length ?? 0, ai: d.lists.reduce((sum, l) => sum + l.items.filter((item) => item.ai !== undefined).length, 0), notes: d.matches.filter((m) => m.note !== undefined).length, images: d.matches.filter((m) => m.note?.image !== undefined).length })),
+    streak: { steps: payload.streak?.steps.length ?? 0, pending: payload.streak?.steps.filter((s) => s.state === 'pending').length ?? 0, past: payload.streak?.past.length ?? 0 },
+    plainBytes,
+    fileBytes: estimateFileBytes(plainBytes),
+  }
+}
 
 export interface Publication {
   /** İndirilecek dosyanın içeriği (şifreli paket, JSON) */

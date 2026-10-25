@@ -5,6 +5,7 @@ import { sealKeyBackup } from '../memberAdmin/keyBackup'
 import { memberInput, THRESHOLDS } from './__fixtures__/rawData'
 import { newSiteSalt, parseEnvelope, randomBytes, sealPayload, toBase64, type MemberEnvelope } from './crypto'
 import { buildMemberPayload } from './payload'
+import { estimateFileBytes, PACKAGE_SIZE_LIMITS } from '../memberAdmin/publish'
 
 // Yayın komutunun (scripts/yayinla.mjs) dosya denetimi: yalnızca ŞİFRELİ yayın paketi geçer.
 
@@ -16,13 +17,16 @@ interface Check {
   bytes?: number
 }
 let checkPackageText: (text: string) => Check
+let maxPackageBytes: number
 let envelope: MemberEnvelope
 const payload = buildMemberPayload(memberInput())
 
 beforeAll(async () => {
   // Betik düz JavaScript'tir (derleme adımı olmadan çalışır); yolu çalışma anında verilir.
   const path = resolve('scripts/lib/paket-denetim.mjs')
-  checkPackageText = ((await import(/* @vite-ignore */ path)) as { checkPackageText: typeof checkPackageText }).checkPackageText
+  const script = (await import(/* @vite-ignore */ path)) as { checkPackageText: typeof checkPackageText; MAX_PACKAGE_BYTES: number }
+  checkPackageText = script.checkPackageText
+  maxPackageBytes = script.MAX_PACKAGE_BYTES
   envelope = await sealPayload({ payload, members: [{ kek: randomBytes(32), idKey: randomBytes(32) }], siteSalt: newSiteSalt() })
 })
 
@@ -33,6 +37,23 @@ const problemsOf = (value: unknown): string => {
 }
 
 describe('yayın komutu: dosya denetimi', () => {
+  it('Admin\'in paket boyutu sınırı yayın komutununkiyle aynıdır; uyarı eşiği sınırın altındadır', () => {
+    expect(PACKAGE_SIZE_LIMITS.max).toBe(maxPackageBytes)
+    expect(PACKAGE_SIZE_LIMITS.warn).toBeLessThan(PACKAGE_SIZE_LIMITS.max)
+  })
+
+  it('şifreli dosya boyutu tahmini gerçek dosyayla tutarlıdır (görselli notla, yüzde 1 içinde)', async () => {
+    // Paketin büyük kısmı görsel olsun: 250 KB'lık sahte JPEG.
+    const big = JSON.parse(JSON.stringify(payload)) as typeof payload
+    const match = big.days[0].matches.find((m) => m.note?.image)!
+    match.note!.image!.src = `data:image/jpeg;base64,${'A'.repeat(Math.ceil((250 * 1024) / 3) * 4)}`
+    for (const p of [payload, big]) {
+      const text = JSON.stringify(await sealPayload({ payload: p, members: [{ kek: randomBytes(32), idKey: randomBytes(32) }], siteSalt: newSiteSalt() }))
+      const estimate = estimateFileBytes(new TextEncoder().encode(JSON.stringify(p)).length)
+      expect(Math.abs(estimate - text.length) / text.length).toBeLessThan(0.01)
+    }
+  })
+
   it('şifreli yayın paketi kabul edilir', () => {
     const text = JSON.stringify(envelope)
     expect(checkPackageText(text)).toEqual({ ok: true, n: payload.n, publishedAt: payload.publishedAt, slots: 64, bytes: text.length })

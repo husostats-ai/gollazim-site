@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie'
 import { getCategory } from '../../../config/categories'
-import type { AiPromptBatch, AiShare, AiVerdict, Highlight, LeagueTable, LeagueTableSnapshot, TeamAlias, Match, MatchResult, Pick, SharedPick, StorySelection, StreakStep, Upload } from '../../../types'
+import type { AiPromptBatch, AiShare, AiVerdict, Highlight, LeagueTable, LeagueTableSnapshot, TeamAlias, Match, MatchNote, MatchResult, Pick, SharedPick, StorySelection, StreakStep, Upload } from '../../../types'
 import { assessReliability } from '../../analysis/reliability'
 import { seedSnapshots } from '../../league/history'
 import type { MemberRecord, PublicationRecord } from '../../memberAdmin/types'
@@ -29,6 +29,7 @@ export const db = new Dexie('gollazim') as Dexie & {
   aiShares: EntityTable<AiShare, 'id'>
   streakSteps: EntityTable<StreakStep, 'id'>
   leagueTableSnapshots: EntityTable<LeagueTableSnapshot, 'id'>
+  matchNotes: EntityTable<MatchNote, 'matchId'>
 }
 
 db.version(1).stores({
@@ -110,3 +111,9 @@ db.version(11)
     const tables = await tx.table<LeagueTable, string>('leagueTables').toArray()
     await tx.table<LeagueTableSnapshot, string>('leagueTableSnapshots').bulkPut(seedSnapshots(tables, []))
   })
+
+// v12: maç kartlarındaki özel notlar (metin ve/veya görsel), maç başına bir kayıt. Mevcut tablolara
+// dokunmaz; görseller maç kaydının dışında tutulur ki analiz için okunan maçlar büyümesin.
+db.version(12).stores({
+  matchNotes: 'matchId',
+})

@@ -33,6 +33,12 @@ export const MEMBER_MARKET_NOTE = 'Maç öncesi piyasa fiyatlamasından hesaplan
 /** "?" düğmesinin ekran okuyucu adı */
 export const MEMBER_MARKET_NOTE_BUTTON = 'Açıklama'
 
+/** Maç kartındaki admin notunun satır başlığı (nötr etiket) ve görsel düğmelerinin ekran okuyucu adları */
+export const MEMBER_NOTE_LABEL = 'Not'
+export const MEMBER_NOTE_IMAGE_OPEN = 'Görseli büyüt'
+export const MEMBER_NOTE_IMAGE_ALT = 'Not görseli'
+export const MEMBER_NOTE_IMAGE_CLOSE = 'Kapat'
+
 export const MEMBER_CONFLICT_LABELS: Record<MemberConflict, string> = {
   model: 'Model çelişkisi',
   hesap: 'Hesaplar çelişiyor',

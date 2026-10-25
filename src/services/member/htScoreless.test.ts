@@ -8,6 +8,8 @@ import { assertMemberPayload, MEMBER_HT_SCORELESS, MEMBER_KEYS, MemberPayloadErr
 /** Sürüm 11'den eski paket: önerilerde piyasa yüzdesi (mkt) alanı yoktur */
 const withoutMkt = (p: MemberPayload): void => {
   for (const d of p.days) for (const l of d.lists) for (const i of l.items) delete i.mkt
+  // Sürüm 13'teki maç notu da sürüm 11'den eski pakette yoktur.
+  for (const d of p.days) for (const m of d.matches) delete m.note
 }
 
 // "İY 0.5 ÜST tutmadığında 2. yarı" sayımının üye paketindeki hâli: yalnızca iki sayı.
@@ -35,8 +37,8 @@ const withHt = (p: MemberPayload, value: unknown): MemberPayload => {
 }
 
 describe('üye paketi: İY 0.5 ÜST tutmadığında 2. yarı (sürüm 10)', () => {
-  it('paket sürümü 12; eşikler tek sabittir', () => {
-    expect(MEMBER_PAYLOAD_VERSION).toBe(12)
+  it('paket sürümü 13; eşikler tek sabittir', () => {
+    expect(MEMBER_PAYLOAD_VERSION).toBe(13)
     expect(MEMBER_HT_SCORELESS).toEqual({ min: 20, low: 50 })
     expect(MEMBER_KEYS.htScoreless).toEqual(['n', 'over'])
   })
@@ -118,7 +120,7 @@ describe('üye paketi: İY 0.5 ÜST tutmadığında 2. yarı (sürüm 10)', () =
     withoutMkt(mixed)
     expect(() => assertMemberPayload(mixed)).toThrow('izinli olmayan alan: htScoreless')
     const future = copy(build(40, 24, 14))
-    ;(future as { v: number }).v = 13
+    ;(future as { v: number }).v = 14
     expect(() => assertMemberPayload(future)).toThrow('desteklenmeyen paket sürümü')
   })
 })

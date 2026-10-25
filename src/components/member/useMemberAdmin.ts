@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { aiRepo, aiSharesRepo, highlightsRepo, leagueRepo, matchesRepo, memberAdminRepo, picksRepo, resultsRepo, settingsRepo, sharedRepo, streakRepo } from '../../services/data'
+import { aiRepo, aiSharesRepo, highlightsRepo, leagueRepo, matchesRepo, matchNotesRepo, memberAdminRepo, picksRepo, resultsRepo, settingsRepo, sharedRepo, streakRepo } from '../../services/data'
 import type { PublishSources } from '../../services/memberAdmin/publish'
 import { aiShareId, recordAiShares } from '../../services/ai/memberShare'
 import { MEMBER_SITE_VERSION_URL } from '../../config/member'
@@ -69,6 +69,7 @@ export const publishSources: PublishSources = {
   listAliases: () => leagueRepo.listAliases(),
   getThresholds: () => settingsRepo.getThresholds(),
   getMarketConflictLimit: () => settingsRepo.getMarketConflictLimit(),
+  listMatchNotes: (ids) => matchNotesRepo.listByMatchIds(ids),
 }
 
 /** Metni dosya olarak indirir */

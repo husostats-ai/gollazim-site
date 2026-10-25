@@ -10,7 +10,11 @@ import { selectionId } from '../../story/selection'
 import { sharedId } from '../../story/shared'
 import { streakStepId } from '../../streak/streak'
 import { assembleBackup } from '../backupFormat'
+import Dexie from 'dexie'
 import { backupRepo } from './backupRepo'
+import { matchesRepo } from './matchesRepo'
+import { matchNotesRepo } from './matchNotesRepo'
+import { uploadsRepo } from './uploadsRepo'
 import { db } from './db'
 import { LAST_BACKUP_KEY } from './settingsRepo'
 
@@ -18,6 +22,7 @@ import { LAST_BACKUP_KEY } from './settingsRepo'
 // Her tablo en az bir kayıtla doldurulur; içe aktarılan yedeğin yeniden dışa aktarımı birebir aynı olmalı.
 
 const DAY = '2026-10-15'
+const NOTE_IMAGE = { dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAADCAIAAAA7ljmRAAAAEElEQVR4nGOQqzgBRww4OQA4KhBpUsYmbgAAAABJRU5ErkJggg==', w: 4, h: 3 }
 const MATCH = `${DAY}|aston-villa|viking`
 const LEAGUE = 'Europe · UEFA Champions League'
 const row = (team: string, rank: number): LeagueTableRow => ({ team, rank, played: 2, points: 6 - rank, ppg: (6 - rank) / 2, won: 2, drawn: 0, lost: 0, goalsFor: 5, goalsAgainst: 1, goalDiff: 4, last5: 'WW', cs: 50 })
@@ -42,6 +47,7 @@ function fullBackup(): BackupFile {
       leagueTableSnapshots: [{ id: `${LEAGUE}|2026-10-14T04:25:00.000Z`, league: LEAGUE, pastedAt: '2026-10-14T04:25:00.000Z', lastSeenAt: '2026-10-15T04:00:00.000Z', rows: [row('Aston Villa', 1), row('Viking', 2)] }],
       highlights: [{ id: highlightId(DAY, MATCH, 'over25'), date: DAY, matchId: MATCH, categoryId: 'over25', addedAt: '2026-10-15T09:30:00.000Z', home: 'Aston Villa', away: 'Viking', time: '22:00', league: LEAGUE, percent: 100, reliability: 'low', publishedAt: '2026-10-15T10:00:00.000Z' }],
       aiShares: [{ id: MATCH, matchId: MATCH, date: DAY, firstN: 1, firstAt: '2026-10-15T10:00:00.000Z', lastN: 2, lastAt: '2026-10-15T12:00:00.000Z', votes: AI_PROVIDERS.map((p) => ({ provider: p.id, decision: 'strong' as const })), count: AI_PROVIDERS.length, decision: 'strong' }],
+      matchNotes: [{ matchId: MATCH, text: 'Kadro açıklandı.\nİki oyuncu yok.', image: NOTE_IMAGE, publish: false, updatedAt: '2026-10-15T09:50:00.000Z' }],
       streakSteps: [{ id: streakStepId(MATCH, 'over25'), matchId: MATCH, categoryId: 'over25', seq: 1, addedAt: '2026-10-15T09:45:00.000Z', date: DAY, home: 'Aston Villa', away: 'Viking', time: '22:00', league: LEAGUE, publishedAt: '2026-10-15T10:00:00.000Z', lastOutcome: 'won' }],
     },
     new Date('2026-10-16T06:00:00.000Z'),
@@ -65,7 +71,7 @@ describe('yedek gidiş-dönüş (gerçek Dexie şeması, bellekte IndexedDB)', (
     const original = fullBackup()
     // Fikstür gerçekten her alanı dolduruyor: boş bir tablo gidiş-dönüşü sınamaz.
     for (const [key, value] of Object.entries(original)) if (Array.isArray(value)) expect(value.length, key).toBeGreaterThan(0)
-    expect(Object.keys(original).sort()).toEqual(['aiPrompts', 'aiShares', 'aiVerdicts', 'app', 'exportedAt', 'highlights', 'leagueTableSnapshots', 'leagueTables', 'marketConflictLimit', 'matches', 'picks', 'results', 'sharedPicks', 'storySelections', 'storyTexts', 'streakSteps', 'teamAliases', 'thresholds', 'uploads', 'version'])
+    expect(Object.keys(original).sort()).toEqual(['aiPrompts', 'aiShares', 'aiVerdicts', 'app', 'exportedAt', 'highlights', 'leagueTableSnapshots', 'leagueTables', 'marketConflictLimit', 'matchNotes', 'matches', 'picks', 'results', 'sharedPicks', 'storySelections', 'storyTexts', 'streakSteps', 'teamAliases', 'thresholds', 'uploads', 'version'])
 
     await backupRepo.importAll(original)
     const first = await backupRepo.exportAll()
@@ -90,7 +96,7 @@ describe('yedek gidiş-dönüş (gerçek Dexie şeması, bellekte IndexedDB)', (
   })
 
   it('isteğe bağlı alanları olmayan eski bir yedek de açılır; eksik tablolar boş gelir', async () => {
-    const { aiVerdicts: _a, aiPrompts: _p, storySelections: _s, sharedPicks: _sh, leagueTables: _l, teamAliases: _t, leagueTableSnapshots: _ls, highlights: _h, aiShares: _as, streakSteps: _st, storyTexts: _tx, marketConflictLimit: _m, ...old } = fullBackup()
+    const { aiVerdicts: _a, aiPrompts: _p, storySelections: _s, sharedPicks: _sh, leagueTables: _l, teamAliases: _t, leagueTableSnapshots: _ls, highlights: _h, aiShares: _as, streakSteps: _st, matchNotes: _n, storyTexts: _tx, marketConflictLimit: _m, ...old } = fullBackup()
     // Ölçüm kayıt alanlarından önce dondurulmuş öneri
     const oldPicks = old.picks.map(({ sampleAtFreeze: _sa, rankAtFreeze: _r, appCommit: _c, statsUploadedAt: _u, ...pick }) => pick)
     // Oran geçmişinden önce yüklenmiş maç
@@ -101,6 +107,91 @@ describe('yedek gidiş-dönüş (gerçek Dexie şeması, bellekte IndexedDB)', (
     expect(exported.picks).toEqual(oldPicks)
     for (const key of ['sampleAtFreeze', 'rankAtFreeze', 'appCommit', 'statsUploadedAt']) expect(key in exported.picks[0], key).toBe(false)
     for (const key of ['aiVerdicts', 'aiPrompts', 'storySelections', 'sharedPicks', 'leagueTables', 'teamAliases'] as const) expect(exported[key], key).toEqual([])
-    for (const key of ['leagueTableSnapshots', 'highlights', 'aiShares', 'streakSteps'] as const) expect(exported[key], key).toBeUndefined()
+    for (const key of ['leagueTableSnapshots', 'highlights', 'aiShares', 'streakSteps', 'matchNotes'] as const) expect(exported[key], key).toBeUndefined()
+    expect(await db.matchNotes.count()).toBe(0)
+  })
+
+  it('maç notu: önceki notlar silinir; maçı yedekte olmayan ya da bozuk not alınmaz', async () => {
+    await db.matchNotes.put({ matchId: 'eski|a|b', text: 'önceki tarayıcı notu', publish: true, updatedAt: '2026-10-01T00:00:00.000Z' })
+    const backup = fullBackup()
+    await backupRepo.importAll({ ...backup, matchNotes: [...backup.matchNotes!, { matchId: 'silinmis|x|y', text: 'yetim', publish: true, updatedAt: '2026-10-01T00:00:00.000Z' }, { matchId: MATCH, text: 'ikinci kayıt', publish: true, updatedAt: '2026-10-01T00:00:00.000Z' }] })
+    expect(await db.matchNotes.toArray()).toEqual(backup.matchNotes)
+  })
+})
+
+describe('maç notu: maç ve yükleme silinince not da silinir', () => {
+  const note = (matchId: string) => ({ matchId, text: 'not', image: NOTE_IMAGE, publish: true, updatedAt: '2026-10-15T09:50:00.000Z' })
+  const OTHER = `${DAY}|diger|mac`
+
+  it('maç silinince yalnızca o maçın notu silinir; skor/sonuç silme davranışı aynıdır', async () => {
+    await backupRepo.importAll(fullBackup())
+    await db.matches.put({ id: OTHER, uploadId: 'u1', date: DAY, home: 'Diğer', away: 'Maç', stats: {} })
+    await db.matchNotes.put(note(OTHER))
+    await matchesRepo.remove(MATCH)
+    expect((await db.matchNotes.toArray()).map((n) => n.matchId)).toEqual([OTHER])
+    expect(await db.results.get(MATCH)).toBeUndefined()
+    expect(await db.picks.where('matchId').equals(MATCH).count()).toBe(0)
+  })
+
+  it('yükleme silinince o yüklemenin maçlarının notları silinir', async () => {
+    await backupRepo.importAll(fullBackup())
+    await db.matches.put({ id: OTHER, uploadId: 'u2', date: DAY, home: 'Diğer', away: 'Maç', stats: {} })
+    await db.matchNotes.put(note(OTHER))
+    await uploadsRepo.remove('u1')
+    expect((await db.matchNotes.toArray()).map((n) => n.matchId)).toEqual([OTHER])
+  })
+
+  it('not kaydet/oku/sil (depo)', async () => {
+    await matchNotesRepo.put(note(MATCH))
+    expect(await matchNotesRepo.get(MATCH)).toEqual(note(MATCH))
+    expect(await matchNotesRepo.listByMatchIds([MATCH, 'yok'])).toEqual([note(MATCH)])
+    await matchNotesRepo.remove(MATCH)
+    expect(await matchNotesRepo.get(MATCH)).toBeUndefined()
+  })
+})
+
+describe('Dexie sürüm 12 yükseltmesi', () => {
+  it('sürüm 11 veritabanı açılınca eski kayıtlar aynen kalır, not tablosu boş gelir', async () => {
+    db.close()
+    await Dexie.delete('gollazim')
+    // Sürüm 11 şeması (db.ts'teki ilk 11 sürümün birleşimi)
+    const old = new Dexie('gollazim')
+    old.version(11).stores({
+      uploads: 'id, uploadedAt',
+      matches: 'id, date, uploadId',
+      results: 'matchId',
+      picks: 'id, matchId, date, categoryId',
+      settings: 'key',
+      aiVerdicts: 'id, matchId, date, provider',
+      aiPrompts: 'id, date',
+      storySelections: 'id, date',
+      sharedPicks: 'id, date',
+      leagueTables: 'id',
+      teamAliases: 'id, league',
+      members: 'username',
+      memberMeta: 'key',
+      publications: 'n',
+      highlights: 'id, date',
+      aiShares: 'id, date',
+      streakSteps: 'id, seq',
+      leagueTableSnapshots: 'id, league, pastedAt',
+    })
+    const backup = fullBackup()
+    await old.open()
+    await old.table('matches').bulkPut(backup.matches)
+    await old.table('results').bulkPut(backup.results)
+    await old.table('picks').bulkPut(backup.picks)
+    await old.table('streakSteps').bulkPut(backup.streakSteps!)
+    old.close()
+
+    await db.open()
+    expect(db.verno).toBe(12)
+    expect(await db.matches.toArray()).toEqual(backup.matches)
+    expect(await db.results.toArray()).toEqual(backup.results)
+    expect(await db.picks.toArray()).toEqual(backup.picks)
+    expect(await db.streakSteps.toArray()).toEqual(backup.streakSteps)
+    expect(await db.matchNotes.count()).toBe(0)
+    const exported = await backupRepo.exportAll()
+    expect('matchNotes' in exported).toBe(false)
   })
 })

@@ -43,14 +43,16 @@ import { assertMemberPayload, MEMBER_HT_SCORELESS, MEMBER_STREAK_LIMITS } from '
  *    değer varken yazılır.
  * 12: seri adımı "withdrawn" (geri çekildi) durumunda olabilir: yayınlanmış adım maç başlamadan
  *    seriden çıkarıldı.
+ * 13: maçlarda admin'in "Not"u (note: düz metin ve/veya tek görsel) bulunabilir; yalnızca "Üyelere göster"
+ *    açık notta ve yalnızca pakete giren maçta yazılır.
  * Sürüm 1 (others alanı olmayan), sürüm 2 (main alanı olmayan), sürüm 3 (highlights alanı olmayan),
  * sürüm 4 (sample alanı olmayan), sürüm 5 (ai alanı olmayan), sürüm 6 (ai alanı maçta olan) ve
  * sürüm 7 (streak alanı olmayan), sürüm 8 (form alanları olmayan), sürüm 9 (htScoreless alanı olmayan) ve
- * sürüm 10 (mkt alanı olmayan), sürüm 11 (withdrawn durumu olmayan)
+ * sürüm 10 (mkt alanı olmayan), sürüm 11 (withdrawn durumu olmayan), sürüm 12 (note alanı olmayan)
  * paketler üye sayfasında hâlâ açılır;
  * sürüm 6'daki maç geneli satır gösterilmez.
  */
-export const MEMBER_PAYLOAD_VERSION = 12
+export const MEMBER_PAYLOAD_VERSION = 13
 
 /** Günlük dökümde pakete giren en fazla gün sayısı (en yeniler) */
 export const MEMBER_DAILY_LIMIT = 90
@@ -169,6 +171,17 @@ export interface MemberMatch {
    * kendisindedir (MemberItem.ai).
    */
   ai?: MemberAi
+  /** Sürüm 13: admin'in "Not"u; yalnızca üyelere gösterilecek not varken yazılır */
+  note?: MemberNote
+}
+
+/**
+ * Maç kartındaki "Not": admin'in elle yazdığı düz metin ve/veya tek görsel (en az biri). Üye sayfasında düz
+ * metin olarak çizilir. Notun "üyelere göster" işareti, kayıt kimliği ve değişiklik anı pakete GİRMEZ.
+ */
+export interface MemberNote {
+  text?: string
+  image?: { src: string; w: number; h: number }
 }
 
 export type MemberAiProvider = 'chatgpt' | 'gemini' | 'claude'
@@ -333,7 +346,7 @@ export interface MemberStreak {
 }
 
 export interface MemberPayload {
-  v: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | typeof MEMBER_PAYLOAD_VERSION
+  v: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | typeof MEMBER_PAYLOAD_VERSION
   /** Yayın numarası */
   n: number
   /** Yayın anı (ISO) */
@@ -378,6 +391,17 @@ export interface MemberAiInput {
   ai: MemberAi
 }
 
+/**
+ * Notun paket kurucusuna verilen hâli: yalnızca üyelere gösterilecek notlar (publish açık) ve yalnızca
+ * metin ile görsel. Çağıran taraf kaydı buna indirger (services/notes/matchNote: memberNoteInputs);
+ * "üyelere göster" işareti ve değişiklik anı kurucuya hiç ulaşmaz.
+ */
+export interface MemberNoteInput {
+  matchId: string
+  text?: string
+  image?: { dataUrl: string; w: number; h: number }
+}
+
 export interface SentAiKey {
   matchId: string
   categoryId: CategoryId
@@ -393,6 +417,8 @@ export interface MemberDayInput {
   highlights?: MemberHighlightInput[]
   /** Üyeye gidecek "AI öneri güveni" satırları; verilmezse yok sayılır. Pakette karşılığı (o listede o maç) olmayan girmez. */
   ai?: MemberAiInput[]
+  /** Üyelere gösterilecek notlar; verilmezse yok sayılır. Yalnızca pakete giren (listelerde geçen) maçın notu girer. */
+  notes?: MemberNoteInput[]
 }
 
 export interface MemberPayloadInput {
@@ -480,6 +506,7 @@ function dayOf(input: MemberPayloadInput, day: MemberDayInput, now: Date, sentAi
   const pickByKey = new Map(input.picks.filter((p) => p.date === day.date).map((p) => [`${p.matchId}|${p.categoryId}`, p]))
 
   const aiByKey = new Map((day.ai ?? []).map((row) => [`${row.matchId}|${row.categoryId}`, row.ai]))
+  const noteById = new Map((day.notes ?? []).map((n) => [n.matchId, n]))
   // Yalnızca listelerde geçen maçlar pakete girer; kimlik yerine dizideki sıra kullanılır.
   const indexById = new Map<string, number>()
   const matches: MemberMatch[] = []
@@ -505,6 +532,14 @@ function dayOf(input: MemberPayloadInput, day: MemberDayInput, now: Date, sentAi
     const awayForm = formOf(forms.away)
     if (homeForm) entry.homeForm = homeForm
     if (awayForm) entry.awayForm = awayForm
+    // Not yalnızca doluyken yazılır; alanlar tek tek kopyalanır.
+    const own = noteById.get(match.id)
+    if (own && (own.text !== undefined || own.image !== undefined)) {
+      const note: MemberNote = {}
+      if (own.text !== undefined) note.text = own.text
+      if (own.image !== undefined) note.image = { src: own.image.dataUrl, w: own.image.w, h: own.image.h }
+      entry.note = note
+    }
     matches.push(entry)
     return matches.length - 1
   }

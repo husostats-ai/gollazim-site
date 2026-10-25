@@ -24,8 +24,9 @@ function walk(value: unknown, keys: Set<string>, numbers: Set<number>, strings: 
       walk(v, keys, numbers, strings, `${path}.${k}`)
     }
   else if (typeof value === 'number') numbers.add(value)
-  // Uyarı metinleri admin'in yazdığı serbest metindir; ham veri taramasının dışındadır.
-  else if (typeof value === 'string' && !path.startsWith('.texts')) strings.push(value)
+  // Uyarı metinleri admin'in yazdığı serbest metindir; ham veri taramasının dışındadır. Not görseli
+  // şemada yalnızca base64 data: adresi olarak denetlenir; içinde metin araması yapılmaz. Notun METNİ taranır.
+  else if (typeof value === 'string' && !path.startsWith('.texts') && !path.endsWith('.note.image.src')) strings.push(value)
 }
 
 /**

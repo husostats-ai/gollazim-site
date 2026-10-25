@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { createElement, type ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router-dom'
@@ -8,7 +9,7 @@ import { DEFAULT_MEMBER_TEXTS } from '../config/memberTexts'
 import { MEMBER_STALE_HOURS } from '../config/member'
 import { DAY, dayHighlights, HIGHLIGHT_PERCENT, memberInput, PREVIOUS_DAY, PUBLISHED_AT } from '../services/member/__fixtures__/rawData'
 import type { MemberErrorKind } from '../services/member/controller'
-import { MEMBER_ERROR_TEXTS, MEMBER_HIGHLIGHT_TEXTS, MEMBER_MARKET_LABEL, MEMBER_MARKET_NOTE, MEMBER_MARKET_NOTE_BUTTON, MEMBER_HT_SCORELESS_TEXT, MEMBER_NOTICE_TEXTS, MEMBER_STREAK_TEXTS, STALE_DATA_TEXT } from '../services/member/labels'
+import { MEMBER_ERROR_TEXTS, MEMBER_HIGHLIGHT_TEXTS, MEMBER_MARKET_LABEL, MEMBER_MARKET_NOTE, MEMBER_MARKET_NOTE_BUTTON, MEMBER_HT_SCORELESS_TEXT, MEMBER_NOTE_IMAGE_OPEN, MEMBER_NOTE_LABEL, MEMBER_NOTICE_TEXTS, MEMBER_STREAK_TEXTS, STALE_DATA_TEXT } from '../services/member/labels'
 import { buildMemberPayload } from '../services/member/payload'
 import { assertMemberPayload } from '../services/member/schema'
 import { formatRate } from '../utils/format'
@@ -24,9 +25,15 @@ import { makeMatch } from '../services/analysis/testUtils'
 import type { MemberPayload } from '../services/member/payload'
 import { streakMeanText, categoryChoices, dayChip, dayTitle, isOverstated, isStale, listFor, orderItems, OTHER_COMPUTED_TAG, PERCENT_LABELS, PERCENT_NOTE, percentKind, secondPercentLabel, SORT_ANNOUNCE, SORT_GROUP_LABEL, SORT_LABELS, TIME_SORT_NOTE, updatedText } from './view'
 
-/** Sürüm 11'den eski paket: önerilerde piyasa yüzdesi (mkt) alanı yoktur */
+/** Sürüm 13'ten eski paket: maçlarda not (note) alanı yoktur */
+const withoutNote = (p: MemberPayload): void => {
+  for (const d of p.days) for (const m of d.matches) delete m.note
+}
+
+/** Sürüm 11'den eski paket: önerilerde piyasa yüzdesi (mkt) alanı, dolayısıyla sürüm 13'teki not da yoktur */
 const withoutMkt = (p: MemberPayload): void => {
   for (const d of p.days) for (const l of d.lists) for (const i of l.items) delete i.mkt
+  withoutNote(p)
 }
 
 // Üye sayfasının görünümü: bileşenler sunucu tarafı çizimle (tarayıcısız) HTML'e çevrilir.
@@ -1165,5 +1172,68 @@ describe('liste sıralaması: Yüzdeye göre | Saate göre', () => {
       expect(/oran|bahis|kazan|tahmin|öner|fırsat|değer|piyasa|kupon|iddaa|banko|yaklaşan|kaçırma|acele|hemen|#/.exec(text.toLocaleLowerCase('tr'))?.[0] ?? null, text).toBeNull()
     }
     expect(TIME_SORT_NOTE).toBe('Numara, yüzde sırasını gösterir.')
+  })
+})
+
+describe('üye kartı: admin notu (sürüm 13)', () => {
+  const cardsOf = (markup: string): string[] => markup.split('data-testid="member-card"').slice(1).map((card) => card.slice(0, card.indexOf('</article>')).replace(/_R_[0-9a-zA-Z]+_/g, '_R_'))
+  const cards = (p: MemberPayload, categoryId: (typeof CATEGORIES)[number]['id'] = 'over25') => cardsOf(html(createElement(MemberAnalysis, { payload: p, today: DAY, initialDay: 0, initialCategory: categoryId })))
+  const copy = (): MemberPayload => JSON.parse(JSON.stringify(payload)) as MemberPayload
+  const kuzey = (p: MemberPayload) => p.days[0].matches.find((m) => m.home === 'Kuzey Yıldızı')!
+  const kuzeyCard = (p: MemberPayload) => cards(p).find((card) => card.includes('Kuzey Yıldızı'))!
+
+  it('notlu maçın kartında "Not" satırı: düz metin (satır sonları korunur) ve küçük önizleme; büyük görünüm kapalı gelir', () => {
+    const note = kuzey(payload).note!
+    expect(note.text).toContain('\n')
+    const card = kuzeyCard(payload)
+    const block = /<div[^>]*data-testid="member-note"[\s\S]*?<\/button><\/div>/.exec(card)![0]
+    expect(textOf(block).startsWith(`${MEMBER_NOTE_LABEL} `)).toBe(true)
+    expect(block).toContain(`>${note.text}</p>`)
+    expect(block).toMatch(/data-testid="member-note-text"/)
+    expect(block).toContain('whitespace-pre-wrap')
+    const thumb = /<button[^>]*data-testid="member-note-thumb"[^>]*>/.exec(block)![0]
+    expect(thumb).toContain(`aria-label="${MEMBER_NOTE_IMAGE_OPEN}"`)
+    expect(block).toContain(`src="${note.image!.src}"`)
+    expect(card).not.toContain('member-note-viewer')
+    // Aynı maçın başka listedeki kartında da aynı not görünür.
+    const other = payload.days[0].lists.find((l) => l.categoryId !== 'over25' && l.items.some((i) => payload.days[0].matches[i.match].home === 'Kuzey Yıldızı'))!
+    expect(cards(payload, other.categoryId).find((c) => c.includes('Kuzey Yıldızı'))).toContain('member-note')
+  })
+
+  it('metin HTML olarak yorumlanmaz: etiketler kaçırılmış metin olarak çizilir', () => {
+    const p = copy()
+    kuzey(p).note!.text = '<b>kalın</b><script>alert(1)</script><img src=x onerror=alert(2)>'
+    expect(() => assertMemberPayload(p)).not.toThrow()
+    const card = kuzeyCard(p)
+    expect(card).toContain('&lt;b&gt;kalın&lt;/b&gt;&lt;script&gt;alert(1)&lt;/script&gt;&lt;img src=x onerror=alert(2)&gt;')
+    expect(card).not.toContain('<b>kalın')
+    expect(card).not.toContain('<script>')
+    expect(card).not.toContain('<img src=x')
+    // Kodda innerHTML yok.
+    for (const file of ['src/member/MemberNote.tsx', 'src/member/MemberCard.tsx']) expect(readFileSync(file, 'utf8'), file).not.toMatch(/dangerouslySetInnerHTML|innerHTML/)
+  })
+
+  it('yalnızca metin ya da yalnızca görsel; notu olmayan kartta satır yok', () => {
+    const textOnly = copy()
+    delete kuzey(textOnly).note!.image
+    expect(kuzeyCard(textOnly)).toContain('member-note-text')
+    expect(kuzeyCard(textOnly)).not.toContain('member-note-thumb')
+    const imageOnly = copy()
+    delete kuzey(imageOnly).note!.text
+    expect(kuzeyCard(imageOnly)).toContain('member-note-thumb')
+    expect(kuzeyCard(imageOnly)).not.toContain('member-note-text')
+    for (const card of cards(payload).filter((c) => !c.includes('Kuzey Yıldızı'))) expect(card).not.toContain('member-note')
+  })
+
+  it('sürüm 12 paket (notsuz) eskisi gibi çizilir: kart, not satırı dışında bayt bayt aynı', () => {
+    const v12 = copy()
+    ;(v12 as { v: number }).v = 12
+    for (const d of v12.days) for (const m of d.matches) delete m.note
+    expect(() => assertMemberPayload(v12)).not.toThrow()
+    const withNote = kuzeyCard(payload)
+    const start = withNote.indexOf('<div class="flex min-w-0 flex-col gap-1.5 rounded-xl border border-line bg-navy-800 px-3 py-2 text-xs" data-testid="member-note"')
+    expect(start).toBeGreaterThan(0)
+    const end = withNote.indexOf('</button></div>', start) + '</button></div>'.length
+    expect(kuzeyCard(v12)).toBe(withNote.slice(0, start) + withNote.slice(end))
   })
 })

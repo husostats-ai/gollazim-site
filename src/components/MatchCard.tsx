@@ -10,6 +10,7 @@ import AiVerdictBadges from './ai/AiVerdictBadges'
 import CautiousBadge from './CautiousBadge'
 import HighlightButton from './HighlightButton'
 import LeagueEmblem from './LeagueEmblem'
+import MatchNotePanel from './MatchNotePanel'
 import { leagueEmblem } from './leagueEmblem'
 import ModelSourceLine from './ModelSourceLine'
 import NoteBadges from './NoteBadges'
@@ -143,6 +144,9 @@ export default function MatchCard({ prediction, rank, sortMode, storySelection, 
       {shared && <SharedBadge record={shared.record} onRemove={shared.onRemove} />}
 
       <AiVerdictBadges matchId={match.id} categoryId={categoryId} />
+
+      {/* Özel not maça aittir (her kategorideki kartta aynı); yalnızca gösterim, hiçbir hesaba girmez. */}
+      <MatchNotePanel matchId={match.id} />
 
       <ScoreOdds match={match} />
 

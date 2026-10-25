@@ -10,6 +10,7 @@ import type {
   LeagueTable,
   LeagueTableSnapshot,
   Match,
+  MatchNote,
   MatchResult,
   Pick,
   SharedPick,
@@ -27,7 +28,7 @@ import type { MemberMeta, MemberRecord, MemberSnapshot, PublicationRecord } from
 export interface UploadsRepo {
   list(): Promise<Upload[]>
   add(upload: Upload): Promise<void>
-  /** Yüklemeyi ve ona bağlı maç, skor, öneri ve yapay zekâ kararlarını siler */
+  /** Yüklemeyi ve ona bağlı maç, skor, öneri, yapay zekâ kararlarını ve maç notlarını siler */
   remove(id: string): Promise<void>
 }
 
@@ -43,7 +44,7 @@ export interface MatchesRepo {
   listTeamsByLeague(): Promise<Record<string, string[]>>
   upsertMany(matches: Match[]): Promise<void>
   update(id: string, patch: Partial<Omit<Match, 'id'>>): Promise<void>
-  /** Maçı, skorunu, önerilerini ve yapay zekâ kararlarını siler */
+  /** Maçı, skorunu, önerilerini, yapay zekâ kararlarını ve notunu siler */
   remove(id: string): Promise<void>
 }
 
@@ -132,6 +133,15 @@ export interface StreakRepo {
   markPublished(ids: string[], publishedAt: string): Promise<void>
   /** Maçın günü ya da saati düzenlenince adımın görünümünü günceller */
   syncSchedule(matchId: string, schedule: { date: string; time?: string | null }): Promise<void>
+}
+
+/** Maç kartlarındaki özel notlar: maç başına bir kayıt */
+export interface MatchNotesRepo {
+  /** Verilen maçlardan notu olanlar */
+  listByMatchIds(matchIds: string[]): Promise<MatchNote[]>
+  get(matchId: string): Promise<MatchNote | undefined>
+  put(note: MatchNote): Promise<void>
+  remove(matchId: string): Promise<void>
 }
 
 export interface SettingsRepo {

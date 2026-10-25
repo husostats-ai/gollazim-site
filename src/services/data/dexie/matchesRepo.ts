@@ -39,8 +39,9 @@ export const matchesRepo: MatchesRepo = {
   },
 
   async remove(id) {
-    await db.transaction('rw', db.matches, db.results, db.picks, db.aiVerdicts, async () => {
+    await db.transaction('rw', [db.matches, db.results, db.picks, db.aiVerdicts, db.matchNotes], async () => {
       await db.picks.where('matchId').equals(id).delete()
+      await db.matchNotes.delete(id)
       await db.aiVerdicts.where('matchId').equals(id).delete()
       await db.results.delete(id)
       await db.matches.delete(id)

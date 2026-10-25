@@ -72,6 +72,7 @@ it.runIf(process.env.UYE_ORNEK && process.env.UYE_BACKUP)(
         listAliases: async () => backup.teamAliases ?? [],
         getThresholds: async () => backup.thresholds,
         getMarketConflictLimit: async () => backup.marketConflictLimit ?? 25,
+        listMatchNotes: async (ids) => (backup.matchNotes ?? []).filter((n) => ids.includes(n.matchId)),
       },
       { day, n: Number(process.env.UYE_N ?? 1), publishedAt: process.env.UYE_AT ?? new Date().toISOString(), texts: DEFAULT_MEMBER_TEXTS },
     )

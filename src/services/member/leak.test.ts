@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest'
 import type { AiVerdict, BackupFile, Match } from '../../types'
 import { toAppDateTime } from '../../utils/date'
 import { shiftDate } from '../../utils/format'
+import { memberNoteInputs } from '../notes/matchNote'
+import { scanForLeaks } from '../memberAdmin/leakScan'
 import { aiInputsOf, highlightInputOf, PUBLISH_DAY_COUNT, streakInputOf } from '../memberAdmin/publish'
 import { analyzeDay } from '../analysis/engine'
 import { MARKET_CATEGORY_IDS } from '../analysis/market'
@@ -11,15 +13,21 @@ import { estimateSampleSize, levelForSample, RELIABILITY_LIMITS } from '../analy
 import { CATEGORIES, getCategory } from '../../config/categories'
 import { TEXT_FIELDS } from '../../config/columnAliases'
 import { isBackupFile } from '../data/backupFormat'
-import { AI_REASON_CANARY, AI_RISK_CANARY, AI_SAVED_AT, AI_VERDICTS, dayVerdicts, DAY, dayHighlights, dayMatches, HIGHLIGHT_PERCENT, HIGHLIGHTS, MATCHES, memberInput, PICKS, PREVIOUS_DAY, RAW_CANARIES, RAW_HEADERS, RAW_STAT_KEYS, RESULTS, STREAK_ADDED_AT, STREAK_INPUT, STREAK_STEPS, streakView, URL_CANARY } from './__fixtures__/rawData'
+import { AI_REASON_CANARY, AI_RISK_CANARY, AI_SAVED_AT, AI_VERDICTS, dayVerdicts, DAY, dayHighlights, dayMatches, dayNotes, HIGHLIGHT_PERCENT, HIGHLIGHTS, MATCHES, memberInput, NOTE_HIDDEN_CANARY, NOTE_HIDDEN_IMAGE, NOTE_IMAGE, NOTE_UPDATED_AT, NOTES, PICKS, PREVIOUS_DAY, RAW_CANARIES, RAW_HEADERS, RAW_STAT_KEYS, RESULTS, STREAK_ADDED_AT, STREAK_INPUT, STREAK_STEPS, streakView, URL_CANARY } from './__fixtures__/rawData'
 import { AI_CATEGORY_IDS, AI_DECISIONS, AI_PROVIDERS, decisionLabel } from '../../config/ai'
 import { MEMBER_AI_LEVEL_LABELS, MEMBER_AI_PROVIDER_LABELS, memberAiSummary, memberAiTitle } from './labels'
 import { buildMemberPayload, buildMemberPublication, MEMBER_PAYLOAD_VERSION, type MemberPayload, type MemberPayloadInput, type MemberStreak } from './payload'
 import { MEMBER_AI_CATEGORIES, MEMBER_MARKET_CATEGORIES, MEMBER_AI_MAJORITY_LEVELS, MEMBER_AI_PROVIDERS, MEMBER_AI_VOTE_LEVELS, assertMemberPayload, MEMBER_KEYS, MEMBER_STREAK_LIMITS, MemberPayloadError, SAMPLE_LEVEL_LIMITS, SAMPLE_RANGE } from './schema'
 
-/** Sürüm 11'den eski paket: önerilerde piyasa yüzdesi (mkt) alanı yoktur */
+/** Sürüm 13'ten eski paket: maçlarda not (note) alanı yoktur */
+const withoutNote = (p: MemberPayload): void => {
+  for (const d of p.days) for (const m of d.matches) delete m.note
+}
+
+/** Sürüm 11'den eski paket: önerilerde piyasa yüzdesi (mkt) alanı, dolayısıyla sürüm 13'teki not da yoktur */
 const withoutMkt = (p: MemberPayload): void => {
   for (const d of p.days) for (const l of d.lists) for (const i of l.items) delete i.mkt
+  withoutNote(p)
 }
 
 // SIZINTI TESTLERİ: yayın paketinin düz hâlinde ham veriden hiçbir iz bulunmamalı.
@@ -171,6 +179,9 @@ describe('yayın paketi: ham veri sızıntısı', () => {
       highlight: ['home', 'away', 'league', 'time', 'categoryId', 'status', 'score', 'outcome'],
       match: ['home', 'away', 'league', 'time', 'status', 'score', 'homeStanding', 'awayStanding'],
       matchOptionalV9: ['homeForm', 'awayForm'],
+      matchOptionalV13: ['homeForm', 'awayForm', 'note'],
+      noteOptional: ['text', 'image'],
+      noteImage: ['src', 'w', 'h'],
       form: ['last', 'gf', 'ga', 'cs'],
       matchOptional: ['ai'],
       ai: ['votes', 'count', 'level'],
@@ -201,7 +212,7 @@ describe('yayın paketi: ham veri sızıntısı', () => {
 describe('yayın paketi: şema denetimi fazladan ya da eksik alanı reddeder', () => {
   // Her nesneyi tek tek değiştiren bu testler küçük bir paketle çalışır (iki maç); paket yine
   // her tür nesneyi içerir: maç, lig sırası, liste, öneri, diğer öneriler, istatistik dökümleri.
-  const small = buildMemberPayload(memberInput({ days: [{ date: DAY, matches: dayMatches(DAY).filter((m) => ['Kuzey Yıldızı', 'Doğu Gençlik'].includes(m.home)), results: RESULTS, ai: aiInputsOf(dayMatches(DAY), dayVerdicts(DAY)).inputs }] }))
+  const small = buildMemberPayload(memberInput({ days: [{ date: DAY, matches: dayMatches(DAY).filter((m) => ['Kuzey Yıldızı', 'Doğu Gençlik'].includes(m.home)), results: RESULTS, ai: aiInputsOf(dayMatches(DAY), dayVerdicts(DAY)).inputs, notes: memberNoteInputs(dayNotes(DAY)) }] }))
   const smallText = JSON.stringify(small)
 
   /** Paketteki her nesne için: o nesneye uygulanacak değişikliği yapıp kopyayı döner */
@@ -244,7 +255,10 @@ describe('yayın paketi: şema denetimi fazladan ya da eksik alanı reddeder', (
 
   it('paketin herhangi bir nesnesinden silinen alan reddedilir', () => {
     const variants = mutations((node) => {
-      delete node[Object.keys(node)[0]]
+      // Notun iki alanı da isteğe bağlıdır (en az biri bulunur): notta ikisi birden silinir.
+      const keys = Object.keys(node)
+      const isNote = keys.length > 0 && keys.every((k) => (MEMBER_KEYS.noteOptional as readonly string[]).includes(k))
+      for (const key of isNote ? keys : [keys[0]]) delete node[key]
     })
     for (const variant of variants) expect(() => assertMemberPayload(variant)).toThrow(MemberPayloadError)
   })
@@ -267,7 +281,7 @@ describe('yayın paketi: şema denetimi fazladan ya da eksik alanı reddeder', (
     expect(broken((p) => void ((firstItem(p) as { conflict: unknown }).conflict = 'piyasa'))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days[0].lists[0].items[0].conflict = 'hesap'))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days[0].lists.find((l) => l.categoryId === 'homeWin15')!.items[0].conflict = 'model'))).toThrow(MemberPayloadError)
-    expect(broken((p) => void ((p as { v: number }).v = 13))).toThrow(MemberPayloadError)
+    expect(broken((p) => void ((p as { v: number }).v = 14))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days = []))).toThrow(MemberPayloadError)
     expect(broken((p) => void p.days[0].lists.reverse())).toThrow(MemberPayloadError)
   })
@@ -299,7 +313,7 @@ describe('yayın paketi: "aynı maçın diğer önerileri" yalnızca paketteki �
           entries += item.others!.length
         }
     expect(entries).toBeGreaterThan(100)
-    expect(payload.v).toBe(12)
+    expect(payload.v).toBe(13)
   })
 
   it('pakete girmeyen (ilk 15 dışında kalan) öneri bu satıra da girmez', () => {
@@ -592,6 +606,7 @@ describe('yayın paketi: tahmini maç sayısı (sürüm 5)', () => {
         for (const d of p.days) for (const m of d.matches) { delete m.homeForm; delete m.awayForm }
         for (const scope of ['all', 'shared'] as const) delete p.statistics[scope].htScoreless
         for (const day of p.days) for (const list of day.lists) for (const item of list.items) delete item.ai
+        withoutMkt(p)
       }),
     ).toThrow('izinli olmayan alan: sample')
     // Sürüm 5 pakette alan zorunlu değildir (sayı çıkarılamayan öneriler).
@@ -822,7 +837,7 @@ describe('yayın paketi: "AI öneri güveni" satırı (kategori bazlı)', () => 
   })
 
   it('kararlar verilmezse paket satırsız kurulur; diğer her şey aynıdır', () => {
-    const without = buildMemberPayload(memberInput({ days: memberInput().days.map((d) => ({ date: d.date, matches: d.matches, results: d.results, highlights: d.highlights })) }))
+    const without = buildMemberPayload(memberInput({ days: memberInput().days.map((d) => ({ date: d.date, matches: d.matches, results: d.results, highlights: d.highlights, notes: d.notes })) }))
     expect(allAi(without)).toEqual([])
     const stripped = copy()
     for (const d of stripped.days) for (const l of d.lists) for (const i of l.items) delete i.ai
@@ -915,9 +930,9 @@ describe('yayın paketi: seri takibi (sürüm 8)', () => {
   }
   const streak = payload.streak!
 
-  it('aktif serinin adımları, geçmiş seriler ve sayılar; paket sürümü 12', () => {
-    expect(MEMBER_PAYLOAD_VERSION).toBe(12)
-    expect(payload.v).toBe(12)
+  it('aktif serinin adımları, geçmiş seriler ve sayılar; paket sürümü 13', () => {
+    expect(MEMBER_PAYLOAD_VERSION).toBe(13)
+    expect(payload.v).toBe(13)
     expect(streak).toEqual({
       status: 'active',
       steps: [
@@ -1068,6 +1083,7 @@ describe('yayın paketi: geri çekilen seri adımı (sürüm 12)', () => {
     const copy = (): MemberPayload => JSON.parse(withdrawnText) as MemberPayload
     const v11 = copy()
     ;(v11 as { v: number }).v = 11
+    withoutNote(v11)
     expect(() => assertMemberPayload(v11)).toThrow(MemberPayloadError)
     const numbered = copy()
     numbered.streak!.steps[2].step = 2
@@ -1075,6 +1091,7 @@ describe('yayın paketi: geri çekilen seri adımı (sürüm 12)', () => {
     // Geri çekilen adımı içermeyen sürüm 11 paket hâlâ açılır.
     const old = JSON.parse(text) as MemberPayload
     ;(old as { v: number }).v = 11
+    withoutNote(old)
     expect(() => assertMemberPayload(old)).not.toThrow()
   })
 })
@@ -1094,9 +1111,11 @@ describe('yayın paketi: lig tablosundan form, gol ve gol yemediği maç (sürü
     expect(match.homeForm).toEqual({ last: 'WWDWW', gf: 18, ga: 6, cs: 50 })
     expect(match.awayForm).toEqual({ last: 'LWDWL', gf: 10, ga: 9, cs: 29 })
     expect(MEMBER_KEYS.form).toEqual(['last', 'gf', 'ga', 'cs'])
-    expect(Object.keys(match)).toEqual([...MEMBER_KEYS.match, ...MEMBER_KEYS.matchOptionalV9])
+    // Kuzey Yıldızı'nın notu da var (sürüm 13); not bu testin konusu değildir.
+    const keysOf = (m: object) => Object.keys(m).filter((k) => k !== 'note')
+    expect(keysOf(match)).toEqual([...MEMBER_KEYS.match, ...MEMBER_KEYS.matchOptionalV9])
     // Satır yalnızca doluyken yazılır: diğer maçlarda anahtar hiç yoktur (null da yazılmaz); başka tablo alanı da yoktur.
-    for (const day of payload.days) for (const m of day.matches) if (m !== match) expect(Object.keys(m)).toEqual(MEMBER_KEYS.match)
+    for (const day of payload.days) for (const m of day.matches) if (m !== match) expect(keysOf(m)).toEqual(MEMBER_KEYS.match)
     expect(text).not.toMatch(/"(home|away)Form":null/)
   })
 
@@ -1109,7 +1128,7 @@ describe('yayın paketi: lig tablosundan form, gol ve gol yemediği maç (sürü
     // CSV'de genel PPG olmayan maçlar doğrulanamaz.
     expect(today.matches.filter((m) => m.homeForm || m.awayForm).map((m) => m.home)).toEqual(['Kuzey Yıldızı'])
     const none = buildMemberPayload(memberInput({ leagueTables: [], leagueTableSnapshots: [] }))
-    for (const day of none.days) for (const m of day.matches) expect(Object.keys(m)).toEqual(MEMBER_KEYS.match)
+    for (const day of none.days) for (const m of day.matches) expect(Object.keys(m).filter((k) => k !== 'note')).toEqual(MEMBER_KEYS.match)
     expect(() => assertMemberPayload(none)).not.toThrow()
     // Tablosu olmayan sürüm 9 paket, sürüm numarası dışında sürüm 8 paketle aynı biçimdedir.
     expect(JSON.stringify(none)).not.toMatch(/Form/)
@@ -1178,7 +1197,7 @@ describe('yayın paketi: lig tablosundan form, gol ve gol yemediği maç (sürü
     for (const d of v8.days) for (const m of d.matches) expect(Object.keys(m)).toEqual(MEMBER_KEYS.match)
     // Sürüm 8 pakette alan bulunamaz; sürüm 9 pakette isteğe bağlıdır.
     expect(rejects((p) => void ((p as { v: number }).v = 8))).toThrow('izinli olmayan alan: homeForm, awayForm')
-    expect(rejects((p) => void ((p as { v: number }).v = 13))).toThrow('desteklenmeyen paket sürümü')
+    expect(rejects((p) => void ((p as { v: number }).v = 14))).toThrow('desteklenmeyen paket sürümü')
   })
 })
 
@@ -1262,6 +1281,122 @@ describe('yayın paketi: piyasa yüzdesi (sürüm 11)', () => {
       expect(rejects((p) => void (target(p).mkt = 50)), categoryId).toThrow('bu listede bulunamaz')
     }
     // Sürüm 10 pakette alan bulunamaz.
-    expect(rejects((p) => void ((p as { v: number }).v = 10))).toThrow('izinli olmayan alan: mkt')
+    expect(
+      rejects((p) => {
+        ;(p as { v: number }).v = 10
+        withoutNote(p)
+      }),
+    ).toThrow('izinli olmayan alan: mkt')
+  })
+})
+
+describe('yayın paketi: maç notu (sürüm 13)', () => {
+  const copy = (): MemberPayload => JSON.parse(text) as MemberPayload
+  const matchOf = (p: MemberPayload, home: string) => p.days.flatMap((d) => d.matches).find((m) => m.home === home)!
+  const notesOf = (p: MemberPayload) => p.days.flatMap((d) => d.matches.filter((m) => m.note !== undefined).map((m) => m.home))
+  const rejects = (change: (p: MemberPayload) => void) => {
+    const p = copy()
+    change(p)
+    return () => assertMemberPayload(p)
+  }
+  const kuzeyNote = (p: MemberPayload) => matchOf(p, 'Kuzey Yıldızı').note!
+
+  it('"Üyelere göster" açık not maçında: yalnızca metin ve görsel (src, w, h)', () => {
+    expect(MEMBER_PAYLOAD_VERSION).toBe(13)
+    const note = kuzeyNote(payload)
+    expect(note).toEqual({ text: 'Kadro haberi maçtan önce bekleniyor.\nİki oyuncu sakat.', image: { src: NOTE_IMAGE.dataUrl, w: 4, h: 3 } })
+    expect(Object.keys(note)).toEqual(['text', 'image'])
+    expect(Object.keys(note.image!)).toEqual([...MEMBER_KEYS.noteImage])
+    // Dünün notu yalnızca metin: görsel anahtarı hiç yazılmaz.
+    expect(matchOf(payload, 'Dünkü Ev').note).toEqual({ text: 'Dünkü maç için kısa not.' })
+    expect(notesOf(payload).sort()).toEqual(['Dünkü Ev', 'Kuzey Yıldızı'])
+    // Notu olmayan maçta anahtar yoktur (null da yazılmaz).
+    expect(text).not.toContain('"note":null')
+  })
+
+  it('SIZINTI: "Üyelere göster" kapalı notun metni ve görseli pakette yok; maçın kendisi pakette', () => {
+    const hidden = NOTES.find((n) => !n.publish)!
+    expect(hidden.text).toContain(NOTE_HIDDEN_CANARY)
+    const dogu = matchOf(payload, 'Doğu Gençlik')
+    expect(dogu).toBeDefined()
+    expect(dogu).not.toHaveProperty('note')
+    expect(text).not.toContain(NOTE_HIDDEN_CANARY)
+    expect(text).not.toContain(NOTE_HIDDEN_IMAGE.dataUrl.slice('data:image/png;base64,'.length))
+    expect(text).not.toContain('İç not')
+  })
+
+  it('SIZINTI: notun iç alanları (işaret, değişiklik anı, kimlik, dataUrl) pakette yok', () => {
+    const { keys } = collect(payload)
+    for (const key of ['publish', 'updatedAt', 'matchId', 'dataUrl', 'notes']) expect(keys.has(key), key).toBe(false)
+    expect(text).not.toContain(NOTE_UPDATED_AT)
+    expect(text).not.toContain(NOTE_UPDATED_AT.slice(0, 19))
+    for (const n of NOTES) expect(text).not.toContain(n.matchId)
+  })
+
+  it('kurucuya "Üyelere göster" kapalı not hiç verilmez (süzme kurucudan önce)', () => {
+    expect(memberNoteInputs(NOTES).map((n) => n.matchId)).toEqual(NOTES.filter((n) => n.publish).map((n) => n.matchId))
+    for (const input of memberNoteInputs(NOTES)) expect(Object.keys(input).every((k) => ['matchId', 'text', 'image'].includes(k))).toBe(true)
+  })
+
+  it('yalnızca pakette yer alan maçların notu girer', () => {
+    const kuzey = MATCHES.find((m) => m.home === 'Kuzey Yıldızı')!
+    const day = memberInput().days[0]
+    // Listelerde hiç yer almayan maç: analize girmeyen (istatistiği boş) bir maç günün maçlarına eklenir.
+    const outside: Match = { ...kuzey, id: `${DAY}|liste-disi|mac`, home: 'Liste Dışı', away: 'Hiçbir Liste', stats: {} }
+    const lists = analyzeDay([...day.matches, outside], memberInput().thresholds, 'percent', 25)
+    expect(CATEGORIES.some((c) => lists[c.id].predictions.slice(0, 15).some((p) => p.match.id === outside.id))).toBe(false)
+    const notes = [...day.notes!, { matchId: outside.id, text: 'Listede olmayan maçın notu' }, { matchId: `${PREVIOUS_DAY}|baska|gun`, text: 'Başka günün notu' }]
+    const built = buildMemberPayload(memberInput({ days: [{ ...day, matches: [...day.matches, outside], notes }, memberInput().days[1]] }))
+    const builtText = JSON.stringify(built)
+    expect(builtText).not.toContain('Liste Dışı')
+    expect(builtText).not.toContain('Listede olmayan')
+    expect(builtText).not.toContain('Başka günün')
+    expect(notesOf(built).sort()).toEqual(['Dünkü Ev', 'Kuzey Yıldızı'])
+    // Notun maçı başka bir günde: o günün maçına yazılmaz.
+    const swapped = buildMemberPayload(memberInput({ days: [{ ...day, notes: [] }, { ...memberInput().days[1], notes: day.notes }] }))
+    expect(notesOf(swapped)).toEqual([])
+  })
+
+  it('not verilmezse paket notsuz kurulur; diğer her şey aynıdır', () => {
+    const without = buildMemberPayload(memberInput({ days: memberInput().days.map((d) => ({ ...d, notes: undefined })) }))
+    const stripped = copy()
+    withoutNote(stripped)
+    expect(without).toEqual(stripped)
+    expect(notesOf(without)).toEqual([])
+  })
+
+  it('şema: not yalnızca sürüm 13 pakette; sürüm 12 paket (notsuz) hâlâ açılır', () => {
+    expect(rejects((p) => void ((p as { v: number }).v = 12))).toThrow('izinli olmayan alan: note')
+    const v12 = copy()
+    ;(v12 as { v: number }).v = 12
+    withoutNote(v12)
+    expect(() => assertMemberPayload(v12)).not.toThrow()
+    expect(rejects((p) => void ((p as { v: number }).v = 14))).toThrow('desteklenmeyen paket sürümü')
+  })
+
+  it('şema: boş not, sınırı aşan ya da biçimsiz metin ve görsel, fazladan alan reddedilir', () => {
+    const set = (change: (note: Record<string, unknown>) => void) => rejects((p) => change(kuzeyNote(p) as unknown as Record<string, unknown>))
+    const image = (change: (img: Record<string, unknown>) => void) => set((note) => change(note.image as Record<string, unknown>))
+    expect(set((n) => void (delete n.text, delete n.image))).toThrow('metin ya da görsel bekleniyor')
+    expect(set((n) => void (n.text = ''))).toThrow(MemberPayloadError)
+    expect(set((n) => void (n.text = 'a'.repeat(601)))).toThrow('1-600 karakterlik metin')
+    expect(() => rejects((p) => void (kuzeyNote(p).text = 'a'.repeat(600)))()).not.toThrow()
+    expect(set((n) => void (n.text = 5))).toThrow(MemberPayloadError)
+    expect(set((n) => void (n.publish = true))).toThrow('izinli olmayan alan: publish')
+    expect(set((n) => void (n.updatedAt = NOTE_UPDATED_AT))).toThrow('izinli olmayan alan: updatedAt')
+    expect(image((i) => void (i.dataUrl = i.src))).toThrow('izinli olmayan alan: dataUrl')
+    for (const src of ['data:image/gif;base64,R0lGODlhAQABAAAAACw=', 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=', 'https://example.org/x.png', 'javascript:alert(1)', 'data:image/png;base64,abc', 'data:image/png,ham-metin', `${NOTE_IMAGE.dataUrl}"`])
+      expect(image((i) => void (i.src = src)), src).toThrow(MemberPayloadError)
+    // 300 KB'ı aşan görsel (base64 çözülmüş boyut).
+    expect(image((i) => void (i.src = `data:image/jpeg;base64,${'A'.repeat(Math.ceil((300 * 1024 + 3) / 3) * 4)}`))).toThrow('görsel en fazla')
+    expect(() => rejects((p) => void (kuzeyNote(p).image!.src = `data:image/jpeg;base64,${'A'.repeat((300 * 1024 / 3) * 4)}`))()).not.toThrow()
+    for (const [w, h] of [[901, 10], [10, 901], [0, 10], [1.5, 10], [null, 10]]) expect(image((i) => void ((i.w = w), (i.h = h))), `${w}x${h}`).toThrow(MemberPayloadError)
+  })
+
+  it('yayın anı sızıntı denetimi: not görseli taramayı bozmaz; notun metnindeki bağlantı yakalanır', () => {
+    expect(scanForLeaks(payload, MATCHES).problems).toEqual([])
+    const linked = copy()
+    kuzeyNote(linked).text = 'Ayrıntı: https://ornek.test/haber'
+    expect(scanForLeaks(linked, MATCHES).problems).toContain('bağlantı geçiyor')
   })
 })

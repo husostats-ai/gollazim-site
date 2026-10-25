@@ -27,6 +27,11 @@ export const MEMBER_KEYS = {
   match: ['home', 'away', 'league', 'time', 'status', 'score', 'homeStanding', 'awayStanding'],
   /** Sürüm 9: maçın isteğe bağlı alanları; yalnızca doluyken yazılır (boşsa anahtar hiç bulunmaz, null olamaz) */
   matchOptionalV9: ['homeForm', 'awayForm'],
+  /** Sürüm 13: ayrıca admin'in "Not"u (note); yalnızca üyelere gösterilecek not varken */
+  matchOptionalV13: ['homeForm', 'awayForm', 'note'],
+  /** Not: metin ve görsel isteğe bağlıdır ama en az biri bulunur */
+  noteOptional: ['text', 'image'],
+  noteImage: ['src', 'w', 'h'],
   /** Lig tablosundan: son maçlar, attığı ve yediği gol, gol yemediği maçların yüzdesi; başka sütun bulunamaz */
   form: ['last', 'gf', 'ga', 'cs'],
   /** YALNIZCA sürüm 6: maçın isteğe bağlı alanı (eski, maç geneli "AI öneri güveni" satırı) */
@@ -105,6 +110,19 @@ export const MEMBER_STREAK_LOW_SAMPLE = 20
 const STREAK_STEP_STATES = ['won', 'pending', 'unplayed', 'void']
 /** Sürüm 12: geri çekilen adım */
 const STREAK_STEP_STATES_V12 = [...STREAK_STEP_STATES, 'withdrawn']
+/**
+ * Maç kartındaki "Not" (sürüm 13): düz metin ve/veya tek görsel. text: en fazla karakter; side: görselin en
+ * uzun kenarı (piksel); imageBytes: görselin en fazla bayt boyutu (base64 çözülmüş). Admin tarafı
+ * (services/notes) aynı sınırları buradan okur.
+ */
+export const MEMBER_NOTE_LIMITS = { text: 600, side: 900, imageBytes: 300 * 1024 } as const
+/** Görselin data: adresi; yalnızca bu üç tür ve yalnızca base64 */
+export const NOTE_IMAGE_DATA_URL = /^data:image\/(jpeg|png|webp);base64,(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
+/** data: adresindeki görselin bayt boyutu */
+export const dataUrlBytes = (dataUrl: string): number => {
+  const body = dataUrl.slice(dataUrl.indexOf(',') + 1)
+  return Math.floor((body.length * 3) / 4) - (body.endsWith('==') ? 2 : body.endsWith('=') ? 1 : 0)
+}
 /** Bir günde pakete girebilecek en fazla öne çıkan seçim */
 const MAX_HIGHLIGHTS = 60
 const MAX_NAME = 120
@@ -256,13 +274,27 @@ function form(value: unknown, path: string): void {
   nullable(f.cs, (v) => integer(v, `${path}.cs`, 0, 100))
 }
 
+/** "Not": en az biri bulunan düz metin ve tek görsel; başka alan yok */
+function note(value: unknown, path: string): void {
+  const n = object(value, path, [], MEMBER_KEYS.noteOptional)
+  if (n.text === undefined && n.image === undefined) fail(path, 'metin ya da görsel bekleniyor')
+  if (n.text !== undefined) text(n.text, `${path}.text`, MEMBER_NOTE_LIMITS.text)
+  if (n.image !== undefined) {
+    const image = object(n.image, `${path}.image`, MEMBER_KEYS.noteImage)
+    if (typeof image.src !== 'string' || !NOTE_IMAGE_DATA_URL.test(image.src)) fail(`${path}.image.src`, 'jpeg, png ya da webp görselin data: adresi bekleniyor')
+    if (dataUrlBytes(image.src as string) > MEMBER_NOTE_LIMITS.imageBytes) fail(`${path}.image.src`, `görsel en fazla ${MEMBER_NOTE_LIMITS.imageBytes} bayt olabilir`)
+    integer(image.w, `${path}.image.w`, 1, MEMBER_NOTE_LIMITS.side)
+    integer(image.h, `${path}.image.h`, 1, MEMBER_NOTE_LIMITS.side)
+  }
+}
+
 function day(value: unknown, path: string, version: number): void {
   const d = object(value, path, version >= 4 ? MEMBER_KEYS.day : MEMBER_KEYS.dayV3)
   text(d.date, `${path}.date`, 10, DATE)
   const matches = array(d.matches, `${path}.matches`, CATEGORIES.length * MAX_MATCHES_PER_CATEGORY)
   matches.forEach((entry, i) => {
     const p = `${path}.matches[${i}]`
-    const m = object(entry, p, MEMBER_KEYS.match, version === 6 ? MEMBER_KEYS.matchOptional : version >= 9 ? MEMBER_KEYS.matchOptionalV9 : [])
+    const m = object(entry, p, MEMBER_KEYS.match, version === 6 ? MEMBER_KEYS.matchOptional : version >= 13 ? MEMBER_KEYS.matchOptionalV13 : version >= 9 ? MEMBER_KEYS.matchOptionalV9 : [])
     text(m.home, `${p}.home`, MAX_NAME)
     text(m.away, `${p}.away`, MAX_NAME)
     nullable(m.league, (v) => text(v, `${p}.league`, MAX_NAME))
@@ -274,6 +306,7 @@ function day(value: unknown, path: string, version: number): void {
     if (m.homeForm !== undefined) form(m.homeForm, `${p}.homeForm`)
     if (m.awayForm !== undefined) form(m.awayForm, `${p}.awayForm`)
     if (m.ai !== undefined) aiRow(m.ai, `${p}.ai`, m.time)
+    if (m.note !== undefined) note(m.note, `${p}.note`)
   })
   if (version >= 4) {
     const seen = new Set<string>()
@@ -411,7 +444,7 @@ function streak(value: unknown, path: string, version: number): void {
 /** Paketi şemaya karşı denetler; uymuyorsa MemberPayloadError fırlatır. */
 export function assertMemberPayload(value: unknown): asserts value is MemberPayload {
   const version = typeof value === 'object' && value !== null ? (value as Obj).v : undefined
-  if (version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8 && version !== 9 && version !== 10 && version !== 11 && version !== 12) fail('paket.v', 'desteklenmeyen paket sürümü')
+  if (version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8 && version !== 9 && version !== 10 && version !== 11 && version !== 12 && version !== 13) fail('paket.v', 'desteklenmeyen paket sürümü')
   const p = object(value, 'paket', (version as number) >= 8 ? MEMBER_KEYS.payload : MEMBER_KEYS.payloadV7)
   integer(p.n, 'paket.n', 1, COUNT_MAX)
   text(p.publishedAt, 'paket.publishedAt', 24, ISO)

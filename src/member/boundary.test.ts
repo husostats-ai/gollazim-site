@@ -58,6 +58,7 @@ const ALLOWED = [
   'src/member/MemberAnalysis.tsx',
   'src/member/MemberApp.tsx',
   'src/member/MemberCard.tsx',
+  'src/member/MemberNote.tsx',
   'src/member/MemberOthers.tsx',
   'src/member/MemberSpread.tsx',
   'src/member/MemberStars.tsx',

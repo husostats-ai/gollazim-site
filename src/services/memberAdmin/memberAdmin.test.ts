@@ -8,7 +8,7 @@ import { recordAiShares } from '../ai/memberShare'
 import { shiftDate } from '../../utils/format'
 import { assembleBackup } from '../data/backupFormat'
 import type { MemberAdminRepo } from '../data/types'
-import { AI_REASON_CANARY, AI_VERDICTS, DAY, dayMatches, HIGHLIGHTS, LEAGUE_SNAPSHOTS, LEAGUE_TABLES, MARKET_LIMIT, MATCHES, PICKS, PREVIOUS_DAY, RESULTS, SHARED, STREAK_ADDED_AT, STREAK_INPUT, STREAK_STEPS, streakView, THRESHOLDS } from '../member/__fixtures__/rawData'
+import { AI_REASON_CANARY, AI_VERDICTS, DAY, dayMatches, HIGHLIGHTS, LEAGUE_SNAPSHOTS, LEAGUE_TABLES, MARKET_LIMIT, MATCHES, NOTE_HIDDEN_CANARY, NOTE_UPDATED_AT, NOTES, PICKS, PREVIOUS_DAY, RESULTS, SHARED, STREAK_ADDED_AT, STREAK_INPUT, STREAK_STEPS, streakView, THRESHOLDS } from '../member/__fixtures__/rawData'
 import { generatePassword, MemberAccessError, openEnvelope, openWithKeys, PASSWORD_ALPHABET, type MemberKeys } from '../member/crypto'
 import type { MemberPayload } from '../member/payload'
 import { markPublished, removeHighlight } from '../highlights/highlights'
@@ -87,6 +87,7 @@ const sourcesBase = (matches: Match[]): PublishSources => ({
   listAliases: async () => [],
   getThresholds: async () => THRESHOLDS,
   getMarketConflictLimit: async () => MARKET_LIMIT,
+  listMatchNotes: async (ids) => NOTES.filter((n) => ids.includes(n.matchId)),
 })
 
 const rejection = async (promise: Promise<unknown>): Promise<unknown> => promise.then(() => null, (error: unknown) => error)
@@ -403,11 +404,14 @@ describe('üye ekleme', () => {
       expect(publication.text).not.toContain(AI_REASON_CANARY)
       const opened = (await openEnvelope(publication.text, login.username, login.password)).payload
       const plain = JSON.stringify(opened)
-      expect(opened.v).toBe(12)
+      expect(opened.v).toBe(13)
       const day = opened.days[0]
       expect(day.lists.flatMap((l) => l.items.filter((i) => i.ai).map((i) => `${day.matches[i.match].home}|${l.categoryId}|${i.ai!.count}|${i.ai!.level}`)).sort()).toEqual(EXPECTED.map((e) => e.join('|')).sort())
       expect(day.matches.some((m) => 'ai' in m)).toBe(false)
       for (const forbidden of [AI_REASON_CANARY, 'kanarya-risk', 'reason', 'risk', 'savedAt', '"score":{', '7-6', 'reject', '"asked"']) expect(plain).not.toContain(forbidden)
+      // Maç notu: "Üyelere göster" açık not gider, kapalı notun metni ve iç alanları gitmez.
+      expect(day.matches.find((m) => m.home === 'Kuzey Yıldızı')!.note?.text).toContain('Kadro haberi')
+      for (const forbidden of [NOTE_HIDDEN_CANARY, NOTE_UPDATED_AT, '"publish"', '"updatedAt"', '"dataUrl"']) expect(plain).not.toContain(forbidden)
       expect(store.shares.map((s) => [s.id, s.date, s.firstN, s.lastN, s.count, s.decision]).sort()).toEqual(EXPECTED.map(([home, categoryId, count, level]) => [`${idOf(home)}|${categoryId}`, DAY, 1, 1, count, level]).sort())
       expect(store.shares.every((s) => s.firstAt === T1 && s.lastAt === T1 && s.votes.length === 3 && s.id === `${s.matchId}|${s.categoryId}`)).toBe(true)
       // Kayıtta da yalnızca karar seviyeleri var.

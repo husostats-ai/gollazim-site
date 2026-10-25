@@ -3,13 +3,14 @@ import { defaultThresholds, type CategoryId } from '../config/categories'
 import { analyzeDay, type DayAnalysis } from '../services/analysis/engine'
 import { DEFAULT_MARKET_CONFLICT_LIMIT } from '../services/analysis/market'
 import type { SortMode } from '../services/analysis/types'
-import { leagueRepo, aiRepo, aiSharesRepo, highlightsRepo, matchesRepo, picksRepo, resultsRepo, settingsRepo, sharedRepo, storySelectionsRepo } from '../services/data'
+import { leagueRepo, aiRepo, aiSharesRepo, highlightsRepo, matchesRepo, matchNotesRepo, picksRepo, resultsRepo, settingsRepo, sharedRepo, storySelectionsRepo } from '../services/data'
 import { addHighlight, removeHighlight, type HighlightCandidate, type HighlightRefusal } from '../services/highlights/highlights'
+import { applyNoteChange, type NoteChange } from '../services/notes/matchNote'
 import { findActiveShared, recordShare } from '../services/story/shared'
 import type { StreakCandidate, StreakRefusal, StreakView } from '../services/streak/streak'
 import { loadStreak, removePendingFromStreak, sendToStreak, takeBackFromStreak, undoStreakRemoval, withdrawFromStreak } from '../services/streak/streakService'
 import { selectionsForDate, type DaySelections } from '../services/story/selection'
-import type { AiShare, AiVerdict, Highlight, LeagueTable, LeagueTableSnapshot, Match, MatchResult, Pick, SharedPick, TeamAlias, Thresholds } from '../types'
+import type { AiShare, AiVerdict, Highlight, LeagueTable, LeagueTableSnapshot, Match, MatchNote, MatchResult, Pick, SharedPick, TeamAlias, Thresholds } from '../types'
 import { todayInAppZone } from '../utils/date'
 
 interface AppState {
@@ -51,6 +52,12 @@ interface AppState {
   addHighlight: (candidate: HighlightCandidate) => Promise<HighlightRefusal | null>
   /** Seçimi kaldırır (kayıt silinir); maç başladıysa reddeder */
   removeHighlight: (id: string) => Promise<HighlightRefusal | null>
+  /** Seçili günün maç notları, maç kimliğine göre ("Özel not"; yalnızca gösterim, hiçbir hesaba girmez) */
+  matchNotes: Record<string, MatchNote>
+  /** Maçın notunu değiştirir; metin ve görsel kalmazsa not silinir. Reddedilirse nedeni döner. Maç başlamış olsa da çalışır. */
+  saveMatchNote: (matchId: string, change: NoteChange) => Promise<string | null>
+  /** Maçın notunu (metin ve görsel) siler */
+  removeMatchNote: (matchId: string) => Promise<void>
   /** "Seri takibi": tüm adımlar ve onlardan türeyen seriler (güne bağlı değildir); yüklenene dek null */
   streak: StreakView | null
   /** Öneriyi seriye yeni adım olarak gönderir; bekleyen adım varsa ya da maç başladıysa reddeder (neden döner) */
@@ -106,12 +113,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sharedPicks, setSharedPicks] = useState<SharedPick[]>([])
   const [highlights, setHighlights] = useState<Highlight[]>([])
   const [aiShares, setAiShares] = useState<AiShare[]>([])
+  const [matchNotes, setMatchNotes] = useState<Record<string, MatchNote>>({})
   const [streak, setStreak] = useState<StreakView | null>(null)
   const [leagueTables, setLeagueTables] = useState<LeagueTable[]>([])
   const [teamAliases, setTeamAliases] = useState<TeamAlias[]>([])
   const [leagueSnapshots, setLeagueSnapshots] = useState<LeagueTableSnapshot[]>([])
   // Seçim yazmaları sırayla yapılır ki art arda işaretlemelerde son durum kalsın.
   const selectionWrites = useRef<Promise<void>>(Promise.resolve())
+  const noteWrites = useRef<Promise<void>>(Promise.resolve())
   const [thresholds, setThresholds] = useState<Thresholds>(defaultThresholds)
   const [marketConflictLimit, setMarketConflictLimit] = useState(DEFAULT_MARKET_CONFLICT_LIMIT)
   const [sortMode, setSortModeState] = useState<SortMode>(readSortMode)
@@ -132,7 +141,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (cancelled) return
       const date = selectedDate && nextDates.includes(selectedDate) ? selectedDate : pickDefaultDate(nextDates, today)
       const nextMatches = date ? await matchesRepo.listByDate(date) : []
-      const [nextResults, nextPicks, nextVerdicts, nextSelections, nextShared, nextHighlights, nextAiShares] = await Promise.all([
+      const [nextResults, nextPicks, nextVerdicts, nextSelections, nextShared, nextHighlights, nextAiShares, nextNotes] = await Promise.all([
         resultsRepo.listByMatchIds(nextMatches.map((m) => m.id)),
         date ? picksRepo.listByDate(date) : [],
         date ? aiRepo.listVerdictsByDate(date) : [],
@@ -140,6 +149,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         date ? sharedRepo.listByDate(date) : [],
         date ? highlightsRepo.listByDate(date) : [],
         date ? aiSharesRepo.listByDate(date) : [],
+        noteWrites.current.then(() => matchNotesRepo.listByMatchIds(nextMatches.map((m) => m.id))),
       ])
       if (cancelled) return
       setDates(nextDates)
@@ -157,6 +167,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSharedPicks(nextShared)
       setHighlights(nextHighlights)
       setAiShares(nextAiShares)
+      setMatchNotes(Object.fromEntries(nextNotes.map((n) => [n.matchId, n])))
       setLoading(false)
     })()
     return () => {
@@ -257,6 +268,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [selectedDate],
   )
 
+  // Not yazımları sırayla yürür: art arda iki değişiklik (ör. görsel ve işaret) birbirinin üzerine yazmaz.
+  const writeNote = useCallback((matchId: string, write: (existing: MatchNote | undefined) => Promise<MatchNote | null>) => {
+    const done = noteWrites.current.then(async () => {
+      const next = await write(await matchNotesRepo.get(matchId))
+      setMatchNotes((current) => {
+        const { [matchId]: _removed, ...rest } = current
+        return next ? { ...rest, [matchId]: next } : rest
+      })
+    })
+    noteWrites.current = done.catch(() => undefined)
+    return done
+  }, [])
+
+  const saveMatchNote = useCallback(
+    async (matchId: string, change: NoteChange) => {
+      let reason: string | null = null
+      await writeNote(matchId, async (existing) => {
+        const result = applyNoteChange(matchId, existing, change, new Date())
+        if (!result.ok) {
+          reason = result.reason
+          return existing ?? null
+        }
+        if (result.note) await matchNotesRepo.put(result.note)
+        else await matchNotesRepo.remove(matchId)
+        return result.note
+      })
+      return reason
+    },
+    [writeNote],
+  )
+
+  const removeMatchNote = useCallback(
+    (matchId: string) =>
+      writeNote(matchId, async () => {
+        await matchNotesRepo.remove(matchId)
+        return null
+      }),
+    [writeNote],
+  )
+
   const setSortMode = useCallback((mode: SortMode) => {
     setSortModeState(mode)
     try {
@@ -297,6 +348,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     highlights,
     addHighlight: addHighlightAction,
     removeHighlight: removeHighlightAction,
+    matchNotes,
+    saveMatchNote,
+    removeMatchNote,
     streak,
     sendToStreak: sendToStreakAction,
     takeBackFromStreak: takeBackFromStreakAction,

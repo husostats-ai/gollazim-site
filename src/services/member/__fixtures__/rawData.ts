@@ -1,9 +1,10 @@
 import { COLUMN_ALIASES, TEXT_FIELDS, type FieldKey } from '../../../config/columnAliases'
 import { defaultThresholds } from '../../../config/categories'
-import type { AiVerdict, Highlight, LeagueTable, LeagueTableSnapshot, Match, MatchResult, Pick, SharedPick, StreakStep, TeamAlias } from '../../../types'
+import type { AiVerdict, Highlight, LeagueTable, LeagueTableSnapshot, Match, MatchNote, MatchResult, Pick, SharedPick, StreakStep, TeamAlias } from '../../../types'
 import { importCsv } from '../../csv/importer'
 import { addHighlight } from '../../highlights/highlights'
 import { aiInputsOf, highlightInputOf, streakInputOf } from '../../memberAdmin/publish'
+import { memberNoteInputs } from '../../notes/matchNote'
 import { buildStreak, streakStepId } from '../../streak/streak'
 import { factsFrom } from '../../streak/streakFacts'
 import { buildPicksForResult } from '../../results/freeze'
@@ -387,13 +388,29 @@ export const STREAK_STEPS: StreakStep[] = [
 export const streakView = (steps: StreakStep[] = STREAK_STEPS, matches: Match[] = MATCHES, results: MatchResult[] = RESULTS, picks: Pick[] = PICKS) => buildStreak(steps, factsFrom({ matches, results, picks }))
 export const STREAK_INPUT: MemberStreakInput = streakInputOf(streakView(), MATCHES)
 
+/**
+ * Maç notları. Kuzey Yıldızı (bugün) metin + görsel, Dünkü Ev (dün) yalnızca metin: üyelere gösterilir.
+ * Doğu Gençlik'in notu "Üyelere göster" KAPALI: metni (NOTE_HIDDEN_CANARY) ve görseli pakette hiç görünmemeli.
+ * Değişiklik anı (NOTE_UPDATED_AT) de pakete girmez.
+ */
+export const NOTE_IMAGE = { dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAADCAIAAAA7ljmRAAAAEElEQVR4nGOQqzgBRww4OQA4KhBpUsYmbgAAAABJRU5ErkJggg==', w: 4, h: 3 }
+export const NOTE_HIDDEN_IMAGE = { dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGM4oaFxQkODAUIBACEuBGGeECA5AAAAAElFTkSuQmCC', w: 2, h: 2 }
+export const NOTE_HIDDEN_CANARY = 'kanarya-gizli-not'
+export const NOTE_UPDATED_AT = '2026-10-05T05:55:17.000Z'
+export const NOTES: MatchNote[] = [
+  { matchId: byHome('Kuzey Yıldızı').id, text: 'Kadro haberi maçtan önce bekleniyor.\nİki oyuncu sakat.', image: NOTE_IMAGE, publish: true, updatedAt: NOTE_UPDATED_AT },
+  { matchId: byHome('Doğu Gençlik').id, text: `İç not: ${NOTE_HIDDEN_CANARY}`, image: NOTE_HIDDEN_IMAGE, publish: false, updatedAt: NOTE_UPDATED_AT },
+  { matchId: byHome('Dünkü Ev').id, text: 'Dünkü maç için kısa not.', publish: true, updatedAt: NOTE_UPDATED_AT },
+]
+export const dayNotes = (date: string): MatchNote[] => NOTES.filter((n) => dayMatches(date).some((m) => m.id === n.matchId))
+
 export const memberInput = (overrides: Partial<MemberPayloadInput> = {}): MemberPayloadInput => ({
   n: 7,
   publishedAt: PUBLISHED_AT,
   texts: { disclaimer: 'Bu bir istatistik taramasıdır; bahis tavsiyesi değildir ve sonuç garantisi vermez. 18+', account: 'Hesap kişiye özeldir, paylaşılamaz.' },
   thresholds: THRESHOLDS,
   marketConflictLimit: MARKET_LIMIT,
-  days: [DAY, PREVIOUS_DAY].map((date) => ({ date, matches: dayMatches(date), results: RESULTS.filter((r) => dayMatches(date).some((m) => m.id === r.matchId)), highlights: dayHighlights(date).map(highlightInputOf), ai: aiInputsOf(dayMatches(date), dayVerdicts(date)).inputs })),
+  days: [DAY, PREVIOUS_DAY].map((date) => ({ date, matches: dayMatches(date), results: RESULTS.filter((r) => dayMatches(date).some((m) => m.id === r.matchId)), highlights: dayHighlights(date).map(highlightInputOf), ai: aiInputsOf(dayMatches(date), dayVerdicts(date)).inputs, notes: memberNoteInputs(dayNotes(date)) })),
   leagueTables: LEAGUE_TABLES,
   leagueTableSnapshots: LEAGUE_SNAPSHOTS,
   teamAliases: TEAM_ALIASES,
