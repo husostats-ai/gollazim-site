@@ -4,8 +4,8 @@ import { aliasId, NOT_IN_TABLE } from '../../league/matching'
 import { buildMemberPayload, type MemberPayloadInput } from '../payload'
 import { LEAGUE, LEAGUE_SNAPSHOTS, memberInput } from './rawData'
 
-// Üye paketinin lig tablosu satırları için sabit girdiler: payloadGolden.json, verifiedTableRows'a
-// ayrılmadan önceki matchForms ile üretilmiştir. Paket bu girdilerle birebir aynı kalmalıdır.
+// Üye paketinin lig tablosu satırları için sabit, tamamen sentetik girdiler (rawData.ts). payloadGolden.test.ts'teki
+// özetler verifiedTableRows'a ayrılmadan önceki matchForms ile alınmıştır; paket bu girdilerle birebir aynı kalmalıdır.
 const withRows = (edit: (row: LeagueTableRow) => LeagueTableRow, pastedAt?: string): LeagueTableSnapshot[] =>
   LEAGUE_SNAPSHOTS.map((s) => ({ ...s, ...(pastedAt && { id: `${s.league}|${pastedAt}`, pastedAt }), rows: s.rows.map(edit) }))
 
@@ -20,10 +20,14 @@ export const GOLDEN_VARIANTS: Record<string, () => MemberPayloadInput> = {
   gecmisYok: () => memberInput({ leagueTableSnapshots: [] }),
 }
 
-/** Paketin tamamının özeti (sha256) ve okunabilir olsun diye maç başına tablo alanları */
-export function goldenOf(input: MemberPayloadInput) {
-  const payload = buildMemberPayload(input)
-  const sha256 = createHash('sha256').update(JSON.stringify(payload)).digest('hex')
-  const tables = payload.days.flatMap((d) => d.matches.map(({ home, away, homeStanding, awayStanding, homeForm, awayForm }) => ({ home, away, homeStanding, awayStanding, homeForm, awayForm })))
-  return { sha256, tables }
-}
+/** Paketin tamamının özeti (sha256) */
+export const payloadSha256 = (input: MemberPayloadInput): string => createHash('sha256').update(JSON.stringify(buildMemberPayload(input))).digest('hex')
+
+/** Lig tablosu satırı olan maçlarda hangi satırların pakete girdiği: [ev sıra, deplasman sıra, ev form, deplasman form] */
+export const tableFlags = (input: MemberPayloadInput): Record<string, [boolean, boolean, boolean, boolean]> =>
+  Object.fromEntries(
+    buildMemberPayload(input)
+      .days.flatMap((d) => d.matches)
+      .filter((m) => m.homeStanding || m.awayStanding || m.homeForm || m.awayForm)
+      .map((m) => [m.home, [!!m.homeStanding, !!m.awayStanding, !!m.homeForm, !!m.awayForm]]),
+  )
