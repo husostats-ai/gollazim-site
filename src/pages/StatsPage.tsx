@@ -7,6 +7,7 @@ import ScoreStatsCard from '../components/stats/ScoreStatsCard'
 import StatsSummaryPanel from '../components/stats/StatsSummaryPanel'
 import GoalModelStatsCard from '../components/stats/GoalModelStatsCard'
 import HtScorelessCard from '../components/stats/HtScorelessCard'
+import Ht05NoteRows from '../components/stats/Ht05NoteRows'
 import LeagueCategoryCard from '../components/stats/LeagueCategoryCard'
 import MarketStatsCard from '../components/stats/MarketStatsCard'
 import LowSampleBadge from '../components/stats/LowSampleBadge'
@@ -22,6 +23,7 @@ import { aiRepo, matchesRepo, picksRepo, resultsRepo, sharedRepo, uploadsRepo } 
 import { buildStarStats, recomputedNote } from '../services/stats/starStats'
 import { SCOPE_LABELS, sharedPicksOnly, type StatsScope } from '../services/story/shared'
 import { buildHtScorelessStats } from '../services/stats/htScoreless'
+import { buildHt05NoteStats } from '../services/stats/ht05NoteStats'
 import { buildLeagueCategoryStats } from '../services/stats/leagueCategoryStats'
 import { buildMainStats } from '../services/stats/mainStats'
 import { backfillMarket, buildMarketStats } from '../services/stats/marketStats'
@@ -124,6 +126,8 @@ export default function StatsPage() {
   const main = useMemo(() => buildMainStats(scopedPicks), [scopedPicks])
   /** İY 0.5 ÜST önerilip ilk yarısı 0-0 biten maçlarda 2. yarı; seçili ölçüde */
   const htScoreless = useMemo(() => buildHtScorelessStats(scopedPicks, results), [scopedPicks, results])
+  /** Aynı bloğun (*) notu satırları: (*) koşulu maçın tüm dondurulmuş önerilerinden, sayım seçili ölçüde */
+  const ht05Note = useMemo(() => buildHt05NoteStats(scopedPicks, picks ?? [], results), [scopedPicks, picks, results])
   /** Lig × ana kategori ve sabit lig grupları; seçili ölçüde */
   const leagueCategory = useMemo(() => buildLeagueCategoryStats(scopedPicks, legacyMatches), [scopedPicks, legacyMatches])
   // Kategori bazlı kararlar ile eski maç geneli kararlar ayrı ölçülür; aynı orana karışmaz.
@@ -254,6 +258,7 @@ export default function StatsPage() {
             note="İLK YARI 0.5 ÜST olarak dondurulmuş önerilerden ilk yarısı 0-0 biten maçlar."
           >
             <HtScorelessCard stats={htScoreless} />
+            <Ht05NoteRows stats={ht05Note} />
           </Card>
 
           <Card

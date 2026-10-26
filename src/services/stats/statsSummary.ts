@@ -12,6 +12,7 @@ import { RELIABILITY_LABELS, SAMPLE_HINT } from '../analysis/reliability'
 import { stat } from '../analysis/stat'
 import { findActiveShared, sharedPicksOnly } from '../story/shared'
 import { buildCompetitionStats, COMPETITION_LABELS } from './competitionStats'
+import { buildHt05NoteStats, countHt05, HT05_GROUP_KEYS, HT05_GROUP_LABELS, HT05_NOTE_STATS_NOTE, ht05Share, type Ht05GroupStats } from './ht05NoteStats'
 import { buildLeagueCategoryStats, LEAGUE_CATEGORY_MIN_N, type CategoryCell, type GroupCategoryRow } from './leagueCategoryStats'
 import { buildLeagueStats, LEAGUE_MAX_ROWS, LEAGUE_MIN_DECIDED, type LeagueRow } from './leagueStats'
 import { buildMarginStats, MARGIN_BANDS } from './marginStats'
@@ -330,6 +331,8 @@ export function buildStatsSummary(input: SummaryInput): string {
     '',
   )
 
+  out.push(...htScorelessSection(allPicks, input.picks, sharedPicksOnly(allPicks, shared), input.results), '')
+
   const stars = buildStarStats(picks)
   out.push('## Yıldız sayısına göre başarı', '')
   if (stars.byCategory.length === 0) out.push('Yıldızı bulunabilen öneri yok.', '')
@@ -620,3 +623,22 @@ export const detailFileName = (today: string): string => `gollazim-oneriler-${to
 
 /** AI kararlarının etiketleri (CSV'yi okuyanlar için) */
 export const AI_DECISION_LABELS = AI_DECISIONS.map((d) => d.label)
+
+/**
+ * "İY 0.5 ÜST tutmadığında 2. yarı" bölümü (istatistik sayfasındaki blok): tüm İY 0.5 ÜST önerileri ve (*) notu
+ * satırları, Tümü ve Paylaşılan için. scoped: kapsamdaki (tarih) öneriler; all: (*) koşulu için TÜM dondurulmuş öneriler.
+ */
+function htScorelessSection(scoped: Pick[], all: Pick[], sharedScoped: Pick[], results: MatchResult[] | undefined): string[] {
+  const out = ['## İY 0.5 ÜST tutmadığında 2. yarı', '']
+  if (!results) return [...out, 'Skor verisi yok.']
+  const header = ['Satır', 'Kapsamdaki maç', 'İY 0.5 ÜST tuttu', 'İlk yarı 0-0 (N)', '2Y 1.5 ÜST oldu', '2Y 1.5 ÜST olmadı', '2. yarıda en az 3 gol', 'Kapsam dışı']
+  const row = (label: string, g: Ht05GroupStats) => [label, g.scored, g.htWon, g.scoreless, ht05Share(g.over, g.scoreless), ht05Share(g.scoreless - g.over, g.scoreless), ht05Share(g.three, g.scoreless), g.excluded]
+  for (const [title, picks] of [['Tümü', scoped], ['Paylaşılan', sharedScoped]] as const) {
+    const groups = buildHt05NoteStats(picks, all, results)
+    out.push(`### ${title}`, '', table(header, [row('Tüm İY 0.5 ÜST önerileri', countHt05(picks, results)), ...HT05_GROUP_KEYS.map((key) => row(HT05_GROUP_LABELS[key], groups[key]))]), '')
+  }
+  out.push(
+    `İLK YARI 0.5 ÜST olarak dondurulmuş önerilerden ilk yarısı 0-0 biten maçlar. İlk yarı 0-0 olduğu için 2. yarı golü maç sonu toplamına eşittir. n < ${LOW_SAMPLE_LIMIT} hücrede yüzde yazılmaz ("az veri"). ${HT05_NOTE_STATS_NOTE}`,
+  )
+  return out
+}

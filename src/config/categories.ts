@@ -167,6 +167,8 @@ export const defaultThresholds = (): Record<CategoryId, number> =>
  * yalnızca burada değiştirilir. Yalnızca gösterimdir: eşik, yıldız, model, istatistik, görsel ve AI prompt'u değişmez.
  */
 export const HT05_NOTE = "* İlk yarı gol olmazsa devre arasında 1.5 ÜST'e yönelebilirsiniz."
+/** (*) notunun kartlarda yayına girdiği gün (Europe/Istanbul, maç günü); istatistikte "uyarı yayındayken" satırı buradan başlar */
+export const HT05_NOTE_SINCE = '2026-10-26'
 
 /**
  * Notun gösterilip gösterilmeyeceği: kart İLK YARI 0.5 ÜST kartıysa ve aynı maçın hem 2.5 ÜST hem 2. YARI 0.5 ÜST
