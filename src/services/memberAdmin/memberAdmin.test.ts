@@ -190,8 +190,15 @@ describe('üye ekleme', () => {
     expect(first.summary.days[0]).toMatchObject({ date: DAY, matches: dayMatches(DAY).length })
     expect(first.summary.days[0].items).toBeGreaterThan(40)
     for (const { username, password } of issued) expect((await openEnvelope(first.text, username, password)).payload.days.map((d) => d.date)).toEqual([DAY, PREVIOUS_DAY])
-    // İndirilen dosyanın açık kısmında içerik ve kullanıcı adı yoktur.
-    for (const word of ['ayse', 'mehmet', 'Kuzey', 'percent']) expect(first.text).not.toContain(word)
+    // İndirilen dosyanın açık kısmında içerik ve kullanıcı adı yoktur. Şifreli alanlar rastgele base64'tür ve
+    // tesadüfen herhangi bir kelimeyi ("ayse") içerebilir: kelime yalnızca açık alanlarda aranır, şifreli alanların
+    // yalnızca base64 olduğu ve zarfta başka alan bulunmadığı ayrıca denetlenir.
+    const envelope = JSON.parse(first.text) as Record<string, unknown>
+    expect(Object.keys(envelope).sort()).toEqual(['ciphertext', 'format', 'kdf', 'n', 'nonce', 'publishNonce', 'publishedAt', 'siteSalt', 'slots', 'v'])
+    const encrypted = ['siteSalt', 'publishNonce', 'nonce', 'ciphertext'] as const
+    for (const value of [...encrypted.map((k) => envelope[k]), ...(envelope.slots as unknown[])]) expect(value).toMatch(/^[A-Za-z0-9+/]+={0,2}$/)
+    const plain = JSON.stringify({ ...envelope, ...Object.fromEntries(encrypted.map((k) => [k, ''])), slots: [] })
+    for (const word of ['ayse', 'mehmet', 'Kuzey', 'percent']) expect(plain).not.toContain(word)
   }, SLOW)
 
   describe('son 7 gün', () => {
