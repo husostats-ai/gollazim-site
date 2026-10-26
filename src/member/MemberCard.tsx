@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
 import type { ReliabilityLevel } from '../services/analysis/types'
 import { MEMBER_AI_LEVEL_LABELS, MEMBER_AI_PROVIDER_LABELS, memberAiSummary, memberAiTitle, MEMBER_CONFLICT_LABELS, MEMBER_DATA_TERM, MEMBER_MARKET_LABEL, MEMBER_MARKET_NOTE, MEMBER_MARKET_NOTE_BUTTON, MEMBER_OUTCOMES, MEMBER_RELIABILITY_LABELS, memberSampleText, MEMBER_STATUS_LABELS } from '../services/member/labels'
-import type { CategoryId } from '../config/categories'
+import { HT05_NOTE, showsHt05Note, type CategoryId } from '../config/categories'
 import type { MemberItem, MemberMatch } from '../services/member/payload'
 import type { PickOutcome } from '../types'
 import CountryFlag from './CountryFlag'
@@ -61,6 +61,8 @@ export default function MemberCard({ rank, match, item, categoryId, categoryLabe
   const overstated = isOverstated(item)
   // Sürüm 1 paketlerde bu alan yoktur.
   const others = item.others ?? []
+  // İY 0.5 ÜST kartındaki (*) notu: admin kartıyla aynı kural, paketteki diğer listelerden (yeni alan yok).
+  const ht05Note = showsHt05Note(categoryId, others.map((o) => o.categoryId))
   // Piyasa yüzdesinin "?" notu: başlık bloğunun altında tam genişlikte açılır.
   const [marketNote, setMarketNote] = useState(false)
   const marketNoteId = useId()
@@ -82,7 +84,10 @@ export default function MemberCard({ rank, match, item, categoryId, categoryLabe
           <h3 className="text-base leading-snug font-extrabold break-words sm:text-lg">
             {match.home} <span className="text-muted">–</span> {match.away}
           </h3>
-          <p className="mt-1 text-xs font-bold tracking-wide text-brand">{categoryLabel}</p>
+          <p className="mt-1 text-xs font-bold tracking-wide text-brand">
+            {categoryLabel}
+            {ht05Note && <span data-testid="member-ht05-note-mark"> *</span>}
+          </p>
         </div>
         <div className="shrink-0 text-right">
           <p className={`leading-none font-black ${overstated ? 'text-2xl text-muted' : 'text-3xl text-brand'}`} data-testid="member-percent">
@@ -181,6 +186,12 @@ export default function MemberCard({ rank, match, item, categoryId, categoryLabe
       )}
 
       <MemberOthers others={others} />
+
+      {ht05Note && (
+        <p className="text-xs break-words text-muted" data-testid="member-ht05-note">
+          {HT05_NOTE}
+        </p>
+      )}
 
       {/* Sürüm 13: admin'in notu (yalnızca üyelere gösterilen not pakete girer); yoksa satır hiç çizilmez. */}
       {match.note && <MemberNote note={match.note} />}

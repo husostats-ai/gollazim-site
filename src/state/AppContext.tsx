@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { defaultThresholds, type CategoryId } from '../config/categories'
-import { analyzeDay, type DayAnalysis } from '../services/analysis/engine'
+import { analyzeDay, listedCategoriesByMatch, type DayAnalysis } from '../services/analysis/engine'
 import { DEFAULT_MARKET_CONFLICT_LIMIT } from '../services/analysis/market'
 import type { SortMode } from '../services/analysis/types'
 import { leagueRepo, aiRepo, aiSharesRepo, highlightsRepo, matchesRepo, matchNotesRepo, picksRepo, resultsRepo, settingsRepo, sharedRepo, storySelectionsRepo } from '../services/data'
@@ -77,6 +77,11 @@ interface AppState {
   sortMode: SortMode
   setSortMode: (mode: SortMode) => void
   analysis: DayAnalysis
+  /**
+   * Maç kimliği -> maçın önerisi olan kategoriler, her zaman YÜZDEYE göre sıralı listelerden (üye paketi ve
+   * dondurulan önerilerle aynı); temkinli sıralama seçili olsa da değişmez. İY 0.5 ÜST kartındaki (*) notu için.
+   */
+  listedCategories: Map<string, CategoryId[]>
   /** Veri değiştiğinde (CSV yükleme/silme, yedek, ayar) yeniden okur */
   refresh: () => Promise<void>
   /** Her refresh çağrısında artar; kendi verisini okuyan paneller bunu izler */
@@ -321,6 +326,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => analyzeDay(matches, thresholds, sortMode, marketConflictLimit),
     [matches, thresholds, sortMode, marketConflictLimit],
   )
+  // Temkinli sırada ilk 15'in içeriği değişebilir: kural yüzde listesinden hesaplanır.
+  const listedCategories = useMemo(
+    () => listedCategoriesByMatch(sortMode === 'percent' ? analysis : analyzeDay(matches, thresholds, 'percent', marketConflictLimit)),
+    [analysis, sortMode, matches, thresholds, marketConflictLimit],
+  )
 
   const pickFor = useCallback(
     (matchId: string, categoryId: CategoryId) => picks.find((p) => p.matchId === matchId && p.categoryId === categoryId),
@@ -366,6 +376,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sortMode,
     setSortMode,
     analysis,
+    listedCategories,
     refresh,
     dataVersion: version,
   }

@@ -95,3 +95,12 @@ export function analyzeDay(
     ]),
   ) as DayAnalysis
 }
+
+/** Maç kimliği -> maçın önerisi olan (listeye giren) kategoriler; kategori kayıt defteri sırasıyla */
+export function listedCategoriesByMatch(analysis: DayAnalysis): Map<string, CategoryId[]> {
+  const listed = new Map<string, CategoryId[]>()
+  for (const category of CATEGORIES) {
+    for (const p of analysis[category.id].predictions) listed.set(p.match.id, [...(listed.get(p.match.id) ?? []), category.id])
+  }
+  return listed
+}

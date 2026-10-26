@@ -161,3 +161,20 @@ export const categoriesInGroup = (group: GroupId): CategoryDef[] => CATEGORIES.f
 
 export const defaultThresholds = (): Record<CategoryId, number> =>
   Object.fromEntries(CATEGORIES.map((c) => [c.id, c.defaultThreshold])) as Record<CategoryId, number>
+
+/**
+ * İLK YARI 0.5 ÜST kartındaki (*) notu. Admin ve üye kartı aynı metni ve aynı kuralı buradan okur; metin
+ * yalnızca burada değiştirilir. Yalnızca gösterimdir: eşik, yıldız, model, istatistik, görsel ve AI prompt'u değişmez.
+ */
+export const HT05_NOTE = "* İlk yarı gol olmazsa devre arasında 1.5 ÜST'e yönelebilirsiniz."
+
+/**
+ * Notun gösterilip gösterilmeyeceği: kart İLK YARI 0.5 ÜST kartıysa ve aynı maçın hem 2.5 ÜST hem 2. YARI 0.5 ÜST
+ * listesinde (yüzdeye göre ilk MAX_MATCHES_PER_CATEGORY, üye paketindeki listelerle aynı) önerisi varsa.
+ * listedCategoryIds: maçın önerisi olan kategoriler (kartın kendi kategorisi de içinde olabilir).
+ */
+export function showsHt05Note(categoryId: CategoryId, listedCategoryIds: Iterable<CategoryId>): boolean {
+  if (categoryId !== 'ht05') return false
+  const listed = new Set(listedCategoryIds)
+  return listed.has('over25') && listed.has('sh05')
+}

@@ -1,4 +1,4 @@
-import { getCategory, MAX_MATCHES_PER_CATEGORY, supportsCautious } from '../config/categories'
+import { getCategory, MAX_MATCHES_PER_CATEGORY, showsHt05Note, supportsCautious } from '../config/categories'
 import type { CategoryAnalysis } from '../services/analysis/types'
 import type { SharedPick } from '../types'
 import { useState } from 'react'
@@ -22,7 +22,7 @@ const withRecord = (record: SharedPick | undefined, onRemove: () => void) => (re
 
 /** Bir kategorinin tam listesi: eşiği geçen en güçlü maçlar, kart olarak. */
 export default function CategoryList({ analysis }: { analysis: CategoryAnalysis }) {
-  const { matches, sortMode, storySelections, setStorySelection, aiVerdicts, sharedPicks, removeShared, selectedDate } = useApp()
+  const { matches, sortMode, storySelections, setStorySelection, aiVerdicts, sharedPicks, removeShared, selectedDate, listedCategories } = useApp()
   const category = getCategory(analysis.categoryId)
   const { predictions, qualifiedCount, threshold } = analysis
   const selectedIds = storySelections[category.id] ?? []
@@ -116,6 +116,7 @@ export default function CategoryList({ analysis }: { analysis: CategoryAnalysis 
               prediction={p}
               rank={i + 1}
               sortMode={sortMode}
+              ht05Note={showsHt05Note(category.id, listedCategories.get(p.match.id) ?? [])}
               storySelection={{
                 checked: selectedIds.includes(p.match.id),
                 onToggle: () => select(toggleSelection(selectedIds, p.match.id)),

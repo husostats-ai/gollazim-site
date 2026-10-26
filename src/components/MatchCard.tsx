@@ -1,4 +1,4 @@
-import { getCategory, supportsCautious } from '../config/categories'
+import { getCategory, HT05_NOTE, supportsCautious } from '../config/categories'
 import { marketNotes } from '../services/analysis/market'
 import { statSummary } from '../services/analysis/summary'
 import { FORM_BLOCK_TEXT, matchForms, matchStandings, playedHint, STANDING_BLOCK_TEXT, type TeamForm as TeamFormInfo } from '../services/league/standing'
@@ -32,9 +32,11 @@ interface Props {
   storySelection?: { checked: boolean; onToggle: () => void }
   /** Maçın bu kategorideki geçerli paylaşım kaydı (varsa) ve çıkarma işlemi */
   shared?: { record: SharedPick; onRemove: () => void }
+  /** İY 0.5 ÜST kartındaki (*) notu (showsHt05Note; yüzde listelerinden, üye kartıyla aynı kural) */
+  ht05Note?: boolean
 }
 
-export default function MatchCard({ prediction, rank, sortMode, storySelection, shared }: Props) {
+export default function MatchCard({ prediction, rank, sortMode, storySelection, shared, ht05Note = false }: Props) {
   const { match, percent, stars, reliability, cautiousPercent, basis, categoryId, secondPercent, secondLabel, secondSource, notes, market } =
     prediction
   const category = getCategory(categoryId)
@@ -84,7 +86,10 @@ export default function MatchCard({ prediction, rank, sortMode, storySelection, 
           <h3 className="text-base leading-snug font-extrabold break-words sm:text-lg">
             {match.home} <span className="text-muted">–</span> {match.away}
           </h3>
-          <p className="mt-1 text-xs font-bold tracking-wide text-brand">{category.label}</p>
+          <p className="mt-1 text-xs font-bold tracking-wide text-brand">
+            {category.label}
+            {ht05Note && <span data-testid="ht05-note-mark"> *</span>}
+          </p>
         </div>
         <div className="shrink-0 text-right">
           <p className="text-3xl leading-none font-black text-brand">%{percent}</p>
@@ -106,6 +111,12 @@ export default function MatchCard({ prediction, rank, sortMode, storySelection, 
         <NoteBadges notes={marketNotes(percent, market, marketConflictLimit)} />
         {sortMode === 'cautious' && supportsCautious(category) && <CautiousBadge value={cautiousPercent} />}
       </div>
+
+      {ht05Note && (
+        <p className="text-xs break-words text-muted" data-testid="ht05-note">
+          {HT05_NOTE}
+        </p>
+      )}
 
       {(standings.home || standings.away) && (
         <div className="text-xs text-muted" data-testid="league-standing">

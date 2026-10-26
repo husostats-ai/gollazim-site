@@ -600,6 +600,69 @@ try {
   step('her günün her kategorisi 320 ve 390 px taşma yok', overflowing.length === 0, overflowing.join(' ') || `${chips.length} kategori (bugün)`)
   step('kartlarda yasak terim yok (canlı sayfa)', leaks.length === 0, leaks.join(' '))
   step('gün şeridi: seçili gün her genişlikte görünür (şerit yatay kayar)', hiddenDays.length === 0, hiddenDays.join(' ') || `${dayCount} gün`)
+
+  // İY 0.5 ÜST (*) notu: yalnızca İY kartında ve kartın "diğer önerileri"nde hem 2.5 ÜST hem 2. YARI 0.5 ÜST varsa.
+  // 360 ve 390 px'te notun kart ve ekran içinde kaldığı, sayfanın yatay taşmadığı ölçülür.
+  const ht05 = { cards: 0, withNote: 0, wrong: [], elsewhere: [], overflow: [], lines: new Set() }
+  for (let day = 0; day < dayCount; day++) {
+    await tap(`member-day-${day}`)
+    await page.waitForFunction((s) => document.querySelector(s)?.getAttribute('aria-selected') === 'true', {}, sel(`member-day-${day}`))
+    for (const chip of await page.$$eval('[data-testid^="member-category-"]', (els) => els.map((el) => el.dataset.testid))) {
+      await tap(chip)
+      await page.waitForFunction((s) => document.querySelector(s)?.getAttribute('aria-selected') === 'true', {}, sel(chip))
+      if (chip !== 'member-category-ht05') {
+        const stray = await page.$$eval('[data-testid="member-ht05-note"], [data-testid="member-ht05-note-mark"]', (els) => els.length)
+        if (stray > 0) ht05.elsewhere.push(`${day}/${chip.replace('member-category-', '')}: ${stray}`)
+        continue
+      }
+      for (const width of [360, 390]) {
+        await page.setViewport({ width, height: 844, deviceScaleFactor: 1 })
+        const cards = await page.$$eval('[data-testid="member-card"]', (els) =>
+          els.map((card) => {
+            const cats = [...card.querySelectorAll('[data-testid="member-other"]')].map((o) => o.dataset.category)
+            const note = card.querySelector('[data-testid="member-ht05-note"]')
+            const box = note?.getBoundingClientRect()
+            const cardBox = card.getBoundingClientRect()
+            return {
+              expected: cats.includes('over25') && cats.includes('sh05'),
+              note: !!note,
+              mark: !!card.querySelector('[data-testid="member-ht05-note-mark"]'),
+              text: note?.textContent ?? null,
+              inside: !box || (box.left >= cardBox.left - 0.5 && box.right <= cardBox.right + 0.5 && box.right <= window.innerWidth + 0.5 && note.scrollWidth <= note.clientWidth + 1),
+              lines: box ? Math.round(box.height / parseFloat(getComputedStyle(note).lineHeight)) : 0,
+            }
+          }),
+        )
+        const size = await overflow(page)
+        if (size.scroll > size.inner) ht05.overflow.push(`${day}/${width}: sayfa ${size.scroll} > ${size.inner}`)
+        cards.forEach((c, i) => {
+          if (width === 390) {
+            ht05.cards++
+            if (c.note) ht05.withNote++
+          }
+          if (c.note !== c.expected || c.mark !== c.expected || (c.note && c.text !== "* İlk yarı gol olmazsa devre arasında 1.5 ÜST'e yönelebilirsiniz.")) ht05.wrong.push(`${day}/${width}/#${i + 1}`)
+          if (!c.inside) ht05.overflow.push(`${day}/${width}/#${i + 1}`)
+          if (c.note) ht05.lines.add(`${width}px:${c.lines}`)
+        })
+      }
+    }
+  }
+  step('İY 0.5 ÜST (*) notu yalnızca koşulda (diğer önerilerde 2.5 ÜST ve 2. YARI 0.5 ÜST) ve metin aynen', ht05.wrong.length === 0 && ht05.cards > 0, ht05.wrong.join(' ') || `${ht05.withNote}/${ht05.cards} İY kartında not`)
+  step('İY 0.5 ÜST (*) notu başka kategorinin kartında yok', ht05.elsewhere.length === 0, ht05.elsewhere.join(' '))
+  step('İY 0.5 ÜST (*) notu 360 ve 390 px taşma yok', ht05.overflow.length === 0, ht05.overflow.join(' ') || `satır sayısı: ${[...ht05.lines].sort().join(', ') || '—'}`)
+  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 })
+  await tap('member-day-0')
+  if ((await page.$$eval('[data-testid^="member-category-"]', (els) => els.map((el) => el.dataset.testid))).includes('member-category-ht05')) {
+    await tap('member-category-ht05')
+    await page.evaluate(() => document.querySelector('[data-testid="member-ht05-note"]')?.scrollIntoView({ block: 'center' }))
+    for (const width of [360, 390]) {
+      await page.setViewport({ width, height: 844, deviceScaleFactor: 2 })
+      await new Promise((r) => setTimeout(r, 150))
+      await page.screenshot({ path: join(shots, `iy05-not-${width}.png`) })
+      report.ekranlar.push({ dosya: `iy05-not-${width}.png`, genislik: width, tasma: 'ölçüldü' })
+    }
+    await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 })
+  }
   await page.click(sel('member-day-1'))
   const yesterdayTitle = await text(page, 'member-day-title')
   await page.click(sel('member-day-0'))
