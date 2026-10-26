@@ -27,6 +27,16 @@ describe('üye sitesi sürüm karşılaştırması', () => {
     expect(siteVersionStatus({ commit: '0000000', payloadVersion: 3 }, admin).level).toBe('older')
   })
 
+  it('sürüm 14 geçişi: sürüm 13 üye sitesi bu admin sürümünün paketini açamaz; yayın engellenir', () => {
+    expect(MEMBER_PAYLOAD_VERSION).toBe(14)
+    const status = siteVersionStatus({ commit: '968ddc9', payloadVersion: 13 }, { commit: 'abc1234', payloadVersion: MEMBER_PAYLOAD_VERSION })
+    expect(status.level).toBe('incompatible')
+    expect(status.text).toContain('(sürüm 14) AÇAMAZ')
+    expect(status.text).toContain('en çok sürüm 13')
+    // uye-yayinla sonrası üye sitesi 14'ü açar: commit farkı yalnızca uyarıdır.
+    expect(siteVersionStatus({ commit: '0000000', payloadVersion: 14 }, { commit: 'abc1234', payloadVersion: MEMBER_PAYLOAD_VERSION }).level).toBe('older')
+  })
+
   it('okunamayan sürüm: bilinmiyor', () => {
     expect(siteVersionStatus(null, admin).level).toBe('unknown')
   })

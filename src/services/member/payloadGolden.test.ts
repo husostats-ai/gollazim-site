@@ -6,15 +6,17 @@ import { formSha256, GOLDEN_VARIANTS, payloadSha256, tableFlags } from './__fixt
 //
 // Geçmiş: 56503ef'de alınan özetler (matchForms → verifiedTableRows ayrımında paket birebir aynı kaldı) sıra satırı
 // kuralıyla değişti: sıra satırı artık form satırı gibi maçtan önceki görüntüden ve yalnızca doğrulandıysa yazılır.
+// Sonra paket sürümü 14 ile yeniden değişti: v 13 → 14 ve istatistikte htScoreless yerine ht05Note. Bu iki alan
+// çıkarılınca 8 paketin hepsi bir önceki sürümle (968ddc9) birebir aynıydı (tek seferlik karşılaştırma).
 const PAYLOAD: Record<string, string> = {
-  dogrulanmis: 'b9203fe5250cac82d3d51540a98ebd027e2518741a1763eebea1a39939484efd',
-  ppgFarkli: '0615ff3dd7d5b4d7f7d377fb9c554027a18da9240f1dfbb11d3a1aa7c968eb01',
-  ppgYok: '2072b22903f1d3904bedef29ee72086a7890c17be2c1f860dbcaf675a8b613bc',
-  eskiGoruntu: '2072b22903f1d3904bedef29ee72086a7890c17be2c1f860dbcaf675a8b613bc',
-  golSutunuYok: '9ca74feb16ec72a37660bfa7406577c5f93b5bb2673f16e9c3e0cdf0708a8070',
-  formVeCsYok: 'e5a245b7b3e1b76652da13c30750e06fcacbff2aca1db54b1231e684bfda7b77',
-  tablodaYok: '23b78057ddaa6c9d168ddbcb223d22fc0256fccd818fd5b5f6ac959d46e8f11f',
-  gecmisYok: '2072b22903f1d3904bedef29ee72086a7890c17be2c1f860dbcaf675a8b613bc',
+  dogrulanmis: '365fb11bd305a4005e955ed1d23b0a6899debfeb826deeba8e9df2b5461ae90a',
+  ppgFarkli: '4f1a3cb9ad91ed9b3623a4b3a1044cb19b3c5da2545877443f0598a7d6ff0344',
+  ppgYok: '9f86e574e2a32a742ae719905f4da3ad414b033aa1ff6edda7f784475564d646',
+  eskiGoruntu: '9f86e574e2a32a742ae719905f4da3ad414b033aa1ff6edda7f784475564d646',
+  golSutunuYok: 'eec201a1f4539e44898d4f336700d7f936816ab5485ec6092c2fa2db48f8ba44',
+  formVeCsYok: 'f93179e90617b106ea6d7eed444819a47a8e3f09000bb3103047c89267bd0692',
+  tablodaYok: 'b2f407d55d346d63fa5307994df9d45c0824c239f9f983c88a3d6c0ef5854c8d',
+  gecmisYok: '9f86e574e2a32a742ae719905f4da3ad414b033aa1ff6edda7f784475564d646',
 }
 
 // Yalnızca form satırlarının özeti; sıra satırı kuralı değişmeden ÖNCEKİ kodla (d15ed57) alınmıştır. Sıra satırı

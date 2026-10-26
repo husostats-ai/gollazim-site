@@ -8,8 +8,9 @@ import { MAIN_CATEGORY_IDS, MAIN_SCOPE_NOTE } from '../config/mainCategories'
 import { DEFAULT_MEMBER_TEXTS } from '../config/memberTexts'
 import { MEMBER_STALE_HOURS } from '../config/member'
 import { DAY, dayHighlights, HIGHLIGHT_PERCENT, memberInput, PREVIOUS_DAY, PUBLISHED_AT } from '../services/member/__fixtures__/rawData'
+import { withOldStats } from '../services/member/__fixtures__/oldStats'
 import type { MemberErrorKind } from '../services/member/controller'
-import { MEMBER_ERROR_TEXTS, MEMBER_HIGHLIGHT_TEXTS, MEMBER_MARKET_LABEL, MEMBER_MARKET_NOTE, MEMBER_MARKET_NOTE_BUTTON, MEMBER_HT_SCORELESS_TEXT, MEMBER_NOTE_IMAGE_OPEN, MEMBER_NOTE_LABEL, MEMBER_NOTICE_TEXTS, MEMBER_STREAK_TEXTS, STALE_DATA_TEXT } from '../services/member/labels'
+import { MEMBER_ERROR_TEXTS, MEMBER_HIGHLIGHT_TEXTS, MEMBER_MARKET_LABEL, MEMBER_MARKET_NOTE, MEMBER_MARKET_NOTE_BUTTON, MEMBER_HT05_NOTE_TEXT, MEMBER_NOTE_IMAGE_OPEN, MEMBER_NOTE_LABEL, MEMBER_NOTICE_TEXTS, MEMBER_STREAK_TEXTS, STALE_DATA_TEXT } from '../services/member/labels'
 import { buildMemberPayload } from '../services/member/payload'
 import { assertMemberPayload } from '../services/member/schema'
 import { formatRate } from '../utils/format'
@@ -420,7 +421,7 @@ describe('kategori listeleri ve üye kartı', () => {
     withoutMkt(v6)
     delete v6.streak
     for (const d of v6.days) for (const m of d.matches) { delete m.homeForm; delete m.awayForm }
-    for (const scope of ['all', 'shared'] as const) delete v6.statistics[scope].htScoreless
+    withOldStats(v6, 9)
     const row = v6.days[0].lists.find((l) => l.categoryId === 'over25')!.items.find((i) => i.ai)!.ai!
     for (const d of v6.days) for (const l of d.lists) for (const i of l.items) delete i.ai
     for (const m of v6.days[0].matches) m.ai = row
@@ -880,7 +881,7 @@ describe('seri takibi sayfası', () => {
     withoutMkt(v7)
     delete v7.streak
     for (const d of v7.days) for (const m of d.matches) { delete m.homeForm; delete m.awayForm }
-    for (const scope of ['all', 'shared'] as const) delete v7.statistics[scope].htScoreless
+    withOldStats(v7, 9)
     expect(() => assertMemberPayload(v7)).not.toThrow()
     const old = shell(analysis(), NOW, null, v7)
     expect(old).not.toContain('member-tab-streak')
@@ -928,7 +929,7 @@ describe('üye kartı: form, gol ve gol yemediği maç satırları (sürüm 9)',
     ;(v8 as { v: number }).v = 8
     withoutMkt(v8)
     for (const d of v8.days) for (const m of d.matches) { delete m.homeForm; delete m.awayForm }
-    for (const scope of ['all', 'shared'] as const) delete v8.statistics[scope].htScoreless
+    withOldStats(v8, 9)
     expect(() => assertMemberPayload(v8)).not.toThrow()
     const card = cardOf('Kuzey Yıldızı', v8)
     expect(card).not.toContain('data-testid="member-form"')
@@ -948,85 +949,106 @@ describe('üye kartı: form, gol ve gol yemediği maç satırları (sürüm 9)',
   })
 })
 
-describe('istatistik sayfası: İY 0.5 ÜST tutmadığında 2. yarı kutusu', () => {
-  const page = (all: { n: number; over: number | null }, shared: { n: number; over: number | null } = { n: 0, over: null }, scope: 'all' | 'shared' = 'all') => {
+describe('istatistik sayfası: UYARI (*) NOTLU MAÇLARDA 2. YARI kutusu (sürüm 14)', () => {
+  const page = (all: { n: number; over: number }, shared: { n: number; over: number } = { n: 0, over: 0 }, scope: 'all' | 'shared' = 'all') => {
     const p = JSON.parse(JSON.stringify(payload)) as MemberPayload
-    p.statistics.all.htScoreless = all
-    p.statistics.shared.htScoreless = shared
+    p.statistics.all.ht05Note = all
+    p.statistics.shared.ht05Note = shared
     assertMemberPayload(p)
     return html(createElement(MemberStatsPage, { payload: p, initialScope: scope }))
   }
-  const card = (markup: string): string => textOf(/<section[^>]*data-testid="member-ht-card"[\s\S]*?<\/section>/.exec(markup)![0])
+  const card = (markup: string): string => textOf(/<section[^>]*data-testid="member-ht05-card"[\s\S]*?<\/section>/.exec(markup)![0])
   const ADVICE = /tahmin|fırsat|öner|bekle|oyna|bahis|kupon|oran|kazan|garanti|şans|yatır/
 
-  it('N < 20: yalnızca maç sayısı ve "Deneme aşamasında · az örnek"; yüzde yok', () => {
-    const text = card(page({ n: 19, over: null }))
-    expect(text).toContain('İY 0.5 ÜST TUTMADIĞINDA 2. YARI')
-    expect(text).toContain('19 maç')
-    expect(text).toContain('⚠ Deneme aşamasında · az örnek')
-    expect(text).toContain('İlk yarısı 0-0 biten 19 maç ölçüldü. Yüzde, en az 20 maç ölçülünce gösterilecek.')
+  it('başlık, giriş ve açıklama metinleri; tarih tek sabitten', () => {
+    const text = card(page({ n: 19, over: 10 }))
+    expect(text).toContain('UYARI (*) NOTLU MAÇLARDA 2. YARI')
+    expect(text).toContain('İLK YARI 0.5 ÜST, 2.5 ÜST ve 2. YARI 0.5 ÜST önerisi birlikte olan maçlardan ilk yarısı 0-0 bitenler.')
     expect(text).toContain('Geçmiş maçların sayımıdır; ölçümdür, tavsiye değildir.')
+    // textOf HTML'deki kesme işaretini (&#x27;) çözmez.
+    expect(text).toContain("Uyarı koşulu geçmiş maçlara da uygulandı; kartta not 26 Ekim 2026'dan itibaren görünüyor.".replace("'", '&#x27;'))
+    expect(MEMBER_HT05_NOTE_TEXT.since).toBe("Uyarı koşulu geçmiş maçlara da uygulandı; kartta not 26 Ekim 2026'dan itibaren görünüyor.")
+  })
+
+  it('N < 20: k/n görünür, yüzde yok, "az veri"', () => {
+    const text = card(page({ n: 19, over: 10 }))
+    expect(text).toContain('İlk yarısı 0-0 biten 19 maç')
+    expect(text).toContain('2. yarıda en az 2 gol oldu: 10/19 · az veri · olmadı: 9/19 · az veri')
     expect(text).not.toContain('%')
-    expect(text).not.toContain(' / ')
+    expect(text).not.toContain('az örnek')
   })
 
-  it('20 ≤ N < 50: yüzde ve sayılar görünür; "az örnek" uyarısı kalır', () => {
+  it('20 ≤ N < 50: yüzde ve "az örnek" uyarısı (eski kutunun eşikleri)', () => {
     const text = card(page({ n: 24, over: 14 }))
-    expect(text).toContain(`${formatRate(58.3)} · 14 / 24 maç`)
-    expect(text).toContain('⚠ az örnek')
-    expect(text).not.toContain('Deneme aşamasında')
-    expect(text).toContain('İlk yarısı 0-0 biten 24 maçın 14 tanesinde 2. yarıda en az 2 gol oldu. Maç sayısı az; bu yüzde tesadüfen yüksek ya da düşük çıkmış olabilir.')
-    expect(text).toContain('ölçümdür, tavsiye değildir')
-    // Tam eşikte de yüzde görünür
-    expect(card(page({ n: 20, over: 10 }))).toContain(`${formatRate(50)} · 10 / 20 maç`)
+    expect(text).toContain(`2. yarıda en az 2 gol oldu: 14/24 · ${formatRate(58.3)} · olmadı: 10/24 · ${formatRate(41.7)}`)
+    expect(text).toContain(MEMBER_HT05_NOTE_TEXT.lowSample)
+    expect(text).toContain(MEMBER_HT05_NOTE_TEXT.lowSampleNote)
+    expect(text).not.toContain('az veri')
+    // Tam eşikte yüzde görünür
+    expect(card(page({ n: 20, over: 10 }))).toContain(`10/20 · ${formatRate(50)}`)
   })
 
-  it('N ≥ 50: uyarı yok', () => {
+  it('N ≥ 50: yüzde var, uyarı yok', () => {
     const text = card(page({ n: 50, over: 31 }))
-    expect(text).toContain(`${formatRate(62)} · 31 / 50 maç`)
+    expect(text).toContain(`31/50 · ${formatRate(62)}`)
     expect(text).not.toContain('az örnek')
     expect(text).not.toContain('tesadüfen')
-    expect(text).toContain('ölçümdür, tavsiye değildir')
   })
 
-  it('N = 0: boş durum metni', () => {
-    const text = card(page({ n: 0, over: null }))
-    expect(text).toContain(MEMBER_HT_SCORELESS_TEXT.empty)
+  it('N = 0: "Henüz maç yok."', () => {
+    const text = card(page({ n: 0, over: 0 }))
+    expect(text).toContain('Henüz maç yok.')
     expect(text).not.toContain('%')
-    expect(text).not.toContain('az örnek')
+    expect(text).not.toContain('az veri')
   })
 
   it('"Paylaşılan" ölçüsü kendi sayısını gösterir', () => {
-    const markup = page({ n: 24, over: 14 }, { n: 6, over: null }, 'shared')
-    expect(card(markup)).toContain('6 maç')
-    expect(card(markup)).toContain('Deneme aşamasında')
-    expect(card(markup)).not.toContain('%')
+    const text = card(page({ n: 24, over: 14 }, { n: 6, over: 4 }, 'shared'))
+    expect(text).toContain('İlk yarısı 0-0 biten 6 maç')
+    expect(text).toContain('4/6 · az veri')
+    expect(text).not.toContain('%')
   })
 
-  it('kutu "ZAMAN İÇİNDE BAŞARI"dan önce, kategori kartlarından sonra gelir', () => {
-    const text = textOf(page({ n: 24, over: 14 }))
-    expect(text.indexOf('KATEGORİ BAZLI BAŞARI')).toBeLessThan(text.indexOf(MEMBER_HT_SCORELESS_TEXT.title))
-    expect(text.indexOf(MEMBER_HT_SCORELESS_TEXT.title)).toBeLessThan(text.indexOf('ZAMAN İÇİNDE BAŞARI'))
+  it('kutu "ZAMAN İÇİNDE BAŞARI"dan önce, kategori kartlarından sonra gelir; eski kutu hiç yok', () => {
+    const markup = page({ n: 24, over: 14 })
+    const text = textOf(markup)
+    expect(text.indexOf('KATEGORİ BAZLI BAŞARI')).toBeLessThan(text.indexOf(MEMBER_HT05_NOTE_TEXT.title))
+    expect(text.indexOf(MEMBER_HT05_NOTE_TEXT.title)).toBeLessThan(text.indexOf('ZAMAN İÇİNDE BAŞARI'))
+    expect(markup).not.toContain('member-ht-card')
+    expect(text).not.toContain('İY 0.5 ÜST TUTMADIĞINDA 2. YARI')
   })
 
   it('metinlerde ileriye dönük ya da tavsiye dili yok; yalnızca geçmiş sayım', () => {
-    for (const markup of [page({ n: 19, over: null }), page({ n: 24, over: 14 }), page({ n: 50, over: 31 }), page({ n: 0, over: null })]) {
-      const text = card(markup).toLocaleLowerCase('tr').replace('ölçümdür, tavsiye değildir', '')
+    for (const markup of [page({ n: 19, over: 10 }), page({ n: 24, over: 14 }), page({ n: 50, over: 31 }), page({ n: 0, over: 0 })]) {
+      // Giriş cümlesi kategorileri adlandırır ("önerisi birlikte olan"); denetim kutunun geri kalanına uygulanır.
+      const text = card(markup).toLocaleLowerCase('tr').replace(MEMBER_HT05_NOTE_TEXT.intro.toLocaleLowerCase('tr'), '').replace('ölçümdür, tavsiye değildir', '')
       expect(ADVICE.exec(text)?.[0] ?? null).toBeNull()
       expect(text).not.toContain('tavsiye')
     }
   })
 
-  it('sürüm 9 paket (alan yok) yeni sitede açılır; kutu görünmez, sayfanın kalanı çizilir', () => {
+  it('sürüm 13 paket (eski htScoreless alanı) yeni sitede açılır; ne eski ne yeni kutu görünür, sayfanın kalanı çizilir', () => {
+    const v13 = JSON.parse(JSON.stringify(payload)) as MemberPayload
+    ;(v13 as { v: number }).v = 13
+    withOldStats(v13, 13)
+    expect(v13.statistics.all.htScoreless).toBeDefined()
+    expect(() => assertMemberPayload(v13)).not.toThrow()
+    const markup = html(createElement(MemberStatsPage, { payload: v13 }))
+    expect(markup).not.toContain('member-ht05-card')
+    expect(markup).not.toContain('member-ht-card')
+    expect(textOf(markup)).not.toContain('İY 0.5 ÜST TUTMADIĞINDA 2. YARI')
+    expect(textOf(markup)).toContain('KATEGORİ BAZLI BAŞARI')
+    expect(textOf(markup)).toContain('ZAMAN İÇİNDE BAŞARI')
+  })
+
+  it('sürüm 9 paket (alan yok) yeni sitede açılır; kutu görünmez', () => {
     const v9 = JSON.parse(JSON.stringify(payload)) as MemberPayload
     ;(v9 as { v: number }).v = 9
     withoutMkt(v9)
-    for (const scope of ['all', 'shared'] as const) delete v9.statistics[scope].htScoreless
+    withOldStats(v9, 9)
     expect(() => assertMemberPayload(v9)).not.toThrow()
     const markup = html(createElement(MemberStatsPage, { payload: v9 }))
-    expect(markup).not.toContain('member-ht-card')
-    expect(textOf(markup)).not.toContain(MEMBER_HT_SCORELESS_TEXT.title)
-    expect(textOf(markup)).toContain('KATEGORİ BAZLI BAŞARI')
+    expect(markup).not.toContain('member-ht05-card')
     expect(textOf(markup)).toContain('ZAMAN İÇİNDE BAŞARI')
   })
 })
@@ -1069,6 +1091,7 @@ describe('üye kartı: piyasa yüzdesi (sürüm 11)', () => {
     expect(cards(none, 'over25').every((card) => !card.includes('member-market'))).toBe(true)
     const v10 = JSON.parse(JSON.stringify(none)) as MemberPayload
     ;(v10 as { v: number }).v = 10
+    withOldStats(v10, 10)
     expect(() => assertMemberPayload(v10)).not.toThrow()
     expect(cards(v10, 'over25')).toEqual(cards(none, 'over25'))
   })
@@ -1237,7 +1260,8 @@ describe('üye kartı: admin notu (sürüm 13)', () => {
   it('sürüm 12 paket (notsuz) eskisi gibi çizilir: kart, not satırı dışında bayt bayt aynı', () => {
     const v12 = copy()
     ;(v12 as { v: number }).v = 12
-    for (const d of v12.days) for (const m of d.matches) delete m.note
+    withoutNote(v12)
+    withOldStats(v12, 12)
     expect(() => assertMemberPayload(v12)).not.toThrow()
     const withNote = kuzeyCard(payload)
     const start = withNote.indexOf('<div class="flex min-w-0 flex-col gap-1.5 rounded-xl border border-line bg-navy-800 px-3 py-2 text-xs" data-testid="member-note"')

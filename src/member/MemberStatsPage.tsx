@@ -4,8 +4,8 @@ import PageTitle from '../components/PageTitle'
 import { CHART } from '../components/stats/chartTheme'
 import { MAIN_SCOPE_NOTE } from '../config/mainCategories'
 import type { ReliabilityLevel } from '../services/analysis/types'
-import { MEMBER_HT_SCORELESS_TEXT as HT, MEMBER_RELIABILITY_LABELS } from '../services/member/labels'
-import type { MemberBucket, MemberHtScoreless, MemberPayload, MemberTally } from '../services/member/payload'
+import { MEMBER_HT05_NOTE_TEXT as HT, MEMBER_RELIABILITY_LABELS } from '../services/member/labels'
+import type { MemberBucket, MemberHt05Note, MemberPayload, MemberTally } from '../services/member/payload'
 import { MEMBER_HT_SCORELESS } from '../services/member/schema'
 import { formatDay, formatMonth, formatRate, formatWeek } from '../utils/format'
 import { categoryLabel } from './view'
@@ -125,30 +125,28 @@ function Figure({ label, value }: { label: string; value: number }) {
 const BADGE = 'inline-flex items-center rounded-full border border-warn-line bg-warn-soft px-1.5 py-0.5 text-[10px] font-bold text-warn'
 
 /**
- * "İY 0.5 ÜST tutmadığında 2. yarı": paketteki iki sayıyı gösterir. Az maçta (over null) oran
- * yazılmaz, yalnızca ölçülen maç sayısı görünür.
+ * İY 0.5 ÜST (*) notunu sağlayan maçlardan ilk yarısı 0-0 bitenler (sürüm 14): paketteki iki sayıyı gösterir. Sayılar
+ * (k/n) her zaman görünür; MEMBER_HT_SCORELESS.min'den az maçta yüzde yazılmaz ("az veri"), low'dan az maçta "az örnek".
  */
-function HtScoreless({ stats }: { stats: MemberHtScoreless }) {
+function Ht05Note({ stats }: { stats: MemberHt05Note }) {
   const { n, over } = stats
-  if (n === 0) return <p className="text-sm" data-testid="member-ht-text">{HT.empty}</p>
-  const shown = over !== null && n >= MEMBER_HT_SCORELESS.min
+  if (n === 0) return <p className="text-sm" data-testid="member-ht05-text">{HT.empty}</p>
+  const shown = n >= MEMBER_HT_SCORELESS.min
+  const share = (k: number) => `${k}/${n} · ${shown ? formatRate(Math.round((k / n) * 1000) / 10) : HT.lowData}`
   return (
     <>
       <div className="flex flex-wrap items-end gap-x-3 gap-y-1.5">
-        <p className="text-4xl leading-none font-black" data-testid="member-ht-main">
-          {shown ? formatRate(Math.round((over / n) * 1000) / 10) : HT.matches(n)}
+        <p className="text-2xl leading-tight font-black" data-testid="member-ht05-n">
+          {HT.matches(n)}
         </p>
-        <p className="flex min-w-0 flex-wrap items-center gap-1.5 pb-0.5 text-sm text-muted">
-          {shown && <span data-testid="member-ht-ratio">· {HT.ratio(over, n)}</span>}
-          {!shown && <span className={BADGE} data-testid="member-ht-trial">{HT.trial}</span>}
-          {shown && n < MEMBER_HT_SCORELESS.low && <span className={`${BADGE} whitespace-nowrap`} data-testid="member-ht-low">{HT.lowSample}</span>}
-        </p>
+        {shown && n < MEMBER_HT_SCORELESS.low && <span className={`${BADGE} mb-1 whitespace-nowrap`} data-testid="member-ht05-low">{HT.lowSample}</span>}
       </div>
-      <p className="mt-2 text-sm" data-testid="member-ht-text">
-        {shown ? HT.result(over, n) : HT.counted(n, MEMBER_HT_SCORELESS.min)}
-        {shown && n < MEMBER_HT_SCORELESS.low && ` ${HT.lowSampleNote}`}
+      <p className="mt-2 text-sm break-words" data-testid="member-ht05-text">
+        {HT.over}: <span className="font-bold">{share(over)}</span> · {HT.under}: <span className="font-bold">{share(n - over)}</span>
       </p>
+      {shown && n < MEMBER_HT_SCORELESS.low && <p className="mt-1 text-xs text-muted">{HT.lowSampleNote}</p>}
       <p className="mt-2 text-xs text-muted">{HT.note}</p>
+      <p className="mt-1 text-xs text-muted">{HT.since}</p>
     </>
   )
 }
@@ -224,9 +222,10 @@ export default function MemberStatsPage({ payload, initialScope = 'all', initial
             </Card>
           )}
 
-          {stats.htScoreless && (
-            <Card title={HT.title} note={HT.intro} testId="member-ht-card">
-              <HtScoreless stats={stats.htScoreless} />
+          {/* Sürüm 14: yalnızca (*) notunu sağlayan maçlar. Sürüm 10-13 paketlerdeki eski kutu (htScoreless) gösterilmez. */}
+          {stats.ht05Note && (
+            <Card title={HT.title} note={HT.intro} testId="member-ht05-card">
+              <Ht05Note stats={stats.ht05Note} />
             </Card>
           )}
 

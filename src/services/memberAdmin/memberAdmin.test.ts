@@ -411,7 +411,7 @@ describe('üye ekleme', () => {
       expect(publication.text).not.toContain(AI_REASON_CANARY)
       const opened = (await openEnvelope(publication.text, login.username, login.password)).payload
       const plain = JSON.stringify(opened)
-      expect(opened.v).toBe(13)
+      expect(opened.v).toBe(14)
       const day = opened.days[0]
       expect(day.lists.flatMap((l) => l.items.filter((i) => i.ai).map((i) => `${day.matches[i.match].home}|${l.categoryId}|${i.ai!.count}|${i.ai!.level}`)).sort()).toEqual(EXPECTED.map((e) => e.join('|')).sort())
       expect(day.matches.some((m) => 'ai' in m)).toBe(false)

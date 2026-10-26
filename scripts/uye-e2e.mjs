@@ -834,6 +834,36 @@ try {
   for (const period of ['weekly', 'monthly', 'daily']) await page.click(sel(`member-period-${period}`))
   const statLeak = FORBIDDEN.exec(await visibleText(page))
   step('istatistikte yasak terim yok (canlı sayfa)', statLeak === null, statLeak?.[0] ?? '')
+  // Sürüm 14: eski "İY 0.5 ÜST TUTMADIĞINDA 2. YARI" kutusu yok; yerine yalnızca (*) notlu maçların kutusu.
+  // n < 20 iken yüzde yok ("az veri"), k/n görünür; 360 ve 390 px'te kutu ve sayfa taşmaz.
+  const ht05Box = { problems: [], texts: [] }
+  for (const scope of ['all', 'shared']) {
+    await page.click(sel(`member-scope-${scope}`))
+    await page.waitForFunction((s) => document.querySelector(s)?.getAttribute('aria-pressed') === 'true', {}, sel(`member-scope-${scope}`))
+    for (const width of [360, 390]) {
+      await page.setViewport({ width, height: 844, deviceScaleFactor: 1 })
+      await new Promise((r) => setTimeout(r, 150))
+      const box = await page.evaluate(() => {
+        const card = document.querySelector('[data-testid="member-ht05-card"]')
+        if (!card) return null
+        const r = card.getBoundingClientRect()
+        const n = /İlk yarısı 0-0 biten (\d+) maç/.exec(card.innerText)
+        return { text: card.innerText.replace(/\s+/g, ' '), n: n ? Number(n[1]) : 0, inside: r.left >= 0 && r.right <= window.innerWidth + 0.5 && card.scrollWidth <= card.clientWidth + 1, old: !!document.querySelector('[data-testid="member-ht-card"]') }
+      })
+      const size = await overflow(page)
+      if (!box) { ht05Box.problems.push(`${scope}/${width}: kutu yok`); continue }
+      if (box.old) ht05Box.problems.push(`${scope}/${width}: eski kutu var`)
+      if (!box.inside || size.scroll > size.inner) ht05Box.problems.push(`${scope}/${width}: taşma`)
+      if (box.n === 0 && !box.text.includes('Henüz maç yok.')) ht05Box.problems.push(`${scope}/${width}: N=0 metni yok`)
+      if (box.n > 0 && box.n < 20 && (/%\d/.test(box.text) || !box.text.includes('az veri'))) ht05Box.problems.push(`${scope}/${width}: n<20 iken yüzde var ya da "az veri" yok`)
+      if (!box.text.includes('Geçmiş maçların sayımıdır; ölçümdür, tavsiye değildir.') || !box.text.includes("kartta not 26 Ekim 2026'dan itibaren görünüyor")) ht05Box.problems.push(`${scope}/${width}: açıklama metni eksik`)
+      if (width === 390) ht05Box.texts.push(`${scope}: ${box.text.replace(/^.*?İlk yarısı/, 'İlk yarısı').slice(0, 110)}`)
+    }
+  }
+  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 })
+  await page.click(sel('member-scope-all'))
+  step('istatistik: eski İY kutusu yok; (*) kutusu Tümü ve Paylaşılan, n<20 yüzde yok, 360/390 px taşma yok', ht05Box.problems.length === 0, ht05Box.problems.join(' ') || ht05Box.texts.join(' ‖ '))
+  await cardShot(page, 'member-ht05-card', 'istatistik-iy05-kutu')
   step('istatistik 390 px taşma yok', await shot(page, 'istatistik', 390))
   step('istatistik 320 px taşma yok', await shot(page, 'istatistik', 320))
   await page.click(`a[href="${T.home}"]`)

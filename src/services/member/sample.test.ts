@@ -12,6 +12,7 @@ import { deriveMemberKeys, fromBase64, generatePassword, newSiteSalt, openEnvelo
 import { draftPublication } from '../memberAdmin/publish'
 import type { MemberPayload } from './payload'
 import { assertMemberPayload } from './schema'
+import { withOldStats } from './__fixtures__/oldStats'
 
 // Geliştirme aracı, normal test çalıştırmasında atlanır. Üye sayfasını yerelde denemek
 // için JSON yedekten ŞİFRELİ bir örnek yayın paketi ve sentetik bir test kullanıcısı üretir:
@@ -77,8 +78,8 @@ it.runIf(process.env.UYE_ORNEK && process.env.UYE_BACKUP)(
       { day, n: Number(process.env.UYE_N ?? 1), publishedAt: process.env.UYE_AT ?? new Date().toISOString(), texts: DEFAULT_MEMBER_TEXTS },
     )
 
-    // UYE_SURUM=7: eski biçimde paket (üye sitesinin eski paketi açtığını denemek için). Sürüm 8-13'te gelen
-    // alanlar çıkarılır: seri takibi (8), form satırları (9), "İY 0.5 tutmadığında 2. yarı" (10), piyasa yüzdesi (11),
+    // UYE_SURUM=7: eski biçimde paket (üye sitesinin eski paketi açtığını denemek için). Sürüm 8-14'te gelen
+    // alanlar çıkarılır: seri takibi (8), form satırları (9), İY 0.5 ÜST 2. yarı sayımı (10 ve 14), piyasa yüzdesi (11),
     // maç notu (13). Sürüm 12 yalnızca seri adımı durumu ekler; seri takibi zaten çıkarılır.
     const toV7 = (source: MemberPayload): MemberPayload => {
       const old = JSON.parse(JSON.stringify(source)) as MemberPayload
@@ -92,7 +93,7 @@ it.runIf(process.env.UYE_ORNEK && process.env.UYE_BACKUP)(
         }
         for (const l of d.lists) for (const i of l.items) delete i.mkt
       }
-      for (const scope of ['all', 'shared'] as const) delete (old.statistics[scope] as { htScoreless?: unknown }).htScoreless
+      withOldStats(old, 7)
       return old
     }
     const sealed: MemberPayload = process.env.UYE_SURUM === '7' ? toV7(payload) : payload

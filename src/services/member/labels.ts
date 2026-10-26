@@ -1,3 +1,5 @@
+import { HT05_NOTE_SINCE } from '../../config/categories'
+import { formatPlainDate } from '../../utils/format'
 import type { ReliabilityLevel } from '../analysis/types'
 import type { MatchStatus, PickOutcome } from '../../types'
 import type { MemberErrorKind, SignOutReason } from './controller'
@@ -107,21 +109,21 @@ export const MEMBER_STREAK_TEXTS = {
 } as const
 
 /**
- * "İY 0.5 ÜST tutmadığında 2. yarı" kutusunun metinleri. Yalnızca geçmiş maçların sayımını anlatır;
- * ileriye dönük bir ifade içermez.
+ * İY 0.5 ÜST (*) notunu sağlayan maçlardan ilk yarısı 0-0 bitenler kutusunun metinleri. Yalnızca geçmiş maçların
+ * sayımını anlatır; ileriye dönük bir ifade içermez. Tarih tek sabitten (HT05_NOTE_SINCE) yazılır.
  */
-export const MEMBER_HT_SCORELESS_TEXT = {
-  title: 'İY 0.5 ÜST TUTMADIĞINDA 2. YARI',
-  intro: 'İLK YARI 0.5 ÜST listesinde yer alan maçlardan ilk yarısı 0-0 bitenler.',
-  trial: '⚠ Deneme aşamasında · az örnek',
+export const MEMBER_HT05_NOTE_TEXT = {
+  title: 'UYARI (*) NOTLU MAÇLARDA 2. YARI',
+  intro: 'İLK YARI 0.5 ÜST, 2.5 ÜST ve 2. YARI 0.5 ÜST önerisi birlikte olan maçlardan ilk yarısı 0-0 bitenler.',
+  empty: 'Henüz maç yok.',
+  matches: (n: number) => `İlk yarısı 0-0 biten ${n} maç`,
+  over: '2. yarıda en az 2 gol oldu',
+  under: 'olmadı',
+  lowData: 'az veri',
   lowSample: '⚠ az örnek',
-  empty: 'Henüz ilk yarısı 0-0 biten maç yok.',
-  matches: (n: number) => `${n} maç`,
-  ratio: (over: number, n: number) => `${over} / ${n} maç`,
-  counted: (n: number, min: number) => `İlk yarısı 0-0 biten ${n} maç ölçüldü. Yüzde, en az ${min} maç ölçülünce gösterilecek.`,
-  result: (over: number, n: number) => `İlk yarısı 0-0 biten ${n} maçın ${over} tanesinde 2. yarıda en az 2 gol oldu.`,
   lowSampleNote: 'Maç sayısı az; bu yüzde tesadüfen yüksek ya da düşük çıkmış olabilir.',
   note: 'Geçmiş maçların sayımıdır; ölçümdür, tavsiye değildir.',
+  since: `Uyarı koşulu geçmiş maçlara da uygulandı; kartta not ${formatPlainDate(HT05_NOTE_SINCE)}'dan itibaren görünüyor.`,
 } as const
 
 /** Seri adımının durumu: işaretler sonuç rozetleriyle aynıdır */

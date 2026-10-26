@@ -77,9 +77,12 @@ describe('admin kuralı: listede olduğu kategoriler (yüzde listeleri)', () => 
     expect([...seen].sort()).toEqual([false, true])
   })
 
-  it('paket değişmez: not metni ve yeni anahtar pakete girmez', () => {
-    const text = JSON.stringify(buildMemberPayload(memberInput()))
-    expect(text).not.toContain('İlk yarı gol olmazsa')
-    expect(text).not.toMatch(/ht05Note|ht05-note/)
+  it('kart notu pakete girmez: not metni yok; maçlarda ve önerilerde yeni anahtar yok (istatistikteki ht05Note sürüm 14 sayımıdır)', () => {
+    const payload = buildMemberPayload(memberInput())
+    expect(JSON.stringify(payload)).not.toContain('İlk yarı gol olmazsa')
+    for (const day of payload.days) {
+      for (const m of day.matches) expect(Object.keys(m).filter((k) => /ht05|note$/i.test(k) && k !== 'note')).toEqual([])
+      for (const l of day.lists) for (const i of l.items) expect(Object.keys(i).filter((k) => /ht05|note/i.test(k))).toEqual([])
+    }
   })
 })

@@ -8,12 +8,12 @@ import { highlightOutcome } from '../highlights/highlights'
 import type { Prediction, ReliabilityLevel } from '../analysis/types'
 import { matchForms, verifiedTableRows, type TeamForm, type VerifiedTableRow } from '../league/standing'
 import { resultDetail } from '../stats/categoryResult'
-import { buildHtScorelessStats } from '../stats/htScoreless'
+import { buildHt05NoteStats } from '../stats/ht05NoteStats'
 import { buildMainStats } from '../stats/mainStats'
 import { buildStarStats } from '../stats/starStats'
 import { buildStats, decidedBuckets, type Bucket, type Tally } from '../stats/statsEngine'
 import { sharedPicksOnly } from '../story/shared'
-import { assertMemberPayload, MEMBER_HT_SCORELESS, MEMBER_STREAK_LIMITS } from './schema'
+import { assertMemberPayload, MEMBER_STREAK_LIMITS } from './schema'
 
 // Üye sayfasına giden yayın paketi. İZİNLİ ALAN LİSTESİDİR: paket, kayıt nesnelerinden
 // (Match, Prediction, Pick…) kopyalanmaz; her alan aşağıda adıyla, tek tek yazılarak
@@ -45,14 +45,16 @@ import { assertMemberPayload, MEMBER_HT_SCORELESS, MEMBER_STREAK_LIMITS } from '
  *    seriden çıkarıldı.
  * 13: maçlarda admin'in "Not"u (note: düz metin ve/veya tek görsel) bulunabilir; yalnızca "Üyelere göster"
  *    açık notta ve yalnızca pakete giren maçta yazılır.
+ * 14: istatistiklerde eski "İY 0.5 ÜST tutmadığında 2. yarı" sayımı (htScoreless) yok; yerine yalnızca İY 0.5 ÜST
+ *    (*) notunu sağlayan maçların sayımı (ht05Note: iki sayı) var.
  * Sürüm 1 (others alanı olmayan), sürüm 2 (main alanı olmayan), sürüm 3 (highlights alanı olmayan),
  * sürüm 4 (sample alanı olmayan), sürüm 5 (ai alanı olmayan), sürüm 6 (ai alanı maçta olan) ve
  * sürüm 7 (streak alanı olmayan), sürüm 8 (form alanları olmayan), sürüm 9 (htScoreless alanı olmayan) ve
- * sürüm 10 (mkt alanı olmayan), sürüm 11 (withdrawn durumu olmayan), sürüm 12 (note alanı olmayan)
- * paketler üye sayfasında hâlâ açılır;
+ * sürüm 10 (mkt alanı olmayan), sürüm 11 (withdrawn durumu olmayan), sürüm 12 (note alanı olmayan) ve
+ * sürüm 13 (htScoreless alanı olan; üye sayfası bu alanı artık göstermez) paketler üye sayfasında hâlâ açılır;
  * sürüm 6'daki maç geneli satır gösterilmez.
  */
-export const MEMBER_PAYLOAD_VERSION = 13
+export const MEMBER_PAYLOAD_VERSION = 14
 
 /** Günlük dökümde pakete giren en fazla gün sayısı (en yeniler) */
 export const MEMBER_DAILY_LIMIT = 90
@@ -110,16 +112,25 @@ export interface MemberStats {
     missing: number
   }
   /**
-   * "İY 0.5 ÜST tutmadığında 2. yarı": İY 0.5 ÜST listesindeki maçlardan ilk yarısı 0-0 bitenler (n) ve
-   * bunlardan 2. yarıda en az 2 gol olanlar (over). n, MEMBER_HT_SCORELESS.min'den azsa over null'dır:
-   * oran gösterilmez ve paketten de çıkarılamaz. Sürüm 1-9 paketlerde bu alan yoktur.
+   * YALNIZCA sürüm 10-13: "İY 0.5 ÜST tutmadığında 2. yarı" (İY 0.5 ÜST listesindeki tüm maçlar). Üye sayfası artık
+   * göstermez; eski paketlerin şemaya uyması için tip durur. n, MEMBER_HT_SCORELESS.min'den azsa over null'dır.
    */
   htScoreless?: MemberHtScoreless
+  /**
+   * Sürüm 14: İY 0.5 ÜST (*) notunu sağlayan maçlardan (admin'deki buildHt05NoteStats(...).star) ilk yarısı 0-0
+   * bitenler (n) ve bunlardan 2. yarıda en az 2 gol olanlar (over). over her zaman sayıdır; az maçta yüzde gösterilmez.
+   */
+  ht05Note?: MemberHt05Note
 }
 
 export interface MemberHtScoreless {
   n: number
   over: number | null
+}
+
+export interface MemberHt05Note {
+  n: number
+  over: number
 }
 
 /** Yapıştırılan lig tablosundan: "N. sıra · M maç" */
@@ -349,7 +360,7 @@ export interface MemberStreak {
 }
 
 export interface MemberPayload {
-  v: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | typeof MEMBER_PAYLOAD_VERSION
+  v: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | typeof MEMBER_PAYLOAD_VERSION
   /** Yayın numarası */
   n: number
   /** Yayın anı (ISO) */
@@ -466,12 +477,13 @@ const bucketsOf = (buckets: Bucket[]): MemberBucket[] => buckets.map((b) => ({ k
  * Kapsamdaki önerilerden istatistik sayfasının değerleri; kalibrasyon dökümleri alınmaz. "Kategori bazlı
  * başarı" tüm kategorileri, diğer bütün değerler yalnızca ana kategorileri (config/mainCategories) sayar.
  */
-function statsOf(picks: Pick[], results: MatchResult[]): MemberStats {
+function statsOf(picks: Pick[], allPicks: Pick[], results: MatchResult[]): MemberStats {
   const byCategory = buildStats(picks).byCategory
   const stats = buildStats(onlyMainCategories(picks))
   const stars = buildStarStats(onlyMainCategories(picks))
   const main = buildMainStats(picks)
-  const ht = buildHtScorelessStats(picks, results)
+  // (*) koşulu maçın TÜM dondurulmuş önerilerinden; sayım kapsamdaki (Tümü / Paylaşılan) İY 0.5 ÜST önerilerinden.
+  const note = buildHt05NoteStats(picks, allPicks, results).star
   return {
     main: {
       categories: main.categories.map((id) => id),
@@ -491,8 +503,7 @@ function statsOf(picks: Pick[], results: MatchResult[]): MemberStats {
       recomputed: stars.recomputed,
       missing: stars.missing,
     },
-    // Az maçta "over" yazılmaz: oran üye sayfasında gösterilmediği gibi paketten de hesaplanamaz.
-    htScoreless: { n: ht.scoreless, over: ht.scoreless < MEMBER_HT_SCORELESS.min ? null : ht.over },
+    ht05Note: { n: note.scoreless, over: note.over },
   }
 }
 
@@ -647,8 +658,8 @@ export function buildMemberPublication(input: MemberPayloadInput): { payload: Me
     texts: { disclaimer: input.texts.disclaimer, account: input.texts.account },
     days: input.days.map((day) => dayOf(input, day, aiSent)),
     statistics: {
-      all: statsOf(input.picks, results),
-      shared: statsOf(sharedPicksOnly(input.picks, input.shared), results),
+      all: statsOf(input.picks, input.picks, results),
+      shared: statsOf(sharedPicksOnly(input.picks, input.shared), input.picks, results),
     },
     streak: streakOf(input.streak ?? EMPTY_STREAK),
   }

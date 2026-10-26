@@ -14,6 +14,7 @@ import { CATEGORIES, getCategory } from '../../config/categories'
 import { TEXT_FIELDS } from '../../config/columnAliases'
 import { isBackupFile } from '../data/backupFormat'
 import { AI_REASON_CANARY, AI_RISK_CANARY, AI_SAVED_AT, AI_VERDICTS, dayVerdicts, DAY, dayHighlights, dayMatches, dayNotes, HIGHLIGHT_PERCENT, HIGHLIGHTS, MATCHES, memberInput, NOTE_HIDDEN_CANARY, NOTE_HIDDEN_IMAGE, NOTE_IMAGE, NOTE_UPDATED_AT, NOTES, PICKS, PREVIOUS_DAY, RAW_CANARIES, RAW_HEADERS, RAW_STAT_KEYS, RESULTS, STREAK_ADDED_AT, STREAK_INPUT, STREAK_STEPS, streakView, URL_CANARY } from './__fixtures__/rawData'
+import { withOldStats } from './__fixtures__/oldStats'
 import { AI_CATEGORY_IDS, AI_DECISIONS, AI_PROVIDERS, decisionLabel } from '../../config/ai'
 import { MEMBER_AI_LEVEL_LABELS, MEMBER_AI_PROVIDER_LABELS, memberAiSummary, memberAiTitle } from './labels'
 import { buildMemberPayload, buildMemberPublication, MEMBER_PAYLOAD_VERSION, type MemberPayload, type MemberPayloadInput, type MemberStreak } from './payload'
@@ -57,7 +58,9 @@ const collect = (value: unknown) => {
   return { keys, numbers, strings }
 }
 
-const ALLOWED_KEYS = new Set<string>(Object.values(MEMBER_KEYS).flat())
+/** Yalnızca eski paketlerde geçerli anahtarlar: şema eski paketler için tanır ama güncel pakette bulunamazlar */
+const OLD_ONLY_KEYS = ['htScoreless']
+const ALLOWED_KEYS = new Set<string>(Object.values(MEMBER_KEYS).flat().filter((key) => !OLD_ONLY_KEYS.includes(key)))
 
 /** Maç kaydında CSV'den gelen kimlik metinleri; pakete takım, lig ve saat olarak girerler */
 const IDENTITY_FIELDS: string[] = [...TEXT_FIELDS]
@@ -162,6 +165,8 @@ describe('yayın paketi: ham veri sızıntısı', () => {
     }
     // İzinli listenin tamamı kullanılıyor: listede ölü anahtar yok.
     for (const key of ALLOWED_KEYS) expect(keys.has(key), `kullanılmayan izinli anahtar: ${key}`).toBe(true)
+    // Yalnızca eski sürümde geçerli anahtar güncel pakette bulunamaz.
+    for (const key of OLD_ONLY_KEYS) expect(keys.has(key), `güncel pakette eski anahtar: ${key}`).toBe(false)
   })
 
   it('izinli anahtar listesi bilinçli değişir: liste bu testte sabitlenmiştir', () => {
@@ -195,7 +200,8 @@ describe('yayın paketi: ham veri sızıntısı', () => {
       itemV1: ['match', 'percent', 'model', 'conflict', 'stars', 'reliability', 'outcome', 'detail'],
       other: ['categoryId', 'percent', 'reliability'],
       statsRoot: ['all', 'shared'],
-      stats: ['main', 'overall', 'matches', 'byCategory', 'byReliability', 'daily', 'weekly', 'monthly', 'stars', 'htScoreless'],
+      stats: ['main', 'overall', 'matches', 'byCategory', 'byReliability', 'daily', 'weekly', 'monthly', 'stars', 'ht05Note'],
+      statsV13: ['main', 'overall', 'matches', 'byCategory', 'byReliability', 'daily', 'weekly', 'monthly', 'stars', 'htScoreless'],
       statsV9: ['main', 'overall', 'matches', 'byCategory', 'byReliability', 'daily', 'weekly', 'monthly', 'stars'],
       statsV2: ['overall', 'matches', 'byCategory', 'byReliability', 'daily', 'weekly', 'monthly', 'stars'],
       main: ['categories', 'overall', 'matches'],
@@ -205,6 +211,7 @@ describe('yayın paketi: ham veri sızıntısı', () => {
       stars: ['byStars', 'byCategory', 'recomputed', 'missing'],
       starsCategory: ['key', 'byStars'],
       htScoreless: ['n', 'over'],
+      ht05Note: ['n', 'over'],
     })
   })
 })
@@ -281,7 +288,7 @@ describe('yayın paketi: şema denetimi fazladan ya da eksik alanı reddeder', (
     expect(broken((p) => void ((firstItem(p) as { conflict: unknown }).conflict = 'piyasa'))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days[0].lists[0].items[0].conflict = 'hesap'))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days[0].lists.find((l) => l.categoryId === 'homeWin15')!.items[0].conflict = 'model'))).toThrow(MemberPayloadError)
-    expect(broken((p) => void ((p as { v: number }).v = 14))).toThrow(MemberPayloadError)
+    expect(broken((p) => void ((p as { v: number }).v = 15))).toThrow(MemberPayloadError)
     expect(broken((p) => void (p.days = []))).toThrow(MemberPayloadError)
     expect(broken((p) => void p.days[0].lists.reverse())).toThrow(MemberPayloadError)
   })
@@ -313,7 +320,7 @@ describe('yayın paketi: "aynı maçın diğer önerileri" yalnızca paketteki �
           entries += item.others!.length
         }
     expect(entries).toBeGreaterThan(100)
-    expect(payload.v).toBe(13)
+    expect(payload.v).toBe(14)
   })
 
   it('pakete girmeyen (ilk 15 dışında kalan) öneri bu satıra da girmez', () => {
@@ -349,7 +356,7 @@ describe('yayın paketi: "aynı maçın diğer önerileri" yalnızca paketteki �
     withoutMkt(v1)
     delete v1.streak
     for (const d of v1.days) for (const m of d.matches) { delete m.homeForm; delete m.awayForm }
-    for (const scope of ['all', 'shared'] as const) delete v1.statistics[scope].htScoreless
+    withOldStats(v1, 9)
     for (const scope of ['all', 'shared'] as const) delete v1.statistics[scope].main
     for (const day of v1.days) for (const list of day.lists) for (const item of list.items) delete item.others
     for (const day of v1.days) for (const list of day.lists) for (const item of list.items) delete item.sample
@@ -396,7 +403,7 @@ describe('yayın paketi: ana kategorilerin toplu başarısı (sürüm 3)', () =>
     withoutMkt(v2)
     delete v2.streak
     for (const d of v2.days) for (const m of d.matches) { delete m.homeForm; delete m.awayForm }
-    for (const scope of ['all', 'shared'] as const) delete v2.statistics[scope].htScoreless
+    withOldStats(v2, 9)
     for (const scope of ['all', 'shared'] as const) delete v2.statistics[scope].main
     for (const day of v2.days) delete day.highlights
     for (const day of v2.days) for (const list of day.lists) for (const item of list.items) delete item.sample
@@ -496,7 +503,7 @@ describe('yayın paketi: günün öne çıkanları (sürüm 4)', () => {
     withoutMkt(v3)
     delete v3.streak
     for (const d of v3.days) for (const m of d.matches) { delete m.homeForm; delete m.awayForm }
-    for (const scope of ['all', 'shared'] as const) delete v3.statistics[scope].htScoreless
+    withOldStats(v3, 9)
     for (const day of v3.days) delete day.highlights
     for (const day of v3.days) for (const list of day.lists) for (const item of list.items) delete item.sample
     for (const day of v3.days) for (const list of day.lists) for (const item of list.items) delete item.ai
@@ -595,7 +602,7 @@ describe('yayın paketi: tahmini maç sayısı (sürüm 5)', () => {
     withoutMkt(v4)
     delete v4.streak
     for (const d of v4.days) for (const m of d.matches) { delete m.homeForm; delete m.awayForm }
-    for (const scope of ['all', 'shared'] as const) delete v4.statistics[scope].htScoreless
+    withOldStats(v4, 9)
     for (const day of v4.days) for (const list of day.lists) for (const item of list.items) delete item.sample
     for (const day of v4.days) for (const list of day.lists) for (const item of list.items) delete item.ai
     expect(() => assertMemberPayload(v4)).not.toThrow()
@@ -604,7 +611,7 @@ describe('yayın paketi: tahmini maç sayısı (sürüm 5)', () => {
         ;(p as { v: number }).v = 4
         delete p.streak
         for (const d of p.days) for (const m of d.matches) { delete m.homeForm; delete m.awayForm }
-        for (const scope of ['all', 'shared'] as const) delete p.statistics[scope].htScoreless
+        withOldStats(p, 9)
         for (const day of p.days) for (const list of day.lists) for (const item of list.items) delete item.ai
         withoutMkt(p)
       }),
@@ -891,7 +898,7 @@ describe('yayın paketi: "AI öneri güveni" satırı (kategori bazlı)', () => 
     withoutMkt(v6)
     delete v6.streak
     for (const d of v6.days) for (const m of d.matches) { delete m.homeForm; delete m.awayForm }
-    for (const scope of ['all', 'shared'] as const) delete v6.statistics[scope].htScoreless
+    withOldStats(v6, 9)
     const row = aiOf(v6, 'Kuzey Yıldızı', 'over25')!
     for (const d of v6.days) for (const l of d.lists) for (const i of l.items) delete i.ai
     v6.days[0].matches.find((m) => m.home === 'Kuzey Yıldızı')!.ai = row
@@ -904,7 +911,7 @@ describe('yayın paketi: "AI öneri güveni" satırı (kategori bazlı)', () => 
     withoutMkt(v5)
     delete v5.streak
     for (const d of v5.days) for (const m of d.matches) { delete m.homeForm; delete m.awayForm }
-    for (const scope of ['all', 'shared'] as const) delete v5.statistics[scope].htScoreless
+    withOldStats(v5, 9)
     for (const d of v5.days) for (const l of d.lists) for (const i of l.items) delete i.ai
     expect(() => assertMemberPayload(v5)).not.toThrow()
   })
@@ -930,9 +937,9 @@ describe('yayın paketi: seri takibi (sürüm 8)', () => {
   }
   const streak = payload.streak!
 
-  it('aktif serinin adımları, geçmiş seriler ve sayılar; paket sürümü 13', () => {
-    expect(MEMBER_PAYLOAD_VERSION).toBe(13)
-    expect(payload.v).toBe(13)
+  it('aktif serinin adımları, geçmiş seriler ve sayılar; paket sürümü 14', () => {
+    expect(MEMBER_PAYLOAD_VERSION).toBe(14)
+    expect(payload.v).toBe(14)
     expect(streak).toEqual({
       status: 'active',
       steps: [
@@ -1035,7 +1042,7 @@ describe('yayın paketi: seri takibi (sürüm 8)', () => {
     withoutMkt(v7)
     delete v7.streak
     for (const d of v7.days) for (const m of d.matches) { delete m.homeForm; delete m.awayForm }
-    for (const scope of ['all', 'shared'] as const) delete v7.statistics[scope].htScoreless
+    withOldStats(v7, 9)
     expect(() => assertMemberPayload(v7)).not.toThrow()
     // Sürüm 7 pakette alan bulunamaz; sürüm 8 pakette bulunmak zorundadır.
     expect(rejects((_, p) => void ((p as { v: number }).v = 7))).toThrow('izinli olmayan alan: streak')
@@ -1084,6 +1091,7 @@ describe('yayın paketi: geri çekilen seri adımı (sürüm 12)', () => {
     const v11 = copy()
     ;(v11 as { v: number }).v = 11
     withoutNote(v11)
+    withOldStats(v11, 11)
     expect(() => assertMemberPayload(v11)).toThrow(MemberPayloadError)
     const numbered = copy()
     numbered.streak!.steps[2].step = 2
@@ -1092,6 +1100,7 @@ describe('yayın paketi: geri çekilen seri adımı (sürüm 12)', () => {
     const old = JSON.parse(text) as MemberPayload
     ;(old as { v: number }).v = 11
     withoutNote(old)
+    withOldStats(old, 11)
     expect(() => assertMemberPayload(old)).not.toThrow()
   })
 })
@@ -1192,23 +1201,25 @@ describe('yayın paketi: lig tablosundan form, gol ve gol yemediği maç (sürü
     ;(v8 as { v: number }).v = 8
     withoutMkt(v8)
     for (const d of v8.days) for (const m of d.matches) { delete m.homeForm; delete m.awayForm }
-    for (const scope of ['all', 'shared'] as const) delete v8.statistics[scope].htScoreless
+    withOldStats(v8, 9)
     expect(() => assertMemberPayload(v8)).not.toThrow()
     for (const d of v8.days) for (const m of d.matches) expect(Object.keys(m)).toEqual(MEMBER_KEYS.match)
     // Sürüm 8 pakette alan bulunamaz; sürüm 9 pakette isteğe bağlıdır.
     expect(rejects((p) => void ((p as { v: number }).v = 8))).toThrow('izinli olmayan alan: homeForm, awayForm')
-    expect(rejects((p) => void ((p as { v: number }).v = 14))).toThrow('desteklenmeyen paket sürümü')
+    expect(rejects((p) => void ((p as { v: number }).v = 15))).toThrow('desteklenmeyen paket sürümü')
   })
 })
 
-describe('yayın paketi: İY 0.5 ÜST tutmadığında 2. yarı (sürüm 10)', () => {
+describe('yayın paketi: (*) notlu maçlarda 2. yarı (sürüm 14; sürüm 10-13\'teki htScoreless yerine)', () => {
   it('istatistikte yalnızca iki sayı vardır; skorlar, maçlar ve öneri kimlikleri pakete girmez', () => {
     for (const scope of ['all', 'shared'] as const) {
-      const ht = payload.statistics[scope].htScoreless!
-      expect(Object.keys(ht)).toEqual(MEMBER_KEYS.htScoreless)
-      expect(Number.isInteger(ht.n)).toBe(true)
-      // Az maçta oran gösterilmez; hesaplanabileceği sayı da pakette yoktur.
-      expect(ht.over).toBeNull()
+      const note = payload.statistics[scope].ht05Note!
+      expect(Object.keys(note)).toEqual(MEMBER_KEYS.ht05Note)
+      expect(Number.isInteger(note.n)).toBe(true)
+      // Sayılar her zaman yazılır (k/n); yüzdeyi az maçta üye sayfası göstermez.
+      expect(Number.isInteger(note.over)).toBe(true)
+      expect(note.over).toBeLessThanOrEqual(note.n)
+      expect(payload.statistics[scope]).not.toHaveProperty('htScoreless')
     }
     // Sayım için kullanılan öneri ve skor kayıtlarından hiçbir kimlik pakette geçmez.
     for (const pick of PICKS) expect(text).not.toContain(pick.id)
@@ -1285,6 +1296,7 @@ describe('yayın paketi: piyasa yüzdesi (sürüm 11)', () => {
       rejects((p) => {
         ;(p as { v: number }).v = 10
         withoutNote(p)
+        withOldStats(p, 10)
       }),
     ).toThrow('izinli olmayan alan: mkt')
   })
@@ -1302,7 +1314,7 @@ describe('yayın paketi: maç notu (sürüm 13)', () => {
   const kuzeyNote = (p: MemberPayload) => matchOf(p, 'Kuzey Yıldızı').note!
 
   it('"Üyelere göster" açık not maçında: yalnızca metin ve görsel (src, w, h)', () => {
-    expect(MEMBER_PAYLOAD_VERSION).toBe(13)
+    expect(MEMBER_PAYLOAD_VERSION).toBe(14)
     const note = kuzeyNote(payload)
     expect(note).toEqual({ text: 'Kadro haberi maçtan önce bekleniyor.\nİki oyuncu sakat.', image: { src: NOTE_IMAGE.dataUrl, w: 4, h: 3 } })
     expect(Object.keys(note)).toEqual(['text', 'image'])
@@ -1370,8 +1382,9 @@ describe('yayın paketi: maç notu (sürüm 13)', () => {
     const v12 = copy()
     ;(v12 as { v: number }).v = 12
     withoutNote(v12)
+    withOldStats(v12, 12)
     expect(() => assertMemberPayload(v12)).not.toThrow()
-    expect(rejects((p) => void ((p as { v: number }).v = 14))).toThrow('desteklenmeyen paket sürümü')
+    expect(rejects((p) => void ((p as { v: number }).v = 15))).toThrow('desteklenmeyen paket sürümü')
   })
 
   it('şema: boş not, sınırı aşan ya da biçimsiz metin ve görsel, fazladan alan reddedilir', () => {
