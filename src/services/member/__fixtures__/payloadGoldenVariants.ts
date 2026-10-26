@@ -4,8 +4,7 @@ import { aliasId, NOT_IN_TABLE } from '../../league/matching'
 import { buildMemberPayload, type MemberPayloadInput } from '../payload'
 import { LEAGUE, LEAGUE_SNAPSHOTS, memberInput } from './rawData'
 
-// Üye paketinin lig tablosu satırları için sabit, tamamen sentetik girdiler (rawData.ts). payloadGolden.test.ts'teki
-// özetler verifiedTableRows'a ayrılmadan önceki matchForms ile alınmıştır; paket bu girdilerle birebir aynı kalmalıdır.
+// Üye paketinin lig tablosu satırları için sabit, tamamen sentetik girdiler (rawData.ts). Özetler payloadGolden.test.ts'tedir.
 const withRows = (edit: (row: LeagueTableRow) => LeagueTableRow, pastedAt?: string): LeagueTableSnapshot[] =>
   LEAGUE_SNAPSHOTS.map((s) => ({ ...s, ...(pastedAt && { id: `${s.league}|${pastedAt}`, pastedAt }), rows: s.rows.map(edit) }))
 
@@ -31,3 +30,9 @@ export const tableFlags = (input: MemberPayloadInput): Record<string, [boolean, 
       .filter((m) => m.homeStanding || m.awayStanding || m.homeForm || m.awayForm)
       .map((m) => [m.home, [!!m.homeStanding, !!m.awayStanding, !!m.homeForm, !!m.awayForm]]),
   )
+
+/** Yalnızca form satırlarının özeti: maç başına (ev, deplasman, ev formu, deplasman formu), paketteki sırayla */
+export const formSha256 = (input: MemberPayloadInput): string =>
+  createHash('sha256')
+    .update(JSON.stringify(buildMemberPayload(input).days.flatMap((d) => d.matches.map((m) => [m.home, m.away, m.homeForm ?? null, m.awayForm ?? null]))))
+    .digest('hex')

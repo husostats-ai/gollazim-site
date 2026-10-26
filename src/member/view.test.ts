@@ -353,9 +353,14 @@ describe('kategori listeleri ve üye kartı', () => {
     expect(html(analysis(0, 'over25'))).not.toContain('data-conflict="hesap"')
   })
 
-  it('"tablo eski" bayrağı yalnızca tablo eskiyse', () => {
+  it('"tablo eski" bayrağı yalnızca pakette işaretliyse (önceki yayınlar); yeni paket satırı maç öncesinden yazar', () => {
     expect(cards(html(analysis(0, 'over25'))).join(' ')).not.toContain('tablo eski')
-    const old = buildMemberPayload(memberInput({ publishedAt: '2026-10-20T06:30:00.000Z' }))
+    // Yeni paketlerde sıra satırı maçtan önceki görüntüden gelir: geç yayınlansa da bayrak yoktur.
+    const late = buildMemberPayload(memberInput({ publishedAt: '2026-10-20T06:30:00.000Z' }))
+    expect(cards(html(createElement(MemberAnalysis, { payload: late, today: DAY, initialCategory: 'over25' }))).join(' ')).not.toContain('tablo eski')
+    // Bu kuraldan önce yayınlanmış (aynı sürüm 13) paketler bayrağı taşıyabilir: üye sitesi onu yine gösterir.
+    const old = JSON.parse(JSON.stringify(late)) as MemberPayload
+    for (const day of old.days) for (const m of day.matches) if (m.homeStanding) m.homeStanding.stale = true
     const markup = html(createElement(MemberAnalysis, { payload: old, today: DAY, initialCategory: 'over25' }))
     expect(textOf(markup)).toContain('1. sıra · 8 maç · ⚠ tablo eski')
   })
@@ -904,11 +909,15 @@ describe('üye kartı: form, gol ve gol yemediği maç satırları (sürüm 9)',
     expect(text).not.toMatch(/WWDWW|LWDWL|üyeye gitmez|doğrulanamadı|tablo eski olabilir|turu/)
   })
 
-  it('tablo eski olabilir ya da takım eşleşmiyorsa satırlar hiç çizilmez; sıra satırı kalır', () => {
+  it('tablo eski olabilir ya da takım eşleşmiyorsa satırlar hiç çizilmez; sıra satırı da çizilmez, kart bozulmaz', () => {
     const card = cardOf('Doğu Gençlik')
     expect(card).not.toContain('data-testid="member-form"')
+    expect(card).not.toContain('data-testid="member-standing"')
     expect(textOf(card)).not.toContain('Son 5 maç')
-    expect(textOf(card)).toContain('Ev 9. sıra · 8 maç')
+    expect(textOf(card)).not.toMatch(/\d+\. sıra/)
+    // Kartın geri kalanı (takımlar, öneri) yine çizilir.
+    expect(textOf(card)).toContain('Doğu Gençlik')
+    expect(card).toContain('data-testid="member-percent-label"')
     const noTable = cardOf('İç Anadolu FK')
     expect(noTable).not.toContain('data-testid="member-form"')
     expect(noTable).not.toContain('data-testid="member-standing"')

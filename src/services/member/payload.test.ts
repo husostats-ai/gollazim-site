@@ -8,7 +8,7 @@ import { makeMatch } from '../analysis/testUtils'
 import { buildStarStats } from '../stats/starStats'
 import { buildStats, decidedBuckets } from '../stats/statsEngine'
 import { sharedPicksOnly } from '../story/shared'
-import { DAY, dayMatches, MARKET_LIMIT, memberInput, PICKS, PREVIOUS_DAY, PUBLISHED_AT, SHARED, THRESHOLDS } from './__fixtures__/rawData'
+import { DAY, dayMatches, LEAGUE_SNAPSHOTS, MARKET_LIMIT, memberInput, PICKS, PREVIOUS_DAY, PUBLISHED_AT, SHARED, THRESHOLDS } from './__fixtures__/rawData'
 import { buildMemberPayload, conflictKindOf, MEMBER_DAILY_LIMIT, MEMBER_PAYLOAD_VERSION, type MemberDay } from './payload'
 
 const payload = buildMemberPayload(memberInput())
@@ -99,20 +99,26 @@ describe('buildMemberPayload', () => {
     expect(list(today, 'over25').items.find((i) => i.match === postponed)!.outcome).toBeNull()
   })
 
-  it('lig tablosundan yalnızca sıra ve oynanan maç; tabloda olmayan takımda null', () => {
+  it('lig tablosundan yalnızca sıra ve oynanan maç; yalnızca doğrulanmış satır, tabloda olmayan takımda null', () => {
     expect(today.matches[matchOf(today, 'Kuzey Yıldızı')]).toEqual(expect.objectContaining({ homeStanding: { rank: 1, played: 8, stale: false }, awayStanding: { rank: 4, played: 7, stale: false } }))
-    expect(today.matches[matchOf(today, 'Doğu Gençlik')]).toEqual(expect.objectContaining({ homeStanding: { rank: 9, played: 8, stale: false }, awayStanding: null }))
+    // Doğu Gençlik: tablo PPG 0,75, CSV genel PPG 1,25 (ppg-differs): sıra satırı da form satırı gibi yazılmaz.
+    expect(today.matches[matchOf(today, 'Doğu Gençlik')]).toEqual(expect.objectContaining({ homeStanding: null, awayStanding: null }))
     expect(today.matches[matchOf(today, 'Yayla Gençlerbirliği')]).toMatchObject({ homeStanding: null, awayStanding: null })
   })
 
-  it('tablo yayın anında 7 günden eskiyse "güncel değil" bayrağı; tam 7 günde değil', () => {
-    // Tablo 4 Ekim'de yapıştırıldı.
-    const staleAt = (publishedAt: string) => {
-      const day = buildMemberPayload(memberInput({ publishedAt })).days[0]
+  it('sıra satırının kaynağı maçtan önceki görüntüdür: yayın anı fark etmez; görüntü maçtan 7 günden eskiyse satır yazılmaz', () => {
+    // Tablo 4 Ekim'de, maçtan bir gün önce yapıştırıldı. Yayın ne zaman olursa olsun satır o günün değeridir.
+    const standingAt = (input: Parameters<typeof memberInput>[0]) => {
+      const day = buildMemberPayload(memberInput(input)).days[0]
       return day.matches[matchOf(day, 'Kuzey Yıldızı')].homeStanding
     }
-    expect(staleAt('2026-10-11T09:00:00.000Z')).toEqual({ rank: 1, played: 8, stale: false })
-    expect(staleAt('2026-10-12T09:00:00.000Z')).toEqual({ rank: 1, played: 8, stale: true })
+    expect(standingAt({ publishedAt: '2026-10-11T09:00:00.000Z' })).toEqual({ rank: 1, played: 8, stale: false })
+    expect(standingAt({ publishedAt: '2026-10-12T09:00:00.000Z' })).toEqual({ rank: 1, played: 8, stale: false })
+    // Aynı görüntü maçtan 8 gün önce yapıştırılmış olsaydı (old-snapshot) satır hiç yazılmazdı.
+    const old = LEAGUE_SNAPSHOTS.map((s) => ({ ...s, id: `${s.league}|2026-09-27T08:00:00.000Z`, pastedAt: '2026-09-27T08:00:00.000Z' }))
+    expect(standingAt({ leagueTableSnapshots: old })).toBeNull()
+    // Güncel tablo (leagueTables) sıra satırının kaynağı değildir: geçmiş yoksa satır yoktur.
+    expect(standingAt({ leagueTableSnapshots: [] })).toBeNull()
   })
 
   it('istatistik değerleri istatistik sayfasının hesabıyla aynıdır (Tümü ve Paylaşılan)', () => {

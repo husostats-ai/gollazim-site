@@ -585,10 +585,11 @@ describe('koruma: ek sütunlar ve yeni CSV alanları analize, prompt\'a ve üye 
     // Fikstürdeki ayırt edici değerler: BTTS, xGF, kart, korner, 1.5+, 2.5+, AVG ve PPG
     for (const value of ['1.847', '4.617', '9.283', '1.393', '5.143', '8.857', '2.71', '1.57']) expect(text, value).not.toContain(value)
     expect(text).not.toMatch(/last5|goalsFor|goalsAgainst|goalDiff|xgf|avgGoals|ppg|blocked|block|maybeOld|gameWeek/i)
-    // Güncel tablonun ek sütunları form satırının kaynağı değildir: geçmiş yoksa form da yoktur.
+    // Güncel tablo ne form ne sıra satırının kaynağıdır: geçmiş (maçtan önceki görüntü) yoksa ikisi de yoktur.
     const withoutHistory = JSON.stringify(buildMemberPayload({ ...input, leagueTableSnapshots: [] }))
     expect(withoutHistory).not.toMatch(/"(home|away)Form":\{/)
-    expect(withoutHistory).toContain('"homeStanding":{"rank":1,"played":8,"stale":false}')
+    expect(withoutHistory).not.toMatch(/"(home|away)Standing":\{/)
+    expect(text).toContain('"homeStanding":{"rank":1,"played":8,"stale":false}')
   })
 
   it('analiz ve prompt, genel PPG ve lig turu alanlarıyla ve onlarsız aynıdır', () => {

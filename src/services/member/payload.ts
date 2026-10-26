@@ -6,7 +6,7 @@ import { formatScore } from '../../utils/score'
 import { analyzeDay } from '../analysis/engine'
 import { highlightOutcome } from '../highlights/highlights'
 import type { Prediction, ReliabilityLevel } from '../analysis/types'
-import { matchForms, matchStandings, type StandingInfo, type TeamForm } from '../league/standing'
+import { matchForms, verifiedTableRows, type TeamForm, type VerifiedTableRow } from '../league/standing'
 import { resultDetail } from '../stats/categoryResult'
 import { buildHtScorelessStats } from '../stats/htScoreless'
 import { buildMainStats } from '../stats/mainStats'
@@ -126,7 +126,10 @@ export interface MemberHtScoreless {
 export interface MemberStanding {
   rank: number
   played: number
-  /** Tablo yayın anında 7 günden eski: "güncel değil" */
+  /**
+   * Tablo "güncel değil". Sıra satırı yalnızca maçtan önceki görüntüde doğrulandıysa yazılır; 7 günden eski görüntü
+   * (old-snapshot) zaten yazılmadığı için üretilen pakette hep false'tur. Alan sürüm 13 şeması için durur.
+   */
   stale: boolean
 }
 
@@ -429,8 +432,9 @@ export interface MemberPayloadInput {
   marketConflictLimit: number
   /** Yayınlanacak günler; seçilen gün ilk sırada */
   days: MemberDayInput[]
+  /** Pakete girmez: sıra satırı da form satırı gibi yapıştırma geçmişinden (leagueTableSnapshots) okunur */
   leagueTables: LeagueTable[]
-  /** Lig tablosu yapıştırma geçmişi (form satırları için); verilmezse form satırı yazılmaz */
+  /** Lig tablosu yapıştırma geçmişi (sıra ve form satırları için); verilmezse ikisi de yazılmaz */
   leagueTableSnapshots?: LeagueTableSnapshot[]
   teamAliases: TeamAlias[]
   /** Tüm dondurulmuş öneriler (sonuçlar ve istatistik için) */
@@ -492,14 +496,16 @@ function statsOf(picks: Pick[], results: MatchResult[]): MemberStats {
   }
 }
 
-const standingOf = (info: StandingInfo | null): MemberStanding | null => (info ? { rank: info.rank, played: info.played, stale: info.stale } : null)
+/** Yalnızca doğrulanmış satır (formOf ile aynı kural: maçtan önceki görüntü + dört engel); sıra ve oynanan maç */
+const standingOf = (verified: VerifiedTableRow | null): MemberStanding | null =>
+  verified && verified.blocked === null ? { rank: verified.row.rank, played: verified.row.played, stale: false } : null
 /** Yalnızca doğrulanmış satır ve yalnızca dört alan pakete girer */
 const formOf = (form: TeamForm | null): MemberForm | null => (form && form.blocked === null ? { last: form.last5, gf: form.goalsFor, ga: form.goalsAgainst, cs: form.cs } : null)
 
 /** Taraf & Gol listelerinde çelişki iki hesabın, diğerlerinde hazır yüzde ile modelin çelişkisidir */
 export const conflictKindOf = (categoryId: CategoryId): MemberConflict => (getCategory(categoryId).group === 'sidegoals' ? 'hesap' : 'model')
 
-function dayOf(input: MemberPayloadInput, day: MemberDayInput, now: Date, sentAi: SentAiKey[]): MemberDay {
+function dayOf(input: MemberPayloadInput, day: MemberDayInput, sentAi: SentAiKey[]): MemberDay {
   // Admin ekranındaki listelerle aynı çağrı; sıra her zaman yüzdeye göredir.
   const analysis = analyzeDay(day.matches, input.thresholds, 'percent', input.marketConflictLimit)
   const resultById = new Map(day.results.map((r) => [r.matchId, r]))
@@ -514,7 +520,7 @@ function dayOf(input: MemberPayloadInput, day: MemberDayInput, now: Date, sentAi
     const known = indexById.get(match.id)
     if (known !== undefined) return known
     const result = resultById.get(match.id)
-    const standings = matchStandings(match, day.matches, input.leagueTables, input.teamAliases, now)
+    const tableRows = verifiedTableRows(match, day.matches, input.leagueTableSnapshots ?? [], input.teamAliases)
     const forms = matchForms(match, day.matches, input.leagueTableSnapshots ?? [], input.teamAliases)
     indexById.set(match.id, matches.length)
     const entry: MemberMatch = {
@@ -524,8 +530,8 @@ function dayOf(input: MemberPayloadInput, day: MemberDayInput, now: Date, sentAi
       time: match.time ?? null,
       status: result ? result.status : null,
       score: formatScore(result),
-      homeStanding: standingOf(standings.home),
-      awayStanding: standingOf(standings.away),
+      homeStanding: standingOf(tableRows.home),
+      awayStanding: standingOf(tableRows.away),
     }
     // Form satırı yalnızca doluyken yazılır: tablosu olmayan maçlar pakette yer tutmaz.
     const homeForm = formOf(forms.home)
@@ -632,7 +638,6 @@ export const buildMemberPayload = (input: MemberPayloadInput): MemberPayload => 
  * önerilerin (maç + kategori) kimlikleri (kayıt için; paketin içinde kimlik yoktur).
  */
 export function buildMemberPublication(input: MemberPayloadInput): { payload: MemberPayload; aiSent: SentAiKey[] } {
-  const now = new Date(input.publishedAt)
   const aiSent: SentAiKey[] = []
   const results = input.results ?? input.days.flatMap((day) => day.results)
   const payload: MemberPayload = {
@@ -640,7 +645,7 @@ export function buildMemberPublication(input: MemberPayloadInput): { payload: Me
     n: input.n,
     publishedAt: input.publishedAt,
     texts: { disclaimer: input.texts.disclaimer, account: input.texts.account },
-    days: input.days.map((day) => dayOf(input, day, now, aiSent)),
+    days: input.days.map((day) => dayOf(input, day, aiSent)),
     statistics: {
       all: statsOf(input.picks, results),
       shared: statsOf(sharedPicksOnly(input.picks, input.shared), results),

@@ -1120,9 +1120,9 @@ describe('yayın paketi: lig tablosundan form, gol ve gol yemediği maç (sürü
   })
 
   it('tablo eski olabilir (PPG farklı), takım tabloda yok ya da tablo yok: anahtar hiç yazılmaz', () => {
-    // Doğu Gençlik: CSV genel PPG 1.25, tablo 0.75. Batı Akademi tabloda yok.
+    // Doğu Gençlik: CSV genel PPG 1.25, tablo 0.75. Batı Akademi tabloda yok. Sıra satırı da aynı kuralla düşer (null).
     const stale = matchOf(payload, 'Doğu Gençlik')
-    expect(stale.homeStanding).toEqual({ rank: 9, played: 8, stale: false })
+    expect(stale.homeStanding).toBeNull()
     expect(stale).not.toHaveProperty('homeForm')
     expect(stale).not.toHaveProperty('awayForm')
     // CSV'de genel PPG olmayan maçlar doğrulanamaz.
