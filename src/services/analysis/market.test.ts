@@ -333,8 +333,8 @@ describe('AI prompt: piyasa satırı', () => {
     // KG Var hazır %85, piyasa %55: fark 30
     expect(block).toContain('KG VAR %85 (güvenilirlik: Bilinmiyor; Piyasa çelişkisi)')
     const plain = matchBlock(items.find((i) => i.match.id === bare.id)!, 2)
-    // Başlık, Öneriler, İstatistik, Gol modeli ve Değerlendir satırları
-    expect(plain.split('\n')).toHaveLength(5)
+    // Başlık, Öneriler, İstatistik, Gol modeli, Lig tablosu ve Değerlendir satırları
+    expect(plain.split('\n')).toHaveLength(6)
     expect(plain).not.toContain('Piyasa')
   })
 

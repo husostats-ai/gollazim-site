@@ -396,13 +396,14 @@ describe('kartta gösterim ve bayatlık', () => {
   })
 })
 
-describe('yalnızca gösterim: analiz ve prompt tabloya bakmaz', () => {
-  it('analiz fonksiyonu tablo almaz; prompt metninde tablo bilgisi geçmez', () => {
+describe('analiz tabloya bakmaz; prompt yalnızca withTableRows ile doğrulanmış satırı alır', () => {
+  it('analiz fonksiyonu tablo almaz; tablo verilmeden kurulan prompt\'ta kartın sıra satırı ve tablo sayısı geçmez', () => {
     const match = makeMatch({ over25Pct: 90, bttsPct: 85 }, { home: 'Kuzey Yıldızı U21', away: 'Güney Spor U21', league: LEAGUE })
     const analysis = analyzeDay([match], defaultThresholds())
     expect(analyzeDay.length).toBeLessThanOrEqual(4)
     const [chunk] = buildPrompts(collectAiMatches(analysis), 'chatgpt', '6 Ekim 2026 Salı')
     expect(chunk.text).not.toMatch(/Ligde \d+\. sıra|lig tablosuna göre/i)
+    expect(chunk.text).toContain('Lig tablosu: ev tablo verisi yok ; deplasman tablo verisi yok')
   })
 })
 

@@ -154,9 +154,13 @@ describe('prompt üretimi', () => {
     expect(data.match(/^Değerlendir: /gm)).toHaveLength(2)
   })
 
-  it('KURALLAR bölümü ve eski tek kararlı biçim: kurallar aynı, eski biçim satırı yok', () => {
+  it('KURALLAR bölümü ve eski tek kararlı biçim: kurallar aynı (csv-v2 yalnızca lig tablosu maddesini ekler), eski biçim satırı yok', () => {
     const rules = chunk.text.slice(chunk.text.indexOf('KURALLAR'), chunk.text.indexOf('GÖREV'))
-    expect(createHash('sha256').update(rules).digest('hex')).toBe('2b14f61fa56f846aa54e00561c9bd124221a44760546033d60ad2de2664bd4e6')
+    const tableRule = rules.split('\n').filter((l) => l.startsWith('- "Lig tablosu" satırı'))
+    expect(tableRule).toHaveLength(1)
+    // Lig tablosu maddesi çıkarılınca kurallar csv-v1 ile birebir aynıdır.
+    const v1Rules = rules.split('\n').filter((l) => l !== tableRule[0]).join('\n')
+    expect(createHash('sha256').update(v1Rules).digest('hex')).toBe('2b14f61fa56f846aa54e00561c9bd124221a44760546033d60ad2de2664bd4e6')
     expect(chunk.text).not.toContain('#numara | KARAR | gerekçe | risk')
     expect(chunk.text).not.toContain('tek bir KARAR ver')
   })

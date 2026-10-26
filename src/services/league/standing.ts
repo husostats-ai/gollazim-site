@@ -1,5 +1,5 @@
 import { LEAGUE_TABLE_STALE_DAYS } from '../../config/reminders'
-import type { LeagueTable, LeagueTableSnapshot, Match, TeamAlias } from '../../types'
+import type { LeagueTable, LeagueTableRow, LeagueTableSnapshot, Match, TeamAlias } from '../../types'
 import { stat } from '../analysis/stat'
 import { daysBetween } from '../daily/checklist'
 import { kickoffOf } from '../highlights/highlights'
@@ -7,7 +7,8 @@ import { snapshotAt } from './history'
 import { findStanding, matchTeams, type Standing } from './matching'
 
 // Kartta gösterilen lig tablosu bilgisi. Yalnızca gösterimdir: analize, güvenilirlik
-// seviyesine, yıldıza, sıralamaya, dondurmaya ve AI prompt'una girmez.
+// seviyesine, yıldıza, sıralamaya ve dondurmaya girmez. AI prompt'una yalnızca verifiedTableRows
+// (maçtan önceki görüntü + dört engel kuralı) üzerinden girer; matchStandings prompt'a girmez.
 
 export interface StandingInfo {
   /** "Ligde 3. sıra · 5 maç · tablo 2 gün önce" */
@@ -108,7 +109,7 @@ export function playedHint({ home, away }: MatchStandings): string | null {
 // FORM, GOL ve "gol yemediği maç": kartta sabit satırlar olarak gösterilen tablo sütunları.
 // Kaynak, maçın başlama saatinden ÖNCE yapıştırılmış son görüntüdür: maç oynandıktan sonra tablo
 // yenilense de kart o maçtan önceki değerleri gösterir (maçın kendi sonucu forma karışmaz).
-// Yalnızca gösterimdir; analize, yıldıza, sıralamaya, dondurmaya ve AI prompt'una girmez.
+// Analize, yıldıza, sıralamaya ve dondurmaya girmez; AI prompt'una yalnızca doğrulanmış satır yazılır.
 
 /**
  * Satırın üyeye GİTMEME nedeni. ppg-differs: tablo PPG'si CSV'deki maç öncesi genel PPG'den farklı ve
@@ -142,11 +143,23 @@ export const FORM_BLOCK_TEXT: Record<FormBlock, string> = {
   'old-snapshot': `tablo maçtan ${LEAGUE_TABLE_STALE_DAYS} günden eski · üyeye gitmez`,
 }
 
+/** Maçtan önceki son görüntüde takımın satırı ve satırın doğrulanma sonucu (null: doğrulandı) */
+export interface VerifiedTableRow {
+  row: LeagueTableRow
+  blocked: FormBlock | null
+}
+
+export interface MatchTableRows {
+  home: VerifiedTableRow | null
+  away: VerifiedTableRow | null
+}
+
 /**
- * Maçın iki takımının form satırı. Saat bilinmiyorsa, maçtan önce yapıştırılmış görüntü yoksa,
- * takım o görüntüde güvenle eşleşmiyorsa ya da görüntüde gol sütunları yoksa ilgili taraf null.
+ * Form satırının ve AI prompt'undaki "Lig tablosu" satırının ortak kaynağı: maçın başlama saatinden
+ * ÖNCE yapıştırılmış son görüntüdeki satır ve dört engel kuralı. Saat bilinmiyorsa, maçtan önce
+ * yapıştırılmış görüntü yoksa ya da takım o görüntüde güvenle eşleşmiyorsa ilgili taraf null.
  */
-export function matchForms(match: Match, dayMatches: Match[], snapshots: LeagueTableSnapshot[], aliases: TeamAlias[]): MatchForms {
+export function verifiedTableRows(match: Match, dayMatches: Match[], snapshots: LeagueTableSnapshot[], aliases: TeamAlias[]): MatchTableRows {
   const kickoff = kickoffOf(match)
   if (!match.league || !kickoff || snapshots.length === 0) return { home: null, away: null }
   const snapshot = snapshotAt(snapshots, match.league, kickoff)
@@ -157,12 +170,27 @@ export function matchForms(match: Match, dayMatches: Match[], snapshots: LeagueT
   const seenAt = snapshot.lastSeenAt && Date.parse(snapshot.lastSeenAt) < kickoff.getTime() ? snapshot.lastSeenAt : snapshot.pastedAt
   const old = daysBetween(new Date(seenAt), kickoff) > LEAGUE_TABLE_STALE_DAYS
   const gameWeek = stat(match, 'gameWeek')
-  const form = (team: string, ppgField: 'homeOverallPpg' | 'awayOverallPpg'): TeamForm | null => {
+  const verified = (team: string, ppgField: 'homeOverallPpg' | 'awayOverallPpg'): VerifiedTableRow | null => {
     const row = matched.find((m) => m.csvTeam === team)?.row
-    if (!row || row.goalsFor === undefined || row.goalsAgainst === undefined) return null
+    if (!row) return null
     const csvPpg = stat(match, ppgField)
     const blocked: FormBlock | null = ppgBlock(row.ppg, row.played, csvPpg, gameWeek) ?? (row.ppg === null || csvPpg === null ? 'unverifiable' : old ? 'old-snapshot' : null)
+    return { row, blocked }
+  }
+  return { home: verified(match.home, 'homeOverallPpg'), away: verified(match.away, 'awayOverallPpg') }
+}
+
+/**
+ * Maçın iki takımının form satırı. verifiedTableRows'un satırı yoksa ya da görüntüde gol sütunları
+ * yoksa ilgili taraf null.
+ */
+export function matchForms(match: Match, dayMatches: Match[], snapshots: LeagueTableSnapshot[], aliases: TeamAlias[]): MatchForms {
+  const rows = verifiedTableRows(match, dayMatches, snapshots, aliases)
+  const form = (verified: VerifiedTableRow | null): TeamForm | null => {
+    if (!verified) return null
+    const { row, blocked } = verified
+    if (row.goalsFor === undefined || row.goalsAgainst === undefined) return null
     return { last5: row.last5 ?? null, goalsFor: row.goalsFor, goalsAgainst: row.goalsAgainst, cs: row.cs !== undefined && Number.isInteger(row.cs) ? row.cs : null, blocked }
   }
-  return { home: form(match.home, 'homeOverallPpg'), away: form(match.away, 'awayOverallPpg') }
+  return { home: form(rows.home), away: form(rows.away) }
 }

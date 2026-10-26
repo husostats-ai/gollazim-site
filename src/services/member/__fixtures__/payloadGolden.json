@@ -1,0 +1,464 @@
+{
+ "dogrulanmis": {
+  "sha256": "f4c5a2e473bddbc8f955758dca247db407019ca35949c187334ba48669e48ca6",
+  "tables": [
+   {
+    "home": "İç Anadolu FK",
+    "away": "Çağlayan Gücü",
+    "homeStanding": null,
+    "awayStanding": null
+   },
+   {
+    "home": "Kuzey Yıldızı",
+    "away": "Güney Spor",
+    "homeStanding": {
+     "rank": 1,
+     "played": 8,
+     "stale": false
+    },
+    "awayStanding": {
+     "rank": 4,
+     "played": 7,
+     "stale": false
+    },
+    "homeForm": {
+     "last": "WWDWW",
+     "gf": 18,
+     "ga": 6,
+     "cs": 50
+    },
+    "awayForm": {
+     "last": "LWDWL",
+     "gf": 10,
+     "ga": 9,
+     "cs": 29
+    }
+   },
+   {
+    "home": "Doğu Gençlik",
+    "away": "Batı Akademi",
+    "homeStanding": {
+     "rank": 9,
+     "played": 8,
+     "stale": false
+    },
+    "awayStanding": null
+   },
+   {
+    "home": "Ova Belediyespor",
+    "away": "Liman İdman Yurdu",
+    "homeStanding": null,
+    "awayStanding": null
+   },
+   {
+    "home": "Yayla Gençlerbirliği",
+    "away": "Vadi Demirspor",
+    "homeStanding": null,
+    "awayStanding": null
+   },
+   {
+    "home": "Dünkü Ev",
+    "away": "Dünkü Deplasman",
+    "homeStanding": null,
+    "awayStanding": null
+   }
+  ]
+ },
+ "ppgFarkli": {
+  "sha256": "08b8738976b532cbe3cf9b8501900b13735bb4d6bc6e218002eed0158c71a682",
+  "tables": [
+   {
+    "home": "İç Anadolu FK",
+    "away": "Çağlayan Gücü",
+    "homeStanding": null,
+    "awayStanding": null
+   },
+   {
+    "home": "Kuzey Yıldızı",
+    "away": "Güney Spor",
+    "homeStanding": {
+     "rank": 1,
+     "played": 8,
+     "stale": false
+    },
+    "awayStanding": {
+     "rank": 4,
+     "played": 7,
+     "stale": false
+    },
+    "homeForm": {
+     "last": "WWDWW",
+     "gf": 18,
+     "ga": 6,
+     "cs": 50
+    }
+   },
+   {
+    "home": "Doğu Gençlik",
+    "away": "Batı Akademi",
+    "homeStanding": {
+     "rank": 9,
+     "played": 8,
+     "stale": false
+    },
+    "awayStanding": null,
+    "homeForm": {
+     "last": "LLDDL",
+     "gf": 5,
+     "ga": 12,
+     "cs": 13
+    }
+   },
+   {
+    "home": "Ova Belediyespor",
+    "away": "Liman İdman Yurdu",
+    "homeStanding": null,
+    "awayStanding": null
+   },
+   {
+    "home": "Yayla Gençlerbirliği",
+    "away": "Vadi Demirspor",
+    "homeStanding": null,
+    "awayStanding": null
+   },
+   {
+    "home": "Dünkü Ev",
+    "away": "Dünkü Deplasman",
+    "homeStanding": null,
+    "awayStanding": null
+   }
+  ]
+ },
+ "ppgYok": {
+  "sha256": "bd48e031c838d7a75b45e4083f182ecc54bde9dc5b1a9a4e51a96f149ff2898f",
+  "tables": [
+   {
+    "home": "İç Anadolu FK",
+    "away": "Çağlayan Gücü",
+    "homeStanding": null,
+    "awayStanding": null
+   },
+   {
+    "home": "Kuzey Yıldızı",
+    "away": "Güney Spor",
+    "homeStanding": {
+     "rank": 1,
+     "played": 8,
+     "stale": false
+    },
+    "awayStanding": {
+     "rank": 4,
+     "played": 7,
+     "stale": false
+    }
+   },
+   {
+    "home": "Doğu Gençlik",
+    "away": "Batı Akademi",
+    "homeStanding": {
+     "rank": 9,
+     "played": 8,
+     "stale": false
+    },
+    "awayStanding": null
+   },
+   {
+    "home": "Ova Belediyespor",
+    "away": "Liman İdman Yurdu",
+    "homeStanding": null,
+    "awayStanding": null
+   },
+   {
+    "home": "Yayla Gençlerbirliği",
+    "away": "Vadi Demirspor",
+    "homeStanding": null,
+    "awayStanding": null
+   },
+   {
+    "home": "Dünkü Ev",
+    "away": "Dünkü Deplasman",
+    "homeStanding": null,
+    "awayStanding": null
+   }
+  ]
+ },
+ "eskiGoruntu": {
+  "sha256": "bd48e031c838d7a75b45e4083f182ecc54bde9dc5b1a9a4e51a96f149ff2898f",
+  "tables": [
+   {
+    "home": "İç Anadolu FK",
+    "away": "Çağlayan Gücü",
+    "homeStanding": null,
+    "awayStanding": null
+   },
+   {
+    "home": "Kuzey Yıldızı",
+    "away": "Güney Spor",
+    "homeStanding": {
+     "rank": 1,
+     "played": 8,
+     "stale": false
+    },
+    "awayStanding": {
+     "rank": 4,
+     "played": 7,
+     "stale": false
+    }
+   },
+   {
+    "home": "Doğu Gençlik",
+    "away": "Batı Akademi",
+    "homeStanding": {
+     "rank": 9,
+     "played": 8,
+     "stale": false
+    },
+    "awayStanding": null
+   },
+   {
+    "home": "Ova Belediyespor",
+    "away": "Liman İdman Yurdu",
+    "homeStanding": null,
+    "awayStanding": null
+   },
+   {
+    "home": "Yayla Gençlerbirliği",
+    "away": "Vadi Demirspor",
+    "homeStanding": null,
+    "awayStanding": null
+   },
+   {
+    "home": "Dünkü Ev",
+    "away": "Dünkü Deplasman",
+    "homeStanding": null,
+    "awayStanding": null
+   }
+  ]
+ },
+ "golSutunuYok": {
+  "sha256": "bd48e031c838d7a75b45e4083f182ecc54bde9dc5b1a9a4e51a96f149ff2898f",
+  "tables": [
+   {
+    "home": "İç Anadolu FK",
+    "away": "Çağlayan Gücü",
+    "homeStanding": null,
+    "awayStanding": null
+   },
+   {
+    "home": "Kuzey Yıldızı",
+    "away": "Güney Spor",
+    "homeStanding": {
+     "rank": 1,
+     "played": 8,
+     "stale": false
+    },
+    "awayStanding": {
+     "rank": 4,
+     "played": 7,
+     "stale": false
+    }
+   },
+   {
+    "home": "Doğu Gençlik",
+    "away": "Batı Akademi",
+    "homeStanding": {
+     "rank": 9,
+     "played": 8,
+     "stale": false
+    },
+    "awayStanding": null
+   },
+   {
+    "home": "Ova Belediyespor",
+    "away": "Liman İdman Yurdu",
+    "homeStanding": null,
+    "awayStanding": null
+   },
+   {
+    "home": "Yayla Gençlerbirliği",
+    "away": "Vadi Demirspor",
+    "homeStanding": null,
+    "awayStanding": null
+   },
+   {
+    "home": "Dünkü Ev",
+    "away": "Dünkü Deplasman",
+    "homeStanding": null,
+    "awayStanding": null
+   }
+  ]
+ },
+ "formVeCsYok": {
+  "sha256": "5d66399b3f1893eddb390bd26d6cc6ffdee2a65d940b60e1491d0d27f162c93f",
+  "tables": [
+   {
+    "home": "İç Anadolu FK",
+    "away": "Çağlayan Gücü",
+    "homeStanding": null,
+    "awayStanding": null
+   },
+   {
+    "home": "Kuzey Yıldızı",
+    "away": "Güney Spor",
+    "homeStanding": {
+     "rank": 1,
+     "played": 8,
+     "stale": false
+    },
+    "awayStanding": {
+     "rank": 4,
+     "played": 7,
+     "stale": false
+    },
+    "homeForm": {
+     "last": null,
+     "gf": 18,
+     "ga": 6,
+     "cs": null
+    },
+    "awayForm": {
+     "last": null,
+     "gf": 10,
+     "ga": 9,
+     "cs": null
+    }
+   },
+   {
+    "home": "Doğu Gençlik",
+    "away": "Batı Akademi",
+    "homeStanding": {
+     "rank": 9,
+     "played": 8,
+     "stale": false
+    },
+    "awayStanding": null
+   },
+   {
+    "home": "Ova Belediyespor",
+    "away": "Liman İdman Yurdu",
+    "homeStanding": null,
+    "awayStanding": null
+   },
+   {
+    "home": "Yayla Gençlerbirliği",
+    "away": "Vadi Demirspor",
+    "homeStanding": null,
+    "awayStanding": null
+   },
+   {
+    "home": "Dünkü Ev",
+    "away": "Dünkü Deplasman",
+    "homeStanding": null,
+    "awayStanding": null
+   }
+  ]
+ },
+ "tablodaYok": {
+  "sha256": "77b61fe739c61593c54aa680a6ea10a607a46adb2789ccd09d18f1656e2f1458",
+  "tables": [
+   {
+    "home": "İç Anadolu FK",
+    "away": "Çağlayan Gücü",
+    "homeStanding": null,
+    "awayStanding": null
+   },
+   {
+    "home": "Kuzey Yıldızı",
+    "away": "Güney Spor",
+    "homeStanding": null,
+    "awayStanding": {
+     "rank": 4,
+     "played": 7,
+     "stale": false
+    },
+    "awayForm": {
+     "last": "LWDWL",
+     "gf": 10,
+     "ga": 9,
+     "cs": 29
+    }
+   },
+   {
+    "home": "Doğu Gençlik",
+    "away": "Batı Akademi",
+    "homeStanding": {
+     "rank": 9,
+     "played": 8,
+     "stale": false
+    },
+    "awayStanding": null
+   },
+   {
+    "home": "Ova Belediyespor",
+    "away": "Liman İdman Yurdu",
+    "homeStanding": null,
+    "awayStanding": null
+   },
+   {
+    "home": "Yayla Gençlerbirliği",
+    "away": "Vadi Demirspor",
+    "homeStanding": null,
+    "awayStanding": null
+   },
+   {
+    "home": "Dünkü Ev",
+    "away": "Dünkü Deplasman",
+    "homeStanding": null,
+    "awayStanding": null
+   }
+  ]
+ },
+ "gecmisYok": {
+  "sha256": "bd48e031c838d7a75b45e4083f182ecc54bde9dc5b1a9a4e51a96f149ff2898f",
+  "tables": [
+   {
+    "home": "İç Anadolu FK",
+    "away": "Çağlayan Gücü",
+    "homeStanding": null,
+    "awayStanding": null
+   },
+   {
+    "home": "Kuzey Yıldızı",
+    "away": "Güney Spor",
+    "homeStanding": {
+     "rank": 1,
+     "played": 8,
+     "stale": false
+    },
+    "awayStanding": {
+     "rank": 4,
+     "played": 7,
+     "stale": false
+    }
+   },
+   {
+    "home": "Doğu Gençlik",
+    "away": "Batı Akademi",
+    "homeStanding": {
+     "rank": 9,
+     "played": 8,
+     "stale": false
+    },
+    "awayStanding": null
+   },
+   {
+    "home": "Ova Belediyespor",
+    "away": "Liman İdman Yurdu",
+    "homeStanding": null,
+    "awayStanding": null
+   },
+   {
+    "home": "Yayla Gençlerbirliği",
+    "away": "Vadi Demirspor",
+    "homeStanding": null,
+    "awayStanding": null
+   },
+   {
+    "home": "Dünkü Ev",
+    "away": "Dünkü Deplasman",
+    "homeStanding": null,
+    "awayStanding": null
+   }
+  ]
+ }
+}

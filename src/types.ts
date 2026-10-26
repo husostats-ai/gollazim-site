@@ -1,4 +1,4 @@
-import type { AiDecision, AiProvider } from './config/ai'
+import type { AiDecision, AiPromptVersion, AiProvider } from './config/ai'
 import type { CategoryId } from './config/categories'
 import type { StoryTexts } from './config/storyTexts'
 import type { ReliabilityLevel } from './services/analysis/types'
@@ -178,6 +178,11 @@ export interface AiVerdict {
    * Yalnızca sonradan ölçüm içindir. Alan yoksa bilinmiyor: bu özellikten önce kaydedilmiştir, sonradan doldurulmaz.
    */
   promptKind?: AiPromptKind
+  /**
+   * Cevabın geldiği prompt'un sürümü: kopyalanan prompt kaydından (AiPromptBatch) alınır. Yalnızca sonradan
+   * ölçüm içindir. Alan yoksa csv-v1 sayılır (promptVersionOf); eski kayıtlar sonradan doldurulmaz.
+   */
+  promptVersion?: AiPromptVersion
 }
 
 export type AiPromptKind = 'csv' | 'bagimsiz'
@@ -223,6 +228,8 @@ export interface AiPromptBatch {
    * Kategori bazlı karardan önce kopyalanmış promptlarda yoktur; o kayıtlar geçersiz sayılır.
    */
   categories?: CategoryId[][]
+  /** Kopyalanan prompt'un sürümü; bu özellikten önce kopyalanmış kayıtlarda yoktur (csv-v1 sayılır) */
+  promptVersion?: AiPromptVersion
 }
 
 /** Bir gün + kategori için Story görseline girmesi seçilen maçlar. Yalnızca görsel içindir. */

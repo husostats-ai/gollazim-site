@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
-import { AI_PROVIDERS } from '../../../config/ai'
+import { AI_PROVIDERS, promptVersionOf } from '../../../config/ai'
 import { defaultThresholds } from '../../../config/categories'
 import { DEFAULT_STORY_TEXTS } from '../../../config/storyTexts'
 import type { BackupFile, LeagueTableRow } from '../../../types'
@@ -36,8 +36,15 @@ function fullBackup(): BackupFile {
       results: [{ matchId: MATCH, status: 'completed', htHome: 1, htAway: 0, ftHome: 3, ftAway: 1, cornersHome: 7, cornersAway: 2, cardsHome: 1, cardsAway: 3, updatedAt: '2026-10-15T21:00:00.000Z' }],
       picks: [{ id: `${MATCH}|over25`, matchId: MATCH, categoryId: 'over25', date: DAY, percent: 100, threshold: 75, outcome: 'won', frozenAt: '2026-10-15T21:00:00.000Z', reliability: 'low', conflict: true, secondPercent: 66, modelSource: 'xg', marketPercent: 'none', marketConflict: 'none', stars: 3, modelDrift: 'none', sampleAtFreeze: 5, rankAtFreeze: 2, appCommit: 'abc1234', statsUploadedAt: '2026-10-15T05:00:00.000Z' }],
       thresholds,
-      aiVerdicts: [{ id: `${MATCH}|chatgpt`, matchId: MATCH, date: DAY, provider: 'chatgpt', byCategory: { over25: 'strong' }, asked: ['over25'], reason: 'gerekçe', risk: 'risk', savedAt: '2026-10-15T08:00:00.000Z', promptKind: 'csv' }],
-      aiPrompts: [{ id: `${DAY}|chatgpt|1`, date: DAY, provider: 'chatgpt', createdAt: '2026-10-15T07:00:00.000Z', matchIds: [MATCH], categories: [['over25']] }],
+      aiVerdicts: [
+        { id: `${MATCH}|chatgpt`, matchId: MATCH, date: DAY, provider: 'chatgpt', byCategory: { over25: 'strong' }, asked: ['over25'], reason: 'gerekçe', risk: 'risk', savedAt: '2026-10-15T08:00:00.000Z', promptKind: 'csv', promptVersion: 'csv-v2' },
+        // promptVersion alanından önce kaydedilmiş karar: alan yedekte de yoktur (csv-v1 sayılır)
+        { id: `${MATCH}|gemini`, matchId: MATCH, date: DAY, provider: 'gemini', byCategory: { over25: 'weak' }, asked: ['over25'], reason: 'gerekçe', risk: 'risk', savedAt: '2026-10-15T07:30:00.000Z', promptKind: 'csv' },
+      ],
+      aiPrompts: [
+        { id: `${DAY}|chatgpt|1`, date: DAY, provider: 'chatgpt', createdAt: '2026-10-15T07:00:00.000Z', matchIds: [MATCH], categories: [['over25']], promptVersion: 'csv-v2' },
+        { id: `${DAY}|gemini`, date: DAY, provider: 'gemini', createdAt: '2026-10-15T06:50:00.000Z', matchIds: [MATCH], categories: [['over25']] },
+      ],
       storyTexts: { ...DEFAULT_STORY_TEXTS },
       marketConflictLimit: 20,
       storySelections: [{ id: selectionId(DAY, 'over25'), date: DAY, categoryId: 'over25', matchIds: [MATCH] }],
@@ -80,6 +87,20 @@ describe('yedek gidiş-dönüş (gerçek Dexie şeması, bellekte IndexedDB)', (
     // İkinci tur: dışa aktarılan yedek yeniden içe aktarılınca da değişmez.
     await backupRepo.importAll(first)
     expect(content(await backupRepo.exportAll())).toEqual(content(original))
+  })
+
+  it('promptVersion: yazılmış sürüm gidiş-dönüşte korunur; alanı olmayan eski kayda alan eklenmez ve csv-v1 okunur', async () => {
+    await backupRepo.importAll(fullBackup())
+    const exported = await backupRepo.exportAll()
+    const verdict = (provider: string) => exported.aiVerdicts!.find((v) => v.provider === provider)!
+    const prompt = (provider: string) => exported.aiPrompts!.find((p) => p.provider === provider)!
+    expect(verdict('chatgpt').promptVersion).toBe('csv-v2')
+    expect(prompt('chatgpt').promptVersion).toBe('csv-v2')
+    expect('promptVersion' in verdict('gemini')).toBe(false)
+    expect('promptVersion' in prompt('gemini')).toBe(false)
+    expect(promptVersionOf(verdict('gemini'))).toBe('csv-v1')
+    expect(promptVersionOf(prompt('gemini'))).toBe('csv-v1')
+    expect(promptVersionOf(verdict('chatgpt'))).toBe('csv-v2')
   })
 
   it('içe aktarma önceki veriyi tamamen değiştirir; son yedek zamanı ve üye tabloları korunur', async () => {

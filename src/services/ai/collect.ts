@@ -1,8 +1,9 @@
 import { AI_CATEGORY_IDS } from '../../config/ai'
 import { CATEGORIES, type CategoryId } from '../../config/categories'
-import type { Match } from '../../types'
+import type { LeagueTableSnapshot, Match, TeamAlias } from '../../types'
 import type { DayAnalysis } from '../analysis/engine'
 import type { Prediction } from '../analysis/types'
+import { verifiedTableRows, type MatchTableRows } from '../league/standing'
 
 /** Yapay zekâya sorulacak bir maç */
 export interface AiMatchItem {
@@ -11,6 +12,8 @@ export interface AiMatchItem {
   predictions: Prediction[]
   /** Karar istenen kategoriler: AI_CATEGORY_IDS içinden, maçın listede (ilk 15'te) olduğu kategoriler */
   evaluate: CategoryId[]
+  /** Prompt'taki "Lig tablosu" satırının kaynağı (withTableRows); yoksa iki taraf da "tablo verisi yok" yazılır */
+  table?: MatchTableRows
 }
 
 export const byKickoff = (a: Match, b: Match): number =>
@@ -33,3 +36,7 @@ export function collectAiMatches(analysis: DayAnalysis): AiMatchItem[] {
   }
   return [...byMatch.values()].filter((item) => item.evaluate.length > 0).sort((a, b) => byKickoff(a.match, b.match))
 }
+
+/** Her maça, maçtan önceki son görüntüden doğrulanmış lig tablosu satırlarını ekler (kart ve üye paketiyle aynı kural) */
+export const withTableRows = (items: AiMatchItem[], dayMatches: Match[], snapshots: LeagueTableSnapshot[], aliases: TeamAlias[]): AiMatchItem[] =>
+  items.map((item) => ({ ...item, table: verifiedTableRows(item.match, dayMatches, snapshots, aliases) }))

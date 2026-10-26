@@ -8,9 +8,9 @@ import ReliabilityBadge from '../components/ReliabilityBadge'
 import { AgreementBadge, LegacyVerdicts, MemberShareBadge } from '../components/ai/AiVerdictBadges'
 import PromptPanel from '../components/ai/PromptPanel'
 import ResponsePanel from '../components/ai/ResponsePanel'
-import { AI_CATEGORY_IDS, AI_PROVIDERS, decisionLabel, providerLabel, type AiProvider } from '../config/ai'
+import { AI_CATEGORY_IDS, AI_PROMPT_VERSION, AI_PROVIDERS, decisionLabel, promptVersionOf, providerLabel, type AiProvider } from '../config/ai'
 import { getCategory } from '../config/categories'
-import { collectAiMatches } from '../services/ai/collect'
+import { collectAiMatches, withTableRows } from '../services/ai/collect'
 import { MAJORITY_NOTE, summarizeVerdicts } from '../services/ai/consensus'
 import { askedMap, numberMap } from '../services/ai/parser'
 import { buildPrompts } from '../services/ai/prompt'
@@ -25,7 +25,7 @@ const sameIds = (a: readonly string[], b: readonly string[]) => a.length === b.l
 const copiedAtFmt = new Intl.DateTimeFormat('tr-TR', { dateStyle: 'medium', timeStyle: 'short' })
 
 export default function AiPage() {
-  const { matches, thresholds, selectedDate, dates, loading, aiVerdicts, aiShares, refresh, dataVersion } = useApp()
+  const { matches, thresholds, selectedDate, dates, loading, aiVerdicts, aiShares, refresh, dataVersion, leagueSnapshots, teamAliases } = useApp()
   const [provider, setProvider] = useState<AiProvider>('chatgpt')
   const [batch, setBatch] = useState<AiPromptBatch | null>(null)
 
@@ -63,7 +63,8 @@ export default function AiPage() {
   // Her maç için sorulan kategoriler de kopyalama anındaki hâliyle kullanılır.
   const asked = askedMap(batch?.categories ?? liveCategories)
   const stale = batch !== null && (!sameIds(batch.matchIds, liveIds) || !(batch.categories ?? []).every((ids, i) => sameIds(ids, liveCategories[i] ?? [])))
-  const chunks = buildPrompts(items, provider, formatLongDate(selectedDate))
+  // Lig tablosu satırı yalnızca prompt metnine girer; maç listesi, numaralar ve "Değerlendir" satırı değişmez.
+  const chunks = buildPrompts(withTableRows(items, matches, leagueSnapshots, teamAliases), provider, formatLongDate(selectedDate))
   const matchesById = new Map(matches.map((m) => [m.id, m]))
   const verdictsOf = (matchId: string) => orderedVerdicts(aiVerdicts.filter((v) => v.matchId === matchId))
 
@@ -75,6 +76,7 @@ export default function AiPage() {
       createdAt: new Date().toISOString(),
       matchIds: liveIds,
       categories: liveCategories,
+      promptVersion: AI_PROMPT_VERSION,
     }
     await aiRepo.savePromptBatch(next)
     setBatch(next)
@@ -157,6 +159,8 @@ export default function AiPage() {
               numbers={numbers}
               asked={asked}
               matchesById={matchesById}
+              // Cevap kopyalanan prompt'a aittir: sürüm o kayıttan okunur; hiç kopyalanmadıysa ekrandaki (güncel) prompt
+              promptVersion={batch ? promptVersionOf(batch) : AI_PROMPT_VERSION}
               onSaved={refresh}
             />
           </section>

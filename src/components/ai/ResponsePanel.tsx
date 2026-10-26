@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { decisionLabel, type AiProvider } from '../../config/ai'
+import { decisionLabel, type AiPromptVersion, type AiProvider } from '../../config/ai'
 import { getCategory, type CategoryId } from '../../config/categories'
 import { PARSE_ERROR_CAUSE_LABELS, parseAiResponseDetailed, parseLineDetailed, type DetailedParseError, type ParsedVerdict } from '../../services/ai/parser'
 import { aiRepo } from '../../services/data'
@@ -20,6 +20,8 @@ interface Props {
   /** numara -> o maç için sorulan kategoriler (prompttaki "Değerlendir" satırı) */
   asked: Map<number, readonly CategoryId[]>
   matchesById: Map<string, Match>
+  /** Cevabın ait olduğu prompt'un sürümü (kopyalanan prompt kaydından) */
+  promptVersion: AiPromptVersion
   onSaved: () => Promise<void>
 }
 
@@ -31,7 +33,7 @@ interface Review {
   skipped: number
 }
 
-export default function ResponsePanel({ date, provider, providerLabel, numbers, asked, matchesById, onSaved }: Props) {
+export default function ResponsePanel({ date, provider, providerLabel, numbers, asked, matchesById, promptVersion, onSaved }: Props) {
   const { aiVerdicts } = useApp()
   const [text, setText] = useState('')
   const [review, setReview] = useState<Review | null>(null)
@@ -93,6 +95,7 @@ export default function ResponsePanel({ date, provider, providerLabel, numbers, 
         ...(v.score && { score: v.score, scoreLate: lateFor(matchesById.get(v.matchId), savedAt) }),
         // Ölçüm kaydı: bu sayfanın cevapları CSV verisiyle kurulan prompttan gelir.
         promptKind: 'csv',
+        promptVersion,
       }
     })
     await aiRepo.saveVerdicts(verdicts)

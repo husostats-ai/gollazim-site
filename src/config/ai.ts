@@ -48,3 +48,12 @@ export const isApproved = (id: AiDecision): boolean => AI_DECISIONS.find((d) => 
 
 /** Bir prompt parçasındaki en fazla maç sayısı */
 export const AI_CHUNK_SIZE = 20
+
+/**
+ * AI ANALİZİ (CSV) prompt'unun sürümü. csv-v1: lig tablosu satırı olmayan ilk sürüm; csv-v2: maç bloğunda
+ * "Lig tablosu" satırı. Yalnızca kayıttır (prompt kopyası ve karar kaydı); istatistik bu alana bakmaz.
+ */
+export type AiPromptVersion = 'csv-v1' | 'csv-v2'
+export const AI_PROMPT_VERSION: AiPromptVersion = 'csv-v2'
+/** Alanı olmayan kayıt (bu özellikten önce kopyalanmış prompt ya da kaydedilmiş karar) csv-v1 sayılır */
+export const promptVersionOf = (record: { promptVersion?: AiPromptVersion }): AiPromptVersion => record.promptVersion ?? 'csv-v1'

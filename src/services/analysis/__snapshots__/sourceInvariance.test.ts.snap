@@ -14777,91 +14777,108 @@ exports[`değişmezlik: kaynak alanı hesabı değiştirmez > sentetik 18 maç: 
 İstatistik: Gol ortalaması: 3,4 ; Korner ortalaması: 10,4 ; Kart ortalaması: 5,2 ; Maç başı puan (PPG): ev 1,9 / deplasman 1,1 ; Maç öncesi xG: ev 1,7 / deplasman 1,2 ; 1X2 oranları: 1,6 / 4,2 / 5,5
 Gol modeli: 2.5 Üst %55 ; 3.5 Üst %33 ; 4.5 Üst %17 ; KG Var %57
 Piyasa: 2.5 ÜST %56
+Lig tablosu: ev tablo verisi yok ; deplasman tablo verisi yok
 Değerlendir: 2.5 ÜST ; İLK YARI 0.5 ÜST ; KG VAR",
     "#2 | 12:00 | Deneme Ligi | Ev zeroXg full - Dep zeroXg full
 Öneriler: 2.5 ÜST %79 (güvenilirlik: Yüksek; en az 20 saha maçı (tahmini); model %38; Model çelişkisi) ; İLK YARI 0.5 ÜST %86 (güvenilirlik: Yüksek; en az 20 saha maçı (tahmini)) ; 2. YARI 0.5 ÜST %90 (güvenilirlik: Yüksek; en az 20 saha maçı (tahmini)) ; İLK YARI 1.5 ÜST %66 (güvenilirlik: Yüksek; en az 20 saha maçı (tahmini)) ; KORNER 8.5 ÜST %80 (güvenilirlik: Ölçülemedi) ; KORNER 9.5 ÜST %75 (güvenilirlik: Ölçülemedi) ; KORNER 10.5 ÜST %71 (güvenilirlik: Ölçülemedi) ; KART 3.5 ÜST %76 (güvenilirlik: Ölçülemedi)
 İstatistik: Gol ortalaması: 2,2 ; Korner ortalaması: 10,4 ; Kart ortalaması: 5,2 ; Maç başı puan (PPG): ev 1,9 / deplasman 1,1 ; Maç öncesi xG: veri yok ; 1X2 oranları: 1,6 / 4,2 / 5,5
 Gol modeli: 2.5 Üst %38 ; 3.5 Üst %18 ; 4.5 Üst %7 ; KG Var veri yok
 Piyasa: 2.5 ÜST %56
+Lig tablosu: ev tablo verisi yok ; deplasman tablo verisi yok
 Değerlendir: 2.5 ÜST ; İLK YARI 0.5 ÜST",
     "#3 | 13:00 | Deneme Ligi | Ev xg side - Dep xg side
 Öneriler: 2.5 ÜST %87 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini); model %55; Model çelişkisi) ; İLK YARI 0.5 ÜST %86 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; KG VAR %83 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini); model %57; Model çelişkisi) ; 2. YARI 0.5 ÜST %90 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; 3.5 ÜST %73 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini); model %33; Model çelişkisi) ; 4.5 ÜST %62 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini); model %17; Model çelişkisi) ; İLK YARI 1.5 ÜST %66 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; KORNER 8.5 ÜST %80 (güvenilirlik: Ölçülemedi) ; KORNER 9.5 ÜST %75 (güvenilirlik: Ölçülemedi) ; KORNER 10.5 ÜST %71 (güvenilirlik: Ölçülemedi) ; KART 3.5 ÜST %76 (güvenilirlik: Ölçülemedi)
 İstatistik: Gol ortalaması: 3,4 ; Korner ortalaması: 10,4 ; Kart ortalaması: 5,2 ; Maç başı puan (PPG): ev 1,9 / deplasman 1,1 ; Maç öncesi xG: ev 1,7 / deplasman 1,2 ; 1X2 oranları: 2,4 / 3,3 / 2,9
 Gol modeli: 2.5 Üst %55 ; 3.5 Üst %33 ; 4.5 Üst %17 ; KG Var %57
+Lig tablosu: ev tablo verisi yok ; deplasman tablo verisi yok
 Değerlendir: 2.5 ÜST ; İLK YARI 0.5 ÜST ; KG VAR",
     "#4 | 13:00 | Deneme Ligi | Ev zeroXg side - Dep zeroXg side
 Öneriler: 2.5 ÜST %78 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini); model %38; Model çelişkisi) ; İLK YARI 0.5 ÜST %86 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; KG VAR %84 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; 2. YARI 0.5 ÜST %90 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; İLK YARI 1.5 ÜST %66 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; KORNER 8.5 ÜST %80 (güvenilirlik: Ölçülemedi) ; KORNER 9.5 ÜST %75 (güvenilirlik: Ölçülemedi) ; KORNER 10.5 ÜST %71 (güvenilirlik: Ölçülemedi) ; KART 3.5 ÜST %76 (güvenilirlik: Ölçülemedi)
 İstatistik: Gol ortalaması: 2,2 ; Korner ortalaması: 10,4 ; Kart ortalaması: 5,2 ; Maç başı puan (PPG): ev 1,9 / deplasman 1,1 ; Maç öncesi xG: veri yok ; 1X2 oranları: 2,4 / 3,3 / 2,9
 Gol modeli: 2.5 Üst %38 ; 3.5 Üst %18 ; 4.5 Üst %7 ; KG Var veri yok
+Lig tablosu: ev tablo verisi yok ; deplasman tablo verisi yok
 Değerlendir: 2.5 ÜST ; İLK YARI 0.5 ÜST ; KG VAR",
     "#5 | 14:00 | Deneme Ligi | Ev xg none - Dep xg none
 Öneriler: 2.5 ÜST %86 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini); model %55; Model çelişkisi) ; İLK YARI 0.5 ÜST %86 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; KG VAR %82 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini); model %57) ; 2. YARI 0.5 ÜST %90 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; 3.5 ÜST %72 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini); model %33; Model çelişkisi) ; 4.5 ÜST %61 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini); model %17; Model çelişkisi) ; İLK YARI 1.5 ÜST %66 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; KORNER 8.5 ÜST %80 (güvenilirlik: Ölçülemedi) ; KORNER 9.5 ÜST %75 (güvenilirlik: Ölçülemedi) ; KORNER 10.5 ÜST %71 (güvenilirlik: Ölçülemedi) ; KART 3.5 ÜST %76 (güvenilirlik: Ölçülemedi)
 İstatistik: Gol ortalaması: 3,4 ; Korner ortalaması: 10,4 ; Kart ortalaması: 5,2 ; Maç başı puan (PPG): ev 1,9 / deplasman 1,1 ; Maç öncesi xG: ev 1,7 / deplasman 1,2 ; 1X2 oranları: veri yok
 Gol modeli: 2.5 Üst %55 ; 3.5 Üst %33 ; 4.5 Üst %17 ; KG Var %57
+Lig tablosu: ev tablo verisi yok ; deplasman tablo verisi yok
 Değerlendir: 2.5 ÜST ; İLK YARI 0.5 ÜST ; KG VAR",
     "#6 | 14:00 | Deneme Ligi | Ev zeroXg none - Dep zeroXg none
 Öneriler: 2.5 ÜST %77 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini); model %38; Model çelişkisi) ; İLK YARI 0.5 ÜST %86 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; KG VAR %83 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; 2. YARI 0.5 ÜST %90 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; İLK YARI 1.5 ÜST %66 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; KORNER 8.5 ÜST %80 (güvenilirlik: Ölçülemedi) ; KORNER 9.5 ÜST %75 (güvenilirlik: Ölçülemedi) ; KORNER 10.5 ÜST %71 (güvenilirlik: Ölçülemedi) ; KART 3.5 ÜST %76 (güvenilirlik: Ölçülemedi)
 İstatistik: Gol ortalaması: 2,2 ; Korner ortalaması: 10,4 ; Kart ortalaması: 5,2 ; Maç başı puan (PPG): ev 1,9 / deplasman 1,1 ; Maç öncesi xG: veri yok ; 1X2 oranları: veri yok
 Gol modeli: 2.5 Üst %38 ; 3.5 Üst %18 ; 4.5 Üst %7 ; KG Var veri yok
+Lig tablosu: ev tablo verisi yok ; deplasman tablo verisi yok
 Değerlendir: 2.5 ÜST ; İLK YARI 0.5 ÜST ; KG VAR",
     "#7 | 15:00 | Deneme Ligi | Ev avgGoals full - Dep avgGoals full
 Öneriler: 2.5 ÜST %85 (güvenilirlik: Yüksek; en az 20 saha maçı (tahmini); model %66; Piyasa çelişkisi) ; İLK YARI 0.5 ÜST %86 (güvenilirlik: Yüksek; en az 20 saha maçı (tahmini)) ; KG VAR %81 (güvenilirlik: Yüksek; en az 20 saha maçı (tahmini)) ; 2. YARI 0.5 ÜST %90 (güvenilirlik: Yüksek; en az 20 saha maçı (tahmini)) ; 3.5 ÜST %71 (güvenilirlik: Yüksek; en az 20 saha maçı (tahmini); model %44; Model çelişkisi) ; 4.5 ÜST %60 (güvenilirlik: Yüksek; en az 20 saha maçı (tahmini); model %26; Model çelişkisi) ; İLK YARI 1.5 ÜST %66 (güvenilirlik: Yüksek; en az 20 saha maçı (tahmini)) ; KORNER 8.5 ÜST %80 (güvenilirlik: Ölçülemedi) ; KORNER 9.5 ÜST %75 (güvenilirlik: Ölçülemedi) ; KORNER 10.5 ÜST %71 (güvenilirlik: Ölçülemedi) ; KART 3.5 ÜST %76 (güvenilirlik: Ölçülemedi)
 İstatistik: Gol ortalaması: 3,4 ; Korner ortalaması: 10,4 ; Kart ortalaması: 5,2 ; Maç başı puan (PPG): ev 1,9 / deplasman 1,1 ; Maç öncesi xG: veri yok ; 1X2 oranları: 1,6 / 4,2 / 5,5
 Gol modeli: 2.5 Üst %66 ; 3.5 Üst %44 ; 4.5 Üst %26 ; KG Var veri yok
 Piyasa: 2.5 ÜST %56
+Lig tablosu: ev tablo verisi yok ; deplasman tablo verisi yok
 Değerlendir: 2.5 ÜST ; İLK YARI 0.5 ÜST ; KG VAR",
     "#8 | 15:00 | Deneme Ligi | Ev halfXg full - Dep halfXg full
 Öneriler: 2.5 ÜST %76 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini); model %55) ; İLK YARI 0.5 ÜST %86 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; KG VAR %82 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; 2. YARI 0.5 ÜST %90 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; İLK YARI 1.5 ÜST %66 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; KORNER 8.5 ÜST %80 (güvenilirlik: Ölçülemedi) ; KORNER 9.5 ÜST %75 (güvenilirlik: Ölçülemedi) ; KORNER 10.5 ÜST %71 (güvenilirlik: Ölçülemedi) ; KART 3.5 ÜST %76 (güvenilirlik: Ölçülemedi)
 İstatistik: Gol ortalaması: 2,9 ; Korner ortalaması: 10,4 ; Kart ortalaması: 5,2 ; Maç başı puan (PPG): ev 1,9 / deplasman 1,1 ; Maç öncesi xG: veri yok ; 1X2 oranları: 1,6 / 4,2 / 5,5
 Gol modeli: 2.5 Üst %55 ; 3.5 Üst %33 ; 4.5 Üst %17 ; KG Var veri yok
 Piyasa: 2.5 ÜST %56
+Lig tablosu: ev tablo verisi yok ; deplasman tablo verisi yok
 Değerlendir: 2.5 ÜST ; İLK YARI 0.5 ÜST ; KG VAR",
     "#9 | 16:00 | Deneme Ligi | Ev avgGoals side - Dep avgGoals side
 Öneriler: 2.5 ÜST %84 (güvenilirlik: Yüksek; en az 20 saha maçı (tahmini); model %66) ; İLK YARI 0.5 ÜST %86 (güvenilirlik: Yüksek; en az 20 saha maçı (tahmini)) ; 2. YARI 0.5 ÜST %90 (güvenilirlik: Yüksek; en az 20 saha maçı (tahmini)) ; 3.5 ÜST %70 (güvenilirlik: Yüksek; en az 20 saha maçı (tahmini); model %44; Model çelişkisi) ; İLK YARI 1.5 ÜST %66 (güvenilirlik: Yüksek; en az 20 saha maçı (tahmini)) ; KORNER 8.5 ÜST %80 (güvenilirlik: Ölçülemedi) ; KORNER 9.5 ÜST %75 (güvenilirlik: Ölçülemedi) ; KORNER 10.5 ÜST %71 (güvenilirlik: Ölçülemedi) ; KART 3.5 ÜST %76 (güvenilirlik: Ölçülemedi)
 İstatistik: Gol ortalaması: 3,4 ; Korner ortalaması: 10,4 ; Kart ortalaması: 5,2 ; Maç başı puan (PPG): ev 1,9 / deplasman 1,1 ; Maç öncesi xG: veri yok ; 1X2 oranları: 2,4 / 3,3 / 2,9
 Gol modeli: 2.5 Üst %66 ; 3.5 Üst %44 ; 4.5 Üst %26 ; KG Var veri yok
+Lig tablosu: ev tablo verisi yok ; deplasman tablo verisi yok
 Değerlendir: 2.5 ÜST ; İLK YARI 0.5 ÜST",
     "#10 | 16:00 | Deneme Ligi | Ev halfXg side - Dep halfXg side
 Öneriler: 2.5 ÜST %75 (güvenilirlik: Yüksek; en az 20 saha maçı (tahmini); model %55) ; KG VAR %81 (güvenilirlik: Yüksek; en az 20 saha maçı (tahmini)) ; KORNER 8.5 ÜST %80 (güvenilirlik: Ölçülemedi) ; KORNER 9.5 ÜST %75 (güvenilirlik: Ölçülemedi) ; KORNER 10.5 ÜST %71 (güvenilirlik: Ölçülemedi) ; KART 3.5 ÜST %76 (güvenilirlik: Ölçülemedi)
 İstatistik: Gol ortalaması: 2,9 ; Korner ortalaması: 10,4 ; Kart ortalaması: 5,2 ; Maç başı puan (PPG): ev 1,9 / deplasman 1,1 ; Maç öncesi xG: veri yok ; 1X2 oranları: 2,4 / 3,3 / 2,9
 Gol modeli: 2.5 Üst %55 ; 3.5 Üst %33 ; 4.5 Üst %17 ; KG Var veri yok
+Lig tablosu: ev tablo verisi yok ; deplasman tablo verisi yok
 Değerlendir: 2.5 ÜST ; KG VAR",
     "#11 | 17:00 | Deneme Ligi | Ev avgGoals none - Dep avgGoals none
 Öneriler: 2.5 ÜST %83 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini); model %66) ; İLK YARI 0.5 ÜST %86 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; KG VAR %84 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; 2. YARI 0.5 ÜST %90 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; İLK YARI 1.5 ÜST %66 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; KORNER 8.5 ÜST %80 (güvenilirlik: Ölçülemedi) ; KORNER 9.5 ÜST %75 (güvenilirlik: Ölçülemedi) ; KORNER 10.5 ÜST %71 (güvenilirlik: Ölçülemedi) ; KART 3.5 ÜST %76 (güvenilirlik: Ölçülemedi)
 İstatistik: Gol ortalaması: 3,4 ; Korner ortalaması: 10,4 ; Kart ortalaması: 5,2 ; Maç başı puan (PPG): ev 1,9 / deplasman 1,1 ; Maç öncesi xG: veri yok ; 1X2 oranları: veri yok
 Gol modeli: 2.5 Üst %66 ; 3.5 Üst %44 ; 4.5 Üst %26 ; KG Var veri yok
+Lig tablosu: ev tablo verisi yok ; deplasman tablo verisi yok
 Değerlendir: 2.5 ÜST ; İLK YARI 0.5 ÜST ; KG VAR",
     "#12 | 18:00 | Deneme Ligi | Ev none full - Dep none full
 Öneriler: 2.5 ÜST %82 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini); Piyasa çelişkisi) ; İLK YARI 0.5 ÜST %86 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; KG VAR %83 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; 2. YARI 0.5 ÜST %90 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; İLK YARI 1.5 ÜST %66 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; KORNER 8.5 ÜST %80 (güvenilirlik: Ölçülemedi) ; KORNER 9.5 ÜST %75 (güvenilirlik: Ölçülemedi) ; KORNER 10.5 ÜST %71 (güvenilirlik: Ölçülemedi) ; KART 3.5 ÜST %76 (güvenilirlik: Ölçülemedi)
 İstatistik: Gol ortalaması: veri yok ; Korner ortalaması: 10,4 ; Kart ortalaması: 5,2 ; Maç başı puan (PPG): ev 1,9 / deplasman 1,1 ; Maç öncesi xG: veri yok ; 1X2 oranları: 1,6 / 4,2 / 5,5
 Gol modeli: 2.5 Üst veri yok ; 3.5 Üst veri yok ; 4.5 Üst veri yok ; KG Var veri yok
 Piyasa: 2.5 ÜST %56
+Lig tablosu: ev tablo verisi yok ; deplasman tablo verisi yok
 Değerlendir: 2.5 ÜST ; İLK YARI 0.5 ÜST ; KG VAR",
     "#13 | 18:00 | Deneme Ligi | Ev zeroBoth full - Dep zeroBoth full
 Öneriler: İLK YARI 0.5 ÜST %86 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; KG VAR %84 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; 2. YARI 0.5 ÜST %90 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; İLK YARI 1.5 ÜST %66 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; KORNER 8.5 ÜST %80 (güvenilirlik: Ölçülemedi) ; KORNER 9.5 ÜST %75 (güvenilirlik: Ölçülemedi) ; KORNER 10.5 ÜST %71 (güvenilirlik: Ölçülemedi) ; KART 3.5 ÜST %76 (güvenilirlik: Ölçülemedi)
 İstatistik: Gol ortalaması: veri yok ; Korner ortalaması: 10,4 ; Kart ortalaması: 5,2 ; Maç başı puan (PPG): ev 1,9 / deplasman 1,1 ; Maç öncesi xG: veri yok ; 1X2 oranları: 1,6 / 4,2 / 5,5
 Gol modeli: 2.5 Üst veri yok ; 3.5 Üst veri yok ; 4.5 Üst veri yok ; KG Var veri yok
 Piyasa: 2.5 ÜST %56
+Lig tablosu: ev tablo verisi yok ; deplasman tablo verisi yok
 Değerlendir: İLK YARI 0.5 ÜST ; KG VAR",
     "#14 | 19:00 | Deneme Ligi | Ev none side - Dep none side
 Öneriler: 2.5 ÜST %81 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; İLK YARI 0.5 ÜST %86 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; KG VAR %82 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; 2. YARI 0.5 ÜST %90 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; İLK YARI 1.5 ÜST %66 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; KORNER 8.5 ÜST %80 (güvenilirlik: Ölçülemedi) ; KORNER 9.5 ÜST %75 (güvenilirlik: Ölçülemedi) ; KORNER 10.5 ÜST %71 (güvenilirlik: Ölçülemedi) ; KART 3.5 ÜST %76 (güvenilirlik: Ölçülemedi)
 İstatistik: Gol ortalaması: veri yok ; Korner ortalaması: 10,4 ; Kart ortalaması: 5,2 ; Maç başı puan (PPG): ev 1,9 / deplasman 1,1 ; Maç öncesi xG: veri yok ; 1X2 oranları: 2,4 / 3,3 / 2,9
 Gol modeli: 2.5 Üst veri yok ; 3.5 Üst veri yok ; 4.5 Üst veri yok ; KG Var veri yok
+Lig tablosu: ev tablo verisi yok ; deplasman tablo verisi yok
 Değerlendir: 2.5 ÜST ; İLK YARI 0.5 ÜST ; KG VAR",
     "#15 | 19:00 | Deneme Ligi | Ev zeroBoth side - Dep zeroBoth side
 Öneriler: İLK YARI 0.5 ÜST %86 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; KG VAR %83 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; 2. YARI 0.5 ÜST %90 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; İLK YARI 1.5 ÜST %66 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini))
 İstatistik: Gol ortalaması: veri yok ; Korner ortalaması: 10,4 ; Kart ortalaması: 5,2 ; Maç başı puan (PPG): ev 1,9 / deplasman 1,1 ; Maç öncesi xG: veri yok ; 1X2 oranları: 2,4 / 3,3 / 2,9
 Gol modeli: 2.5 Üst veri yok ; 3.5 Üst veri yok ; 4.5 Üst veri yok ; KG Var veri yok
+Lig tablosu: ev tablo verisi yok ; deplasman tablo verisi yok
 Değerlendir: İLK YARI 0.5 ÜST ; KG VAR",
     "#16 | 20:00 | Deneme Ligi | Ev none none - Dep none none
 Öneriler: 2.5 ÜST %80 (güvenilirlik: Yüksek; en az 20 saha maçı (tahmini)) ; KG VAR %81 (güvenilirlik: Yüksek; en az 20 saha maçı (tahmini))
 İstatistik: Gol ortalaması: veri yok ; Korner ortalaması: 10,4 ; Kart ortalaması: 5,2 ; Maç başı puan (PPG): ev 1,9 / deplasman 1,1 ; Maç öncesi xG: veri yok ; 1X2 oranları: veri yok
 Gol modeli: 2.5 Üst veri yok ; 3.5 Üst veri yok ; 4.5 Üst veri yok ; KG Var veri yok
+Lig tablosu: ev tablo verisi yok ; deplasman tablo verisi yok
 Değerlendir: 2.5 ÜST ; KG VAR",
     "#17 | 20:00 | Deneme Ligi | Ev zeroBoth none - Dep zeroBoth none
 Öneriler: İLK YARI 0.5 ÜST %86 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; KG VAR %82 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; 2. YARI 0.5 ÜST %90 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini)) ; İLK YARI 1.5 ÜST %66 (güvenilirlik: Yüksek; en az 30 saha maçı (tahmini))
 İstatistik: Gol ortalaması: veri yok ; Korner ortalaması: 10,4 ; Kart ortalaması: 5,2 ; Maç başı puan (PPG): ev 1,9 / deplasman 1,1 ; Maç öncesi xG: veri yok ; 1X2 oranları: veri yok
 Gol modeli: 2.5 Üst veri yok ; 3.5 Üst veri yok ; 4.5 Üst veri yok ; KG Var veri yok
+Lig tablosu: ev tablo verisi yok ; deplasman tablo verisi yok
 Değerlendir: İLK YARI 0.5 ÜST ; KG VAR",
   ],
   "score": [

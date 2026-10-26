@@ -3,7 +3,8 @@ import { canonicalRow } from './matching'
 
 // Lig tablosu yapıştırma geçmişi. Güncel tablo her yapıştırmada üzerine yazılır; burada her
 // yapıştırmanın kopyası kalır ki sonradan "o maçtan önce tabloda ne yazıyordu" sorulabilsin.
-// Yalnızca veri toplar: analize, dondurmaya, prompt'a ve üye paketine girmez.
+// Analize ve dondurmaya girmez. Form satırı (kart, üye paketi) ve AI prompt'undaki "Lig tablosu"
+// satırı buradan, maçtan önceki görüntüden okunur (bkz. standing.ts: verifiedTableRows).
 
 export const snapshotId = (league: string, pastedAt: string): string => `${league}|${pastedAt}`
 

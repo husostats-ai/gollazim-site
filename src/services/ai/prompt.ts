@@ -7,6 +7,7 @@ import { MARKET_CATEGORY_IDS, MARKET_CONFLICT_LABEL, marketPercent } from '../an
 import { stat } from '../analysis/stat'
 import { usableAvgCards, usableAvgCorners, usableAvgGoals, usableXg } from '../analysis/statAvailability'
 import type { Prediction } from '../analysis/types'
+import type { VerifiedTableRow } from '../league/standing'
 import type { AiMatchItem } from './collect'
 
 export interface PromptChunk {
@@ -57,8 +58,34 @@ function marketLine(item: AiMatchItem): string | null {
   return parts.length > 0 ? `Piyasa: ${parts.join(' ; ')}` : null
 }
 
+/** Maç bloğundaki lig tablosu satırının etiketi */
+export const TABLE_LABEL = 'Lig tablosu'
+/** Tablo satırı yok (görüntü yok, takım eşleşmedi) */
+export const TABLE_MISSING = 'tablo verisi yok'
+/** Satır var ama doğrulanamadı (ppg-differs, round-mismatch, unverifiable, old-snapshot): hiçbir sayı yazılmaz */
+export const TABLE_BLOCKED = 'tablo güncel değil'
+const FORM_LETTERS: Record<string, string> = { W: 'G', D: 'B', L: 'M' }
+
+/** "G G B M G"; form yoksa ya da tanınmayan harf varsa null */
+function formText(last5: string | undefined): string | null {
+  if (!last5 || !/^[WDL]+$/.test(last5)) return null
+  return [...last5].map((c) => FORM_LETTERS[c]).join(' ')
+}
+
+function sideTable(side: 'ev' | 'deplasman', verified: VerifiedTableRow | null | undefined): string {
+  if (!verified) return `${side} ${TABLE_MISSING}`
+  if (verified.blocked !== null) return `${side} ${TABLE_BLOCKED}`
+  const { rank, played, points, last5 } = verified.row
+  const form = formText(last5)
+  return `${side} ${rank}. sıra, ${played} maç, ${points} puan${form ? `, form (eskiden yeniye) ${form}` : ''}`
+}
+
+/** "Lig tablosu: ev 3. sıra, 9 maç, 18 puan, form (eskiden yeniye) G G B M G ; deplasman tablo güncel değil" */
+export const tableLine = (item: AiMatchItem): string =>
+  `${TABLE_LABEL}: ${sideTable('ev', item.table?.home)} ; ${sideTable('deplasman', item.table?.away)}`
+
 /**
- * Bir maçın veri bloğundaki satırlar (oran varsa "Piyasa" satırı eklenir).
+ * Bir maçın veri bloğundaki satırlar (oran varsa "Piyasa" satırı eklenir; "Lig tablosu" satırı her zaman vardır).
  * Numara, cevabın maça bağlanacağı tek anahtardır.
  */
 export function matchBlock(item: AiMatchItem, number: number): string {
@@ -87,6 +114,7 @@ export function matchBlock(item: AiMatchItem, number: number): string {
     `İstatistik: ${stats.join(' ; ')}`,
     `Gol modeli: ${model.join(' ; ')}`,
     ...(market ? [market] : []),
+    tableLine(item),
     `${EVALUATE_LABEL}: ${item.evaluate.map((id) => getCategory(id).label).join(' ; ')}`,
   ].join('\n')
 }
@@ -118,6 +146,7 @@ function chunkText(args: {
     `- "Gol modeli" satırı, maç öncesi xG değerlerinden (yoksa gol ortalamasından) Poisson ile hesaplanan ikinci bir tahmindir. Önerideki hazır yüzde ile model arasında ${MODEL_CONFLICT_LIMIT} puandan fazla fark varsa "Model çelişkisi" yazar; bunu kararında dikkate al.`,
     '- "Piyasa" satırı, bahis oranlarından marj arındırılarak çıkarılan olasılıktır; yalnızca oranı olan kategoriler yazılır. Öneride "Piyasa çelişkisi" yazıyorsa hazır yüzde ile piyasa arasındaki fark büyüktür; bunu kararında dikkate al.',
     `- Önerilerdeki "en az N saha maçı (tahmini)" ifadesi örneklem büyüklüğüdür: ${SAMPLE_HINT}`,
+    `- "${TABLE_LABEL}" satırı sitenin kendi doğrulanmış lig tablosundan, maçtan önceki son görüntüden gelir; tablo yoksa ya da güncel olduğu doğrulanamadıysa sayı yazılmaz. Form son maçların sonucudur, soldan sağa eskiden yeniye: G galibiyet, B beraberlik, M mağlubiyet. Bu bilgi aradığın başka bir kaynakla çelişirse kaynağını gerekçede yaz.`,
     '',
     'GÖREV',
     `Her maç için "${EVALUATE_LABEL}" satırındaki HER kategoriye ayrı bir KARAR ver: ${decisions.replace(/, ([^,]*)$/, ' veya $1')}. Listede olmayan kategoriye karar verme.`,
